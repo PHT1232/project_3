@@ -1,0 +1,11 @@
+/home/phat/Documents/csharp/Project/Core/bin/Debug/net10.0/Core.deps.json
+/home/phat/Documents/csharp/Project/Core/bin/Debug/net10.0/Core.dll
+/home/phat/Documents/csharp/Project/Core/bin/Debug/net10.0/Core.pdb
+/home/phat/Documents/csharp/Project/Core/obj/Debug/net10.0/Core.GeneratedMSBuildEditorConfig.editorconfig
+/home/phat/Documents/csharp/Project/Core/obj/Debug/net10.0/Core.AssemblyInfoInputs.cache
+/home/phat/Documents/csharp/Project/Core/obj/Debug/net10.0/Core.AssemblyInfo.cs
+/home/phat/Documents/csharp/Project/Core/obj/Debug/net10.0/Core.csproj.CoreCompileInputs.cache
+/home/phat/Documents/csharp/Project/Core/obj/Debug/net10.0/Core.dll
+/home/phat/Documents/csharp/Project/Core/obj/Debug/net10.0/refint/Core.dll
+/home/phat/Documents/csharp/Project/Core/obj/Debug/net10.0/Core.pdb
+/home/phat/Documents/csharp/Project/Core/obj/Debug/net10.0/ref/Core.dll
