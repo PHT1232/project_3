@@ -31,8 +31,8 @@ pipeline {
                 // Dừng và xoá container cũ (nếu có)
                 sh 'docker rm -f my-running-app || true'
                 
-                // Chạy container mới, ánh xạ port 8080 của máy chủ vào 8080 của container
-                sh 'docker run -d -p 8080:8080 --name my-running-app ${IMAGE_NAME}:latest'
+                // Chạy container mới, ánh xạ port 5000 của máy chủ vào 5000 của container
+                sh 'docker run -d -p 5000:5000 --name my-running-app ${IMAGE_NAME}:latest'
             }
         }
     }

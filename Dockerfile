@@ -29,9 +29,9 @@ RUN dotnet publish WebApi/WebApi.csproj -c Release -o /app/publish /p:UseAppHost
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 
-# Expose port 8080 (mặc định của .NET 8+)
-EXPOSE 8080
-ENV ASPNETCORE_URLS=http://+:8080
+# Expose port 5000
+EXPOSE 5000
+ENV ASPNETCORE_URLS=http://+:5000
 
 # Copy file chạy của Backend
 COPY --from=build-backend /app/publish .
