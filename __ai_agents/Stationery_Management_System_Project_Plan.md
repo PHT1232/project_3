@@ -2,7 +2,7 @@
 title: "Stationery Management System — 3-Week Delivery Plan"
 subtitle: "Architecture, Database, API, Roadmap, Git Workflow, Standards, Risk & Deployment"
 author: "Technical Lead / Scrum Master"
-date: "Version 1.0 — 07 August 2026"
+date: "Version 1.1 — 24 August 2026"
 ---
 
 # 0. Document Control
@@ -10,12 +10,19 @@ date: "Version 1.0 — 07 August 2026"
 | Field | Value |
 |---|---|
 | Project | Stationery Management System (HMT Technologies eProject) |
-| Version | 1.0 |
+| Version | 1.1 |
 | Status | Baseline — approved for execution |
 | Duration | 3 calendar weeks / 15 working days (Mon 10 Aug – Fri 28 Aug 2026) |
 | Team size | 5 intermediate-level developers |
-| Stack | ASP.NET Core 8 · EF Core 8 · SQL Server · React + Vite + Tailwind · JWT |
+| Stack | ASP.NET Core 10 · EF Core 10 · SQL Server · React + Vite + Tailwind · JWT |
 | Source documents analysed | `web based Stationery Management System.docx`, `ProjectSpecification.docx`, `Stationery_Management_System_Roadmap.md`, `Phân chia công việc.xlsx`, `Startup_Product_Kickoff.pdf` (kickoff slides), `README.md`, `cau_truc_du_an.md`, `cau_hinh_funnel_tailscale.md` |
+
+## Revision history
+
+| Version | Date | Change |
+|---|---|---|
+| 1.0 | 07 Aug 2026 | Baseline. |
+| 1.1 | 24 Aug 2026 | **Runtime changed from .NET 8 (LTS) to .NET 10** by team decision, reversing the `[DECISION]` in §1.2.4. The repository already targeted `net10.0`; the plan is now aligned to the repository rather than the reverse. Affects §0, §1.1, §1.2.4, §2.2, §7 M0. |
 
 **How to read this document.** Every recommendation is labelled:
 
@@ -35,7 +42,7 @@ date: "Version 1.0 — 07 August 2026"
 
 ## 1.1 What we are building
 
-A single ASP.NET Core 8 web application (modular monolith, Clean Architecture) with a React SPA front end, replacing HMT Technologies' email/Excel-based stationery request process. Every user is an employee; capability is determined by **role** and by **position in a self-referencing reporting hierarchy** (Engineer → Manager → Business Manager → Managing Director), not by separate user types.
+A single ASP.NET Core 10 web application (modular monolith, Clean Architecture) with a React SPA front end, replacing HMT Technologies' email/Excel-based stationery request process. Every user is an employee; capability is determined by **role** and by **position in a self-referencing reporting hierarchy** (Engineer → Manager → Business Manager → Managing Director), not by separate user types.
 
 The system covers the full request lifecycle (draft → submit → approve/reject/return → withdraw → two-step cancellation), role-based spending eligibility, automatic dual-party notifications on six trigger events, three manager cost reports, and one genuinely useful AI feature — an **AI Inventory Assistant** built server-side on an LLM API with deterministic guardrails.
 
@@ -52,8 +59,16 @@ Five intermediate students × 15 working days × ~5 focused hours/day = **375 pe
 **3. The requested "AI Inventory Assistant" is five features, not one, and two of them cannot honestly be built in three weeks.**
 "Predict shortages" implies a trained forecasting model. You will have **zero historical consumption data** — you will have seed data you invented last Tuesday. Training or fine-tuning anything on that is theatre, and the rubric explicitly punishes work you cannot explain ("Không giải thích được luồng logic của code do AI sinh ra" is a zero-point trigger). My decision: **build one real LLM feature end-to-end and be transparent that the forecasting layer is deterministic statistics with an LLM explanation layer on top.** Honest labelling scores better on "Chiến lược AI (12pt)" than an unexplainable black box. Full design in §5.
 
-**4. Your repository and your spec disagree about the .NET version.**
-`README.md` says .NET 10 WebApi; the brief says .NET 8. **[DECISION] .NET 8 (LTS).** Reason: LTS support, every tutorial and Stack Overflow answer an intermediate developer will find targets 8, and the marginal features of a newer runtime are worth nothing here. Fix the README on day 1 — an inconsistency between your README and your `.csproj` is exactly the kind of thing a reviewer opens with.
+**4. The .NET version is settled: .NET 10.**
+`README.md` and all four `.csproj` files say .NET 10; the brief says .NET 8. **[DECISION — revised in v1.1] .NET 10.** Version 1.0 of this plan called for .NET 8 (LTS) and for the repository to be downgraded to match. **That decision is reversed:** the repository already targets `net10.0`, the team has confirmed .NET 10, and rewriting four working project files to chase an older runtime buys nothing at this stage.
+
+Be honest about the trade-off at the defence, because it is the reverse of the usual advice. We give up LTS support, and an intermediate developer searching for help will find answers written for .NET 8 more often than for 10 — most of which still apply, since nothing in this system uses runtime-specific features. What we gain is one less migration and a repository that is internally consistent today.
+
+**Two practical consequences, and they bite on day 1:**
+- **Every developer needs the .NET 10 SDK installed.** A machine with only the .NET 8 SDK fails with `NETSDK1045` and cannot build anything. Verify this across all five machines in M0, not on day 9.
+- **`Project.slnx` requires a .NET 9+ SDK.** The `.slnx` solution format is not understood by the .NET 8 SDK, which reports `MSB4068: The element <Solution> is unrecognized`. This is a second, independent failure from the same root cause — do not debug it as if it were a corrupt solution file.
+
+The `Dockerfile` already pulls `mcr.microsoft.com/dotnet/sdk:10.0` and `mcr.microsoft.com/dotnet/aspnet:10.0`, so the container build and CI are unaffected — **this is a local-workstation problem only.** Expect the confusing symptom where CI is green but a developer's machine cannot build at all.
 
 **5. Do not add CQRS, MediatR, a Unit of Work, AutoMapper, or microservices.**
 Your existing `Core / Application / Infrastructure / WebApi` split (per `cau_truc_du_an.md`) is already the right amount of structure. Adding a mediator pipeline to a 3-week project with intermediate developers buys you indirection you will spend hours debugging and cannot defend under questioning. Maintainability here means *a reviewer can follow a request from controller to database in under a minute.* See §2.4 for what I am explicitly rejecting and why.
@@ -121,7 +136,7 @@ flowchart TB
         UI --> API_CLIENT
     end
 
-    subgraph Server["ASP.NET Core 8 — single container"]
+    subgraph Server["ASP.NET Core 10 — single container"]
         direction TB
         WEBAPI["WebApi<br/>Controllers · Middleware · Swagger<br/>Static SPA hosting"]
         APP["Application<br/>Services · DTOs · Validators<br/>Business rules"]
@@ -622,7 +637,7 @@ A living `docs/AI-Usage-Report.md` in the repo, updated by **every member at eve
 
 | Date | Member | Tool | Task | Prompt summary | What we changed | Do we understand it? |
 |---|---|---|---|---|---|---|
-| 2026-08-11 | M1 | Copilot | JWT service scaffold | "Generate JwtTokenService for .NET 8" | Replaced hardcoded key with `IOptions<JwtSettings>`; added clock skew 0 | Yes — walked through claims generation in review |
+| 2026-08-11 | M1 | Copilot | JWT service scaffold | "Generate JwtTokenService for .NET 10" | Replaced hardcoded key with `IOptions<JwtSettings>`; added clock skew 0 | Yes — walked through claims generation in review |
 
 **Rule, stated once and enforced:** if you cannot explain a line of AI-generated code line-by-line at the whiteboard, delete it and write it yourself. The rubric awards 15 points for code defence and zeroes the project for unexplainable code. This is the highest-leverage rule in this document.
 
@@ -745,7 +760,7 @@ Complexity scale: **S** ≤ 4h · **M** 4–10h · **L** 10–20h · **XL** > 20
 
 **Description.** A "walking skeleton" is one trivial feature implemented through every layer — here, `GET /api/v1/health` returning DB connectivity, consumed by a React page. It proves the whole pipeline works before anyone invests in features. Skipping this step is why teams discover on day 9 that the frontend cannot reach the API through Docker.
 
-This milestone also settles the two inconsistencies found in the existing repo: `README.md` claims .NET 10 (we standardise on **.NET 8 LTS**) and the solution still contains `WeatherForecastController` / `Class1.cs` scaffolding, which must be deleted before it ends up in the submitted source.
+This milestone also settles the environment questions in the existing repo. The runtime is **.NET 10** (§1.2.4, revised in v1.1) and `README.md` and the `.csproj` files already agree — so the day-1 job is not to change them but to **confirm every developer has the .NET 10 SDK installed**, since a .NET 8 SDK fails with `NETSDK1045` and cannot read `Project.slnx` either (`MSB4068`). The `WeatherForecastController` / `WeatherForecast` / `Class1.cs` template scaffolding was deleted on 24 Aug 2026; the acceptance criterion below now guards against it coming back.
 
 | Track | Owner | Task | Est. | Acceptance |
 |---|---|---|---|---|
