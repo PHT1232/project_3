@@ -22,6 +22,11 @@ import { MOCK_ITEMS, MOCK_CATEGORIES } from './mock/catalogue.mock.js'
  *                 unitCost, quantityAvailable, reorderLevel, minRankLevelToRequest }
  *   CategoryDto { categoryId, name }
  *
+ *   Items 101-140 in the mock also carry `description` and `brand`. Neither is part of the
+ * approved ERD's StationeryItems table or this documented contract — they're additive,
+ * mock-only fields kept for a future detail view. Confirm with the team (and extend the ERD)
+ * before relying on the real API returning them.
+ *
  * TO GO LIVE: replace each function body with the `client` call shown in the comment and
  * delete `./mock/catalogue.mock.js`. No component changes are required.
  * ---------------------------------------------------------------------------
