@@ -1,6 +1,6 @@
 @WebApi_HostAddress = http://localhost:5263
 
-GET {{WebApi_HostAddress}}/weatherforecast/
-Accept: application/json
+# No endpoints exist yet. Add requests here as controllers land.
+# Route conventions: /api/v1/... (see Project Plan §4.1)
 
 ###

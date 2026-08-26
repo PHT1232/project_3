@@ -14,7 +14,7 @@ Dependencies point inwards, always (Plan §2.3). If `using Microsoft.EntityFrame
 
 ## Tech Stack & Patterns
 - **Language**: C#
-- **Framework**: **.NET 8 (LTS)** — `[DECISION — Plan §1.2.4]`. The repo currently disagrees (targets a newer SDK in places / README says .NET 10); .NET 8 is correct and the README/csproj drift must be fixed, not perpetuated.
+- **Framework**: **.NET 10** — `[DECISION — Plan §1.2.4, revised in plan v1.1]`. The `.csproj` files and `README.md` already agree; there is no drift to fix. (Plan v1.0 called for .NET 8 LTS and a downgrade — that decision was reversed on 24 Aug 2026.) **Every machine needs the .NET 10 SDK**: a .NET 8 SDK fails with `NETSDK1045` and additionally cannot read `Project.slnx` (`MSB4068`).
 - **Database/ORM**: Entity Framework Core, **SQL Server 2022**. Migrations only — never hand-edit the database.
 - **Patterns**: Dependency Injection, Repository Pattern (generic `IRepository<T>` for simple by-id/CRUD only), Generic Services, plain injected services (constructor injection, one responsibility, no static mutable state).
 - **Explicitly rejected** (Plan §2.4) — do not introduce these: MediatR/CQRS, a generic `UnitOfWork` wrapper over `DbContext` (call `SaveChangesAsync` inside the service — `DbContext` *is* the unit of work), AutoMapper (write explicit `ToDto()` extension methods instead), SignalR (poll `GET /api/v1/notifications/unread-count` instead), soft delete on every table (only `Users`, `StationeryItems`, `Suppliers` get `IsActive`).
