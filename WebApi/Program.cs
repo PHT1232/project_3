@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
 using WebApi.Authorization;
 using WebApi.Middleware;
 using WebApi.Services;
@@ -115,7 +116,32 @@ builder.Services.AddScoped<IUserManagementService, UserManagementService>();
 builder.Services.AddValidatorsFromAssemblyContaining<CreateUserRequestValidator>();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddOpenApi();
+
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Stationery Management System API",
+        Version = "v1",
+        Description = "Sign-in, session, and user-management endpoints (Plan §4). "
+            + "Protected routes need a bearer token — log in via POST /api/v1/auth/login, "
+            + "then click Authorize and paste the accessToken.",
+    });
+
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "JWT bearer token from POST /api/v1/auth/login.",
+    });
+    options.AddSecurityRequirement(_ => new OpenApiSecurityRequirement
+    {
+        [new OpenApiSecuritySchemeReference("Bearer", null, null)] = [],
+    });
+});
 
 var app = builder.Build();
 
@@ -129,10 +155,14 @@ if (!app.Environment.IsEnvironment("Testing"))
     await DbSeeder.SeedRolesAsync(roleManager);
 }
 
-if (app.Environment.IsDevelopment())
+// Enabled in every environment (not just Development) — this is a small internal eProject
+// deployment with no public exposure beyond the team, and the UI is the primary way to
+// exercise auth/user-management endpoints without a separate REST client.
+app.UseSwagger();
+app.UseSwaggerUI(options =>
 {
-    app.MapOpenApi();
-}
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "Stationery Management System API v1");
+});
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
