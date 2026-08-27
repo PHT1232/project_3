@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { Files } from 'lucide-react'
 import { navItems } from '../../navigation.js'
+import { useAuth } from '../../contexts/AuthContext.jsx'
 
 /**
  * Primary navigation rail. SHARED COMPONENT.
@@ -8,6 +9,11 @@ import { navItems } from '../../navigation.js'
  * Collapses to an off-canvas drawer under `lg`; the parent AppLayout owns the open state.
  */
 export default function Sidebar({ open, onNavigate }) {
+  const { user } = useAuth()
+  const visibleNavItems = navItems.filter(
+    (item) => !item.minRankLevel || (user?.rankLevel ?? 0) >= item.minRankLevel,
+  )
+
   return (
     <>
       {/* Scrim, mobile only */}
@@ -33,7 +39,7 @@ export default function Sidebar({ open, onNavigate }) {
 
         <nav aria-label="Main" className="flex-1 overflow-y-auto px-3 pb-6">
           <ul className="space-y-1">
-            {navItems.map(({ to, label, icon: Icon, end }) => (
+            {visibleNavItems.map(({ to, label, icon: Icon, end }) => (
               <li key={to}>
                 <NavLink
                   to={to}

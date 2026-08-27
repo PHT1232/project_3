@@ -8,7 +8,7 @@ import CataloguePage from './pages/catalogue/CataloguePage.jsx'
 import InventoryPage from './pages/inventory/InventoryPage.jsx'
 import NotFound from './pages/NotFound.jsx'
 import Login from './pages/Login.jsx'
-import UserManagement from './pages/UserManagement.jsx'
+import UserManagementPage from './pages/users/UserManagementPage.jsx'
 
 // Placeholders — owned by other developers (see Plan §6.1 and docs/development/page-map.md)
 import Dashboard from './pages/Dashboard.jsx'
@@ -47,7 +47,7 @@ export default function App() {
           <Route path="/suppliers" element={<Suppliers />} />
 
           <Route element={<ProtectedRoute requireManager />}>
-            <Route path="/user-management" element={<UserManagement />} />
+            <Route path="/user-management" element={<UserManagementPage />} />
           </Route>
 
           <Route path="/help" element={<Help />} />
