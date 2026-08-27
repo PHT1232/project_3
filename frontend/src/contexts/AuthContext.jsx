@@ -26,11 +26,10 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!token) {
       setRestoring(false)
-      return
+      return undefined
     }
 
     let cancelled = false
-    setRestoring(true)
 
     fetchCurrentUser()
       .then((currentUser) => {
@@ -46,7 +45,10 @@ export function AuthProvider({ children }) {
     return () => {
       cancelled = true
     }
-  }, [token, clearSession])
+    // Restore-on-startup runs once against the token read from storage at mount; login()/
+    // logout() set state directly and must not re-trigger this redundant /auth/me fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const login = useCallback(async (employeeNumber, password) => {
     const response = await loginRequest(employeeNumber, password)

@@ -54,6 +54,11 @@ builder.Services
     })
     .AddJwtBearer(options =>
     {
+        // Without this, the handler remaps "sub" to ClaimTypes.NameIdentifier on validation,
+        // silently breaking every claims lookup that reads JwtRegisteredClaimNames.Sub
+        // (CurrentUserService, ApproverHandler, AuthController.Me, OnTokenValidated below).
+        options.MapInboundClaims = false;
+
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
@@ -114,8 +119,12 @@ builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
+if (!app.Environment.IsEnvironment("Testing"))
 {
+    using var scope = app.Services.CreateScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<DataContext>();
+    await dbContext.Database.MigrateAsync();
+
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
     await DbSeeder.SeedRolesAsync(roleManager);
 }
