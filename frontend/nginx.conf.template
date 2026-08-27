@@ -1,0 +1,26 @@
+# Rendered by nginx's docker-entrypoint envsubst hook — ${BACKEND_HOST}/${BACKEND_PORT}
+# come from the container's environment (see Dockerfile). Do not hardcode a host here;
+# the backend runs in a separate container/service in this deployment.
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Same-origin /api path proxied to the backend container, matching frontend/src/api/client.js
+    # (baseURL: /api/v1) and the dev-time Vite proxy in vite.config.js.
+    location /api/ {
+        proxy_pass http://${BACKEND_HOST}:${BACKEND_PORT}/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # SPA fallback: unmatched paths (client-side routes) serve index.html, not a 404.
+    location / {
+        try_files $uri /index.html;
+    }
+}

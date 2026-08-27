@@ -1,0 +1,13 @@
+# Root build context, shared by the root Dockerfile (combined single-container build) and
+# WebApi/Dockerfile (backend-only build, also uses the root context — see that file's header).
+# frontend/node_modules is excluded but frontend/ itself is kept: the root Dockerfile still
+# builds the SPA from source in its own stage.
+**/bin/
+**/obj/
+frontend/node_modules/
+frontend/dist/
+docs/
+__ai_agents/
+.git/
+.github/
+*.md
