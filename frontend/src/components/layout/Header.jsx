@@ -1,4 +1,7 @@
-import { Search, Bell, User, Menu } from 'lucide-react'
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Search, Bell, User, Menu, LogOut } from 'lucide-react'
+import { useAuth } from '../../contexts/AuthContext.jsx'
 
 /**
  * Top bar. SHARED COMPONENT.
@@ -9,8 +12,21 @@ import { Search, Bell, User, Menu } from 'lucide-react'
  *  - the unread badge belongs to the notifications feature (Plan M4, `GET /api/v1/notifications/unread-count`,
  *    polled every 30s) and is owned by M4.
  * Both are left inert rather than faked. Do not add a mock count here.
+ *
+ * The account menu is wired: it shows the signed-in user and logs out (Plan §5 — local
+ * session destruction, then navigate to /login with history replacement).
  */
 export default function Header({ onMenuClick }) {
+  const { user, logout } = useAuth()
+  const navigate = useNavigate()
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  function handleLogout() {
+    setMenuOpen(false)
+    logout()
+    navigate('/login', { replace: true })
+  }
+
   return (
     <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-surface-border bg-surface-card px-4 sm:px-6">
       <button
@@ -47,15 +63,45 @@ export default function Header({ onMenuClick }) {
         >
           <Bell className="h-5 w-5" />
         </button>
-        <button
-          type="button"
-          disabled
-          title="Account menu is not implemented yet"
-          aria-label="Account (not yet available)"
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-700 text-white disabled:cursor-not-allowed"
-        >
-          <User className="h-5 w-5" />
-        </button>
+
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setMenuOpen((open) => !open)}
+            aria-haspopup="true"
+            aria-expanded={menuOpen}
+            aria-label="Account menu"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-700 text-white"
+          >
+            <User className="h-5 w-5" />
+          </button>
+
+          {menuOpen && (
+            <>
+              <button
+                type="button"
+                className="fixed inset-0 z-10 cursor-default"
+                aria-hidden="true"
+                tabIndex={-1}
+                onClick={() => setMenuOpen(false)}
+              />
+              <div className="absolute right-0 z-20 mt-2 w-56 rounded-md border border-surface-border bg-surface-card py-1 shadow-lg">
+                <div className="border-b border-surface-border px-3 py-2">
+                  <p className="truncate text-sm font-semibold text-ink">{user?.name}</p>
+                  <p className="truncate text-xs text-ink-muted">{user?.role}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-ink hover:bg-surface-muted"
+                >
+                  <LogOut className="h-4 w-4" aria-hidden="true" />
+                  Log out
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </header>
   )
