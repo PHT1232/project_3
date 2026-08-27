@@ -128,6 +128,7 @@ Most of the earlier conflicts were **resolved** by the Plan (see §9). These rem
 | **K5** | **Wireframe fields with no column and no Plan concept:** `Department` (New Request + Approvals filter). `SKU` appears in three wireframes but the Plan lists "barcode/SKU" as *future improvement* → **don't build it.** `Notify Me` and the `MGR APPROVAL REQ` badge (Catalogue) have no backing anywhere. | NOT SPECIFIED |
 | **K6** | **Team member identity.** Ownership is assigned to labels **M1–M5**, never to names. Who is M1? | NOT SPECIFIED |
 | ~~K7~~ | ~~**.NET version.**~~ **Resolved 2026-08-24.** The team confirmed **.NET 10**; the Plan was revised to **v1.1** (§0 revision history, §1.2.4 rewritten, §1.1/§2.2/§7 M0 aligned) and `__ai_agents/backend.md` updated to match. `.csproj` × 4 and `README.md` already agreed. Every machine now needs the **.NET 10 SDK** — a .NET 8 SDK fails `NETSDK1045` and cannot read `Project.slnx` (`MSB4068`). | ✅ Closed |
+| ~~K8~~ | ~~**Auth: Identity framework vs. Plan's custom auth.**~~ **Resolved 2026-08-27.** Plan §T1.2/line 850 specifies a hand-rolled design: `Core/Entities/{User,Role,RoleThreshold}.cs`, `Core/Interfaces/{IUserRepository,IPasswordHasher,ITokenService}.cs`, plain `PasswordHasher<T>` (line 217) — **not** the full ASP.NET Core Identity framework. `docs/development/identity-and-user-management-implementation-plan.md` proposes `IdentityDbContext<ApplicationUser,ApplicationRole,int>` + `UserManager`/`RoleManager`/`SignInManager` instead. User confirmed 2026-08-27: **keep Identity**, overriding the Plan's custom design. Consequence not yet reconciled: Identity's generated tables (`AspNetUsers`, `AspNetRoles`, `AspNetUserRoles`, `AspNetUserClaims`, `AspNetRoleClaims`, `AspNetUserLogins`, `AspNetUserTokens`) replace the single `Users` table in the 12-table ERD and `StationerySchema.sql:33-48` — the ERD, `Roles` FK, and any table referencing `Users.EmployeeNumber` need updating to match before the identity migration is announced. Record this override in the Plan itself (revision history) the next time the Plan is touched, the same way K7 was closed. | ✅ Closed — Identity kept |
 
 Twelve further ambiguities are already tracked by the team as `[ASK]` #1–12 in **Plan §14**, each
 with a default implemented behind a flag. Read that list before asking a new question.
@@ -175,5 +176,11 @@ path; the actual log is at root `AI_usage_report.md`), `docs/rollback/`, `docs/p
   made, what was left out of scope. Never overwrite; never fabricate.
 - Every task report states: what was implemented · files changed · APIs added/changed · DB
   changes · **tests actually executed** · wireframe fidelity · shared files touched · TODOs.
+- **Completion documentation is mandatory for AI-assisted work.** After finishing implementation,
+  append a dated, truthful entry to root `AI_usage_report.md` (never overwrite it) and create or
+  update a task-specific Markdown handoff under `docs/development/`. The handoff must explain the
+  architecture and flow, files changed, APIs and DB changes, setup and usage, tests actually run,
+  assumptions, exclusions, known issues, and reviewer follow-ups in enough detail for another team
+  member to understand and explain the implementation.
 - The owning developer reviews and must be able to explain the code. Reviewers ask
   *"explain this"* in the PR — that is the process, not an insult.
