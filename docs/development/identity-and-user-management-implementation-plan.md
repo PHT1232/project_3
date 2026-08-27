@@ -304,3 +304,64 @@ After implementation:
 - `dotnet build Project.slnx --no-restore` passed on SDK `10.0.111` with one existing `NU1903` warning for `Microsoft.OpenApi`.
 - Frontend build did not run because dependencies are not installed: `vite: command not found`.
 - Existing `bin/` and `obj/` files are tracked/modified and should be cleaned through a separate reviewed repository-hygiene change, not silently overwritten during identity work.
+
+## 14. Implementation handoff (2026-08-27)
+
+All 8 delivery steps in §11 were implemented in one session, each as its own commit. Full file-by-file detail is in the dated `AI_usage_report.md` entry for 2026-08-27 ("Implement sign-in, logout, authorization, and user management") — this section is the architecture/flow summary for a reviewer picking this up cold.
+
+### Architecture as built
+
+Matches §1–§9 as planned, with one addition not anticipated in the plan: `Infrastructure` now carries a `ProjectReference` to `Application` (needed so `IdentityAccountAdapter`/`IdentityUserStore`/`JwtTokenService` can implement Application-owned interfaces) and a `FrameworkReference` to `Microsoft.AspNetCore.App` (needed for `SignInManager`/`IHttpContextAccessor`, which aren't available to a plain `Microsoft.NET.Sdk` class library). Dependency direction is still inward-only — `Core`/`Application` reference nothing new.
+
+`AccountProjection` (Application-owned) is the seam between Identity and the rest of the app for auth; `UserDto`/`IUserStore` is the equivalent seam for user management. Neither leaks `PasswordHash`, security stamps, or Identity types past `Infrastructure`.
+
+### APIs added
+
+`POST /api/v1/auth/login`, `GET /api/v1/auth/me`, `POST /api/v1/auth/change-password`, `GET/POST /api/v1/users`, `PUT /api/v1/users/{empNo}`, `PATCH /api/v1/users/{empNo}/status`, `GET /api/v1/users/{empNo}/subordinates`.
+
+### DB changes
+
+One migration, `InitialIdentity` (`Infrastructure/Data/Migrations/20260827133027_InitialIdentity.cs`): the 7 standard ASP.NET Identity tables, `AspNetUsers` extended with `Name`/`Grade`/`Location`/`SuperiorEmployeeNumber`/`IsActive`/`CreatedAtUtc`, `AspNetRoles` extended with `RankLevel`, a `CK_Users_EmployeeNumber` check (1–1000), and a self-referencing FK on `SuperiorEmployeeNumber`. **Not applied to a real SQL Server instance** — none was available in this environment. `Program.cs` now runs `Database.MigrateAsync()` on startup outside the `Testing` environment, so it will apply automatically the first time the app runs against a real database.
+
+### Setup and usage
+
+1. .NET 10 SDK (`10.0.111`+) and a SQL Server instance reachable via `ConnectionStrings:DefaultConnection`.
+2. Set `Jwt:SigningKey` via the `Jwt__SigningKey` environment variable (never commit a real one — `appsettings.Development.json` ships an insecure local-only placeholder, `appsettings.Testing.json` ships a test-only one).
+3. `dotnet run --project WebApi` — applies the migration and seeds the 4 roles (Engineer/Manager/Business Manager/Managing Director, ranks 1–4) on startup.
+4. No demo users are seeded. Create the first user directly via `UserManager` (see `Tests/WebApi.IntegrationTests/TestUserFactory.cs` for the pattern) or temporarily relax the `RequireManager` policy to bootstrap one through the API.
+5. Frontend: `cd frontend && npm install && npm run dev`.
+
+### Tests actually run
+
+- `dotnet test Project.slnx`: **30/30 passed** (17 `Application.UnitTests`, 13 `WebApi.IntegrationTests` against `WebApplicationFactory<Program>` + real EF Core SQLite in-memory).
+- `npx vitest run` (frontend): **15/15 passed**.
+- `npm run build` and `dotnet build Project.slnx`: both succeed.
+- **Not done:** running against a live SQL Server, or a manual browser smoke test. Nobody has clicked through this in a real browser yet.
+
+### Assumptions carried into the build
+
+- Initial/change-password policy (8+ chars, upper+lower+digit) — proposed, not confirmed.
+- `RequireApprover` = live "has direct reports" check, not a login-time claim (§6 resolution).
+- `location` filter implemented against `Users.Location`, which exists in `StationerySchema.sql` but isn't Plan-sanctioned (K5).
+
+### Explicitly out of scope
+
+- **TC-14 is not complete.** Change-password does not notify the user and their superior — no notification infrastructure exists yet. Flagged in a code comment on `AuthService.ChangePasswordAsync`; do not mark TC-14 done from this work.
+- `RoleThresholds` (spend-limit table) — out of scope for this milestone.
+- Live-database migration and manual QA (see Tests above).
+- K8's schema-footprint reconciliation against the 12-table ERD (§1 of this doc) is flagged but not done — the ERD still shows a single `Users` table.
+
+### Known issues
+
+- Two bugs were found and fixed by the tests, not just exercised by them:
+  1. `JwtBearerOptions.MapInboundClaims` defaulted to `true`, remapping the `sub` claim on every validated token — broke `/auth/me`, `ICurrentUserService`, and `RequireApprover` for **every** authenticated request after login, in production as much as in tests. Fixed with `MapInboundClaims = false`.
+  2. `AuthContext`'s restore effect depended on `token`, so `login()` re-triggered a redundant `/auth/me` fetch right after login. Fixed by running that effect once on mount only.
+- `IdentityUserStore.GetUsersAsync`/`ToDtoAsync` does one role lookup per user per page (not batched) — fine at the Plan's stated scale (~25–1000 users) but worth revisiting if that scale assumption changes.
+
+### Reviewer follow-ups
+
+1. Confirm the password policy with the team.
+2. Decide whether `RequireApprover` should move to a login-time claim.
+3. Reconcile the Identity table footprint with the ERD (K8).
+4. Apply the migration to a real SQL Server and do a manual smoke test before merging.
+5. Two reviewers required (auth change, per `CLAUDE.md` §5).
