@@ -1,3 +1,4 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using Application.Interfaces.Auth;
 using Application.Services.Auth;
@@ -6,10 +7,13 @@ using Infrastructure;
 using Infrastructure.Data;
 using Infrastructure.Identity;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using WebApi.Authorization;
 using WebApi.Middleware;
+using WebApi.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -57,7 +61,40 @@ builder.Services
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero,
         };
+
+        // Immediate deactivation enforcement (plan §7): JWTs are otherwise valid for up to
+        // 8 hours, so check IsActive against the DB on every request rather than trusting the token.
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async context =>
+            {
+                var sub = context.Principal?.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+                if (sub is null || !int.TryParse(sub, out var employeeNumber))
+                {
+                    context.Fail("Invalid token.");
+                    return;
+                }
+
+                var userManager = context.HttpContext.RequestServices
+                    .GetRequiredService<UserManager<ApplicationUser>>();
+                var user = await userManager.FindByIdAsync(sub);
+                if (user is null || !user.IsActive)
+                {
+                    context.Fail("User is inactive or no longer exists.");
+                }
+            },
+        };
     });
+
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy("RequireManager", policy => policy.Requirements.Add(new RankLevelRequirement(2)))
+    .AddPolicy("RequireApprover", policy => policy.Requirements.Add(new ApproverRequirement()));
+
+builder.Services.AddSingleton<IAuthorizationHandler, RankLevelHandler>();
+builder.Services.AddScoped<IAuthorizationHandler, ApproverHandler>();
+
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 
 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 builder.Services.AddScoped<IAccountStore, IdentityAccountAdapter>();
