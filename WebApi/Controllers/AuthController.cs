@@ -1,5 +1,3 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using Application.DTOs.Auth;
 using Application.Interfaces.Auth;
 using Microsoft.AspNetCore.Authorization;
@@ -9,7 +7,7 @@ namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/v1/auth")]
-public class AuthController(IAuthService authService) : ControllerBase
+public class AuthController(IAuthService authService, ICurrentUserService currentUserService) : ControllerBase
 {
     [HttpPost("login")]
     [AllowAnonymous]
@@ -31,8 +29,7 @@ public class AuthController(IAuthService authService) : ControllerBase
     [Authorize]
     public async Task<ActionResult<CurrentUserDto>> Me()
     {
-        var sub = User.FindFirstValue(JwtRegisteredClaimNames.Sub);
-        if (sub is null || !int.TryParse(sub, out var employeeNumber))
+        if (currentUserService.EmployeeNumber is not { } employeeNumber)
         {
             return Problem(statusCode: StatusCodes.Status401Unauthorized, title: "Invalid session");
         }
@@ -44,5 +41,18 @@ public class AuthController(IAuthService authService) : ControllerBase
         }
 
         return Ok(user);
+    }
+
+    [HttpPost("change-password")]
+    [Authorize]
+    public async Task<IActionResult> ChangePassword(ChangePasswordRequest request)
+    {
+        if (currentUserService.EmployeeNumber is not { } employeeNumber)
+        {
+            return Problem(statusCode: StatusCodes.Status401Unauthorized, title: "Invalid session");
+        }
+
+        await authService.ChangePasswordAsync(employeeNumber, request);
+        return NoContent();
     }
 }
