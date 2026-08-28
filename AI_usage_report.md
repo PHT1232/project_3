@@ -521,3 +521,95 @@ unchanged. **APIs changed:** none.
 - SKU still not persisted (`[ASK]` #2 / K5) — the SKU column continues to render blank.
 - `appsettings.Development.json`'s LocalDB connection string was deliberately left as-is rather
   than repointed at `SQLEXPRESS`; that is a team decision, not a fix to slip into a seeder change.
+
+## 2026-08-28 — Supplier request cart (Inventory → suppliers)
+
+**Task:** Turn the inventory item selection into a Shopee-style cart: tick items, review them in a
+modal with per-item quantities, submit, and have the backend create one supplier order per
+supplier — without moving stock.
+
+### ⚠️ Scope: this builds a `[CUT]` item, on the owning developer's explicit decision
+
+Plan §1.3 lists **"payment or procurement PO generation"** under `[CUT] WON'T`, with *"If someone
+starts building one, that is a scope breach — escalate to the Project Leader."* `CLAUDE.md` §5
+repeats it. The Plan's §4.2 endpoint catalogue has no supplier-request endpoint, and
+`POST /inventory/{itemId}/receive` is specified as goods **receipt**, not ordering.
+
+This was raised **before any code was written**, with an in-scope alternative offered (a
+multi-item *goods receipt* cart needing no new entities). The user chose to build the supplier
+request anyway and accepted the scope-breach risk. Recording that here so the decision is not
+mistaken for an oversight. The Plan itself was **not** edited — that is a Project Leader call.
+
+**What changed, by file:**
+
+- **Core** — `Entities/SupplierRequest.cs`, `Entities/SupplierRequestItem.cs`. Header/line split
+  mirroring the Plan's `Requests`/`RequestItems` (§3.4), with `UnitCostSnapshot` frozen per line
+  (CLAUDE.md principle #8). Deliberately **no status column** — no document specifies a supplier
+  order lifecycle and inventing one is what K3 flagged.
+- **Application** — `DTOs/SupplierRequests/{CreateSupplierRequestCommand,SupplierRequestDto}.cs`,
+  `Interfaces/SupplierRequests/{ISupplierRequestService,ISupplierRequestQueries}.cs`,
+  `Validators/SupplierRequests/CreateSupplierRequestCommandValidator.cs`. Named `...Command`
+  because `Application.DTOs.Suppliers.CreateSupplierRequest` already exists and means something
+  entirely different (it creates a *Supplier*) — a genuine collision hazard.
+- **Infrastructure** — `Services/SupplierRequestService.cs` (placed here, not Application, for the
+  same reason as `StockService`: it needs `DataContext`, and Application must never reference
+  `DbContext`), `Queries/SupplierRequestQueries.cs`,
+  `Data/Configurations/SupplierRequest{,Item}Configuration.cs`, `DataContext.cs` (+2 DbSets),
+  migration `20260828143526_SupplierRequests`.
+- **WebApi** — `Controllers/SupplierRequestsController.cs` (`POST`/`GET`/`GET {id}`, all
+  `RequireManager`), `Program.cs` (+2 DI registrations, +1 using).
+- **Application (modified)** — `DTOs/Inventory/InventoryRowDto.cs` gained `SupplierId`/
+  `SupplierName` as **defaulted optional** parameters, so nothing consuming it previously breaks;
+  `Infrastructure/Queries/InventoryQueries.cs` projections extended to populate them.
+- **Frontend** — `api/supplierRequests.js` (new),
+  `pages/inventory/components/SupplierRequestModal.jsx` (new),
+  `pages/inventory/InventoryPage.jsx` (cart state + new toolbar button).
+- **Tests** — `Tests/WebApi.IntegrationTests/SupplierRequestsTests.cs` (14),
+  `frontend/src/pages/inventory/InventoryCart.test.jsx` (7).
+- **Docs** — `docs/development/supplier-request-cart-implementation-handoff.md`, and this entry.
+
+**APIs added:** `POST /api/v1/supplier-requests`, `GET /api/v1/supplier-requests`,
+`GET /api/v1/supplier-requests/{id}` — all Manager+.
+
+**DB changes:** one migration adding `SupplierRequests` + `SupplierRequestItems`. **No existing
+table altered**, so no data-loss risk. Check constraint `CK_SupplierRequestItems_Quantity`
+(`> 0`), unique index on `(SupplierRequestId, ItemId)`, FKs `Restrict` except header→lines
+cascade. Applied to the live `.\SQLEXPRESS` database.
+
+**Two design rules the service enforces (both tested):**
+1. *The database owns the supplier.* An item's preferred `SupplierId` always wins; the
+   client-supplied `supplierId` is consulted only for items that have none, and must then resolve
+   to an active supplier. A client cannot redirect an order to an arbitrary supplier.
+2. *All-or-nothing.* Every line is validated before the first `Add`, and the whole submission
+   commits through one `SaveChangesAsync` (no `UnitOfWork` wrapper, per Plan §2.4), so one bad
+   line leaves no partial orders.
+
+**Tests actually executed:**
+- `dotnet test Project.slnx` — **63/63 passed** (26 unit + 37 integration; 49 before).
+- `npx vitest run --pool=threads` — **29/29 passed** (22 before).
+- `dotnet build` / `npm run build` — both clean.
+- **Live end-to-end against SQL Server:** 3 items spanning 3 suppliers → 3 correctly grouped
+  orders with correct totals; SQL confirmed **stock unchanged and zero ledger rows written**, and
+  the ledger-vs-cached-balance invariant still holding across all 40 items; selection and cart
+  cleared on success; Catalogue and Inventory both still functional.
+
+**Assumptions made (flagged, not silently decided):**
+- Default cart quantity is **1**. A suggested reorder amount would be more useful but is an
+  invented business rule.
+- **UI deviation:** the cart is behind a new **"Request from Suppliers"** button rather than the
+  existing *Receive Goods* button the brief specified, because that label would otherwise mean two
+  opposite things (the row action genuinely receives stock; the cart only orders). Flagged for the
+  team to rename if they disagree.
+- Supplier-less items are resolved by a picker in the modal (the user's chosen option), with the
+  server validating the choice exists and is active.
+
+**Explicitly left out of scope:**
+- **No order lifecycle** — orders cannot be marked received or cancelled, and there is no link
+  between a `SupplierRequest` and the `StockTransaction` that eventually fulfils it. Pending spec.
+- **No UI to browse past orders**; `GET /supplier-requests` exists and is tested but unused by the
+  frontend.
+- **SKU still not persisted** (`[ASK]` #2 / K5), so the cart shows no SKU column despite the brief
+  asking for one — that remains a separate scope decision.
+- The Plan document was not edited to reflect this feature; that is a Project Leader decision.
+- The toolbar *Adjust Stock* button still acts on `visibleRows[0]` rather than the selection —
+  pre-existing behaviour, left untouched.

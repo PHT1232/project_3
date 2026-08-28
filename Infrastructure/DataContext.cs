@@ -16,6 +16,10 @@ public class DataContext(DbContextOptions<DataContext> options)
 
     public DbSet<StockTransaction> StockTransactions => Set<StockTransaction>();
 
+    public DbSet<SupplierRequest> SupplierRequests => Set<SupplierRequest>();
+
+    public DbSet<SupplierRequestItem> SupplierRequestItems => Set<SupplierRequestItem>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);

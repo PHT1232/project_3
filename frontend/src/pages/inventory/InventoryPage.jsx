@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { SlidersHorizontal, PackagePlus } from 'lucide-react'
+import { SlidersHorizontal, PackagePlus, ShoppingCart } from 'lucide-react'
 
 import PageHeader from '../../components/layout/PageHeader.jsx'
 import Card from '../../components/ui/Card.jsx'
@@ -13,6 +13,7 @@ import { formatCurrency, formatNumber } from '../../lib/format.js'
 import InventoryToolbar from './components/InventoryToolbar.jsx'
 import InventoryTable from './components/InventoryTable.jsx'
 import StockActionModal from './components/StockActionModal.jsx'
+import SupplierRequestModal from './components/SupplierRequestModal.jsx'
 
 function sortRows(rows, sort) {
   const sorted = [...rows]
@@ -34,6 +35,11 @@ export default function InventoryPage() {
   const [sort, setSort] = useState('NAME_ASC')
   const [selectedIds, setSelectedIds] = useState([])
   const [action, setAction] = useState({ mode: null, item: null })
+  // The inventory cart: selectedIds is the membership, cartQuantities the per-item amount.
+  // Both live above the filter/sort logic, so searching or re-sorting never drops the cart
+  // (local useState only — the project deliberately has no Redux, Plan §2.4).
+  const [cartQuantities, setCartQuantities] = useState({})
+  const [cartOpen, setCartOpen] = useState(false)
 
   const { data, error, loading, reload } = useAsync(() => getInventory(), [])
 
@@ -56,13 +62,39 @@ export default function InventoryPage() {
     setSelectedIds((current) =>
       current.includes(itemId) ? current.filter((id) => id !== itemId) : [...current, itemId],
     )
+    setCartQuantities((current) => ({ ...current, [itemId]: current[itemId] ?? 1 }))
   }
 
   function toggleAll() {
     const visibleIds = visibleRows.map((row) => row.itemId)
     const allSelected = visibleIds.every((id) => selectedIds.includes(id))
     setSelectedIds(allSelected ? [] : visibleIds)
+    if (!allSelected) {
+      setCartQuantities((current) => {
+        const next = { ...current }
+        visibleIds.forEach((id) => {
+          next[id] = next[id] ?? 1
+        })
+        return next
+      })
+    }
   }
+
+  function removeFromCart(itemId) {
+    setSelectedIds((current) => current.filter((id) => id !== itemId))
+  }
+
+  function clearCart() {
+    setSelectedIds([])
+    setCartQuantities({})
+  }
+
+  // Cart rows come from the full row set, not visibleRows — an item stays in the cart even once
+  // a search or status filter hides its row.
+  const cartRows = useMemo(
+    () => selectedIds.map((id) => rows.find((row) => row.itemId === id)).filter(Boolean),
+    [selectedIds, rows],
+  )
 
   const hasFilters = searchTerm.trim() !== '' || status !== 'ALL'
 
@@ -82,11 +114,25 @@ export default function InventoryPage() {
               Adjust Stock
             </Button>
             <Button
+              variant="secondary"
               onClick={() => setAction({ mode: 'receive', item: visibleRows[0] ?? null })}
               disabled={visibleRows.length === 0}
             >
               <PackagePlus className="h-4 w-4" aria-hidden="true" />
               Receive Goods
+            </Button>
+            <Button
+              onClick={() => setCartOpen(true)}
+              disabled={cartRows.length === 0}
+              title={
+                cartRows.length === 0
+                  ? 'Select one or more items to request from suppliers'
+                  : undefined
+              }
+            >
+              <ShoppingCart className="h-4 w-4" aria-hidden="true" />
+              Request from Suppliers
+              {cartRows.length > 0 && ` (${cartRows.length})`}
             </Button>
           </>
         }
@@ -153,9 +199,16 @@ export default function InventoryPage() {
         )}
       </Card>
 
-      {selectedIds.length > 0 && (
+      {cartRows.length > 0 && (
         <p className="mt-3 text-sm text-ink-muted">
-          {selectedIds.length} item{selectedIds.length === 1 ? '' : 's'} selected
+          {cartRows.length} item{cartRows.length === 1 ? '' : 's'} selected for a supplier request.{' '}
+          <button
+            type="button"
+            onClick={clearCart}
+            className="underline underline-offset-2 hover:text-ink"
+          >
+            Clear selection
+          </button>
         </p>
       )}
 
@@ -164,6 +217,21 @@ export default function InventoryPage() {
         item={action.item}
         onClose={() => setAction({ mode: null, item: null })}
         onSuccess={reload}
+      />
+
+      <SupplierRequestModal
+        open={cartOpen}
+        rows={cartRows}
+        quantities={cartQuantities}
+        onQuantityChange={(itemId, value) =>
+          setCartQuantities((current) => ({ ...current, [itemId]: value }))
+        }
+        onRemove={removeFromCart}
+        onClose={() => setCartOpen(false)}
+        onSuccess={() => {
+          clearCart()
+          reload()
+        }}
       />
     </>
   )
