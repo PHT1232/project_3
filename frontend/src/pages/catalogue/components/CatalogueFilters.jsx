@@ -1,6 +1,14 @@
 import Card from '../../../components/ui/Card.jsx'
 import { MAX_COST_CAP } from '../filters.js'
 
+/** At the cap the ceiling is open-ended, matching the "$100+" track label. */
+function formatCostLabel(cost) {
+  return cost >= MAX_COST_CAP ? `$${MAX_COST_CAP}+` : `$${cost}`
+}
+
+/** Approx. native range-thumb width; used to keep the badge centred over the thumb at both ends. */
+const THUMB_WIDTH = 16
+
 function FieldSet({ legend, children }) {
   return (
     <fieldset className="border-0 p-0">
@@ -9,6 +17,44 @@ function FieldSet({ legend, children }) {
       </legend>
       {children}
     </fieldset>
+  )
+}
+
+/**
+ * Unit-cost ceiling slider with a value badge pinned above the thumb, so the exact
+ * amount being filtered on is always visible while dragging.
+ */
+function UnitCostSlider({ cost, onCostChange }) {
+  const percent = (cost / MAX_COST_CAP) * 100
+  // Shift the badge from +½thumb at the far left to −½thumb at the far right so it
+  // tracks the thumb centre rather than the input's edge-to-edge box.
+  const thumbOffset = (0.5 - percent / 100) * THUMB_WIDTH
+  const costLabel = formatCostLabel(cost)
+
+  return (
+    <div className="relative pt-9">
+      <div
+        className="pointer-events-none absolute top-0 -translate-x-1/2 transition-[left] duration-75 ease-out"
+        style={{ left: `calc(${percent}% + ${thumbOffset}px)` }}
+        aria-hidden="true"
+      >
+        <div className="relative whitespace-nowrap rounded-md bg-brand-700 px-2 py-1 text-xs font-semibold tabular-nums text-white shadow-sm">
+          {costLabel}
+          <span className="absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-brand-700" />
+        </div>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={MAX_COST_CAP}
+        step={5}
+        value={cost}
+        aria-label="Maximum unit cost"
+        aria-valuetext={costLabel}
+        onChange={(e) => onCostChange(Number(e.target.value))}
+        className="w-full accent-brand-700"
+      />
+    </div>
   )
 }
 
@@ -105,15 +151,9 @@ export default function CatalogueFilters({ categories, value, onChange }) {
       <hr className="border-surface-border" />
 
       <FieldSet legend="Unit Cost Max">
-        <input
-          type="range"
-          min={0}
-          max={MAX_COST_CAP}
-          step={5}
-          value={value.maxUnitCost}
-          aria-label="Maximum unit cost"
-          onChange={(e) => onChange({ ...value, maxUnitCost: Number(e.target.value) })}
-          className="w-full accent-brand-700"
+        <UnitCostSlider
+          cost={value.maxUnitCost}
+          onCostChange={(maxUnitCost) => onChange({ ...value, maxUnitCost })}
         />
         <div className="mt-1 flex justify-between text-xs text-ink-muted">
           <span>$0</span>
