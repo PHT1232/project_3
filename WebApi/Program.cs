@@ -153,6 +153,18 @@ if (!app.Environment.IsEnvironment("Testing"))
 
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
     await DbSeeder.SeedRolesAsync(roleManager);
+
+    var bootstrapAdminPassword = builder.Configuration["Seed:BootstrapAdminPassword"];
+    if (string.IsNullOrWhiteSpace(bootstrapAdminPassword))
+    {
+        throw new InvalidOperationException(
+            "Seed:BootstrapAdminPassword is not configured. Set it via appsettings.Development.json locally or the Seed__BootstrapAdminPassword environment variable in every other environment.");
+    }
+
+    var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+    var bootstrapAdminId = await DbSeeder.SeedBootstrapAdminAsync(userManager, bootstrapAdminPassword);
+
+    await DbSeeder.SeedCatalogueAndInventoryAsync(dbContext, bootstrapAdminId);
 }
 
 // Enabled in every environment (not just Development) — this is a small internal eProject
