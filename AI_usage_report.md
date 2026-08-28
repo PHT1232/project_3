@@ -420,3 +420,104 @@ environment, then — on explicit instruction — rebase the stale local `khang`
   session, now itself partly superseded by this rebase) — out of scope for this task's explicit
   ask (`CLAUDE.md` and this file only).
 - No feature code was written; this was environment/repo-hygiene work only.
+
+## 2026-08-28 — First live SQL Server run, browser smoke test, and seed-data fix
+
+**Task:** Close M2 reviewer follow-up #1 — apply the migrations to a real SQL Server instance and
+smoke-test the app end to end (neither had ever been done) — then fix the two seed-data defects
+that the smoke test exposed.
+
+### Part 1 — migration + smoke test (no code changed)
+
+Applied `20260827133027_InitialIdentity` and `20260828131329_CatalogueSuppliersAndStock` to the
+local **SQL Server 2022 Express** instance (`.\SQLEXPRESS`, 16.0.1000.6), database
+`StationeryManagementSystem.Dev`. All 12 tables and all 3 check constraints
+(`CK_Users_EmployeeNumber`, `CK_StationeryItems_MinRankLevelToRequest`,
+`CK_StockTransactions_ChangeQuantity`) created as designed.
+
+`appsettings.Development.json` was **not** edited — its connection string still targets LocalDB,
+which is not installed on this machine. The override was supplied as the
+`ConnectionStrings__DefaultConnection` environment variable, matching the project's own
+"connection strings via environment variables" rule and leaving the repo untouched.
+
+API smoke test (all against the live SQL Server, not SQLite): unauthenticated `/items` → 401;
+login as the bootstrap admin → 200; `/categories`, `/items`, `/items/{id}`, `/inventory`,
+`/low-stock`, `/{itemId}/transactions` all correct; receive +25 → balance 400→425 with one new
+ledger row; **replaying a stale `RowVersion` → 409**; adjust −999999 → 400 `ProblemDetails`;
+adjust 0 → 400. Verified in SQL that **the cached balance reconciled with `SUM(ChangeQuantity)`
+for all 40 items (zero mismatches)** and that the *rejected* calls wrote **zero** ledger rows —
+i.e. the transaction rollback behaves correctly on SQL Server, not just on the test provider.
+
+Browser smoke test: login → Dashboard → Catalogue → Inventory all render live API data with
+Manager+ nav gating; a **Receive Goods performed through the UI** moved a row 276→286 and wrote
+ledger row #937, with the total-value tile moving by exactly 10 × $5.75.
+
+One false alarm worth recording: the stock modal first appeared to be broken because neither the
+accessibility-tree reader nor a `<main>` text dump showed it. A direct DOM query found
+`[role=dialog]` present and fully functional — the modal renders without a portal, outside
+`<main>`, so those tools miss it. **Not a bug**; no code was changed for it.
+
+### Part 2 — seed-data fix (`Infrastructure/Data/DbSeeder.cs`, the only file changed)
+
+The smoke test exposed two genuine defects in seeded data. Neither affected correctness, both
+would have been visible in the demo/defence:
+
+1. **The catalogue was a cartesian product.** One shared 8-item `ItemTemplate` was applied to
+   every one of the 5 categories, with the category name prepended to each item, producing
+   "Printing Supplies — Ballpoint Pens", "Organization — Premium Cardstock", and the same 8
+   products listed five times (8 distinct names across 40 items).
+2. **The low-stock path could never be demonstrated.** Opening balance was `ReorderLevel * 3` and
+   the random walk was net-positive (≈70% issues of 1–5 against 20% receipts of 10–30), so every
+   item finished well clear of its reorder level: all 40 items `OK`, `lowStockAlerts` 0,
+   `/inventory/low-stock` empty. The `WATCH`/`REORDER_NOW` badges and the dashboard low-stock
+   tile were unreachable with seeded data.
+
+**What changed, by file:**
+- `Infrastructure/Data/DbSeeder.cs` —
+  - replaced `CategorySeeds` + `ItemTemplate` with `CatalogueSeeds`: a real per-category product
+    list (still 5 categories × 8 items = 40, so the documented count is unchanged), with the
+    category-name prefix dropped. Now 40 distinct, semantically correct names.
+  - added a private `StockPosture` enum (`Healthy`/`Watch`/`Reorder`) on each item seed, and
+    `TargetBalanceFor(reorderLevel, posture)` returning a balance expressed as a multiple of the
+    item's own reorder level, so the bands in `InventoryQueries.DeriveStatus` are hit regardless
+    of item scale (0.6× → REORDER_NOW, 1.25× → WATCH, 2.5× → OK).
+  - made `SeedTransactionHistory` posture-aware: opening balance and issue probability now vary
+    by posture so low items drain over the 90 days rather than being levelled by one implausible
+    bulk movement, then a single closing movement (typed Issue or Receipt by sign, dated
+    yesterday) lands the balance exactly in band.
+
+**DB changes:** none. **No migration was added** — this is seed data only; the schema is
+unchanged. **APIs changed:** none.
+
+**Tests actually executed (after the change):**
+- `dotnet build Project.slnx` — succeeds, 0 errors.
+- `dotnet test Project.slnx` — **49/49 passed** (26 unit + 23 integration). No test depends on
+  the catalogue seeder; the integration tests use `DbSeeder.SeedRolesAsync` only and build their
+  own fixtures via `CatalogueTestData`, which is why the item-shape change is safe.
+- `npx vitest run --pool=threads` — **22/22 passed**.
+- Dropped and re-created the dev database (`dotnet ef database drop --force`, then app start) to
+  actually exercise the new seeder, since it is idempotent and skips a populated catalogue.
+- Verified after re-seed, in SQL and through the API and UI: **27 OK / 7 WATCH / 6 REORDER_NOW**;
+  `lowStockAlerts` = 6; `/inventory/low-stock` returns those 6; 40 distinct item names; **0**
+  names containing the old category prefix; and the ledger-vs-cached-balance invariant still
+  holds across all 40 items (0 mismatches).
+
+**Assumptions made (flagged, not silently decided):**
+- The posture assignment (which 6 items sit below reorder, which 7 are on watch) is a judgement
+  call for demo realism — fast-moving consumables and expensive low-volume items were chosen. It
+  is not derived from any spec.
+- Item names, unit costs and reorder levels are invented plausible values. The Plan does not
+  specify a product list, so these are **not** `[SPEC]`-derived and should be replaced if the
+  instructor supplies real data.
+- `Executive Fountain Pen` (rank 3) and several Tech items (rank 2–3) keep a spread of
+  `MinRankLevelToRequest` so the role filter (`[ASK]` #3) stays demonstrable.
+
+**Explicitly left out of scope:**
+- The `WATCH`/`REORDER_NOW` thresholds themselves are untouched — still the simple ratio
+  heuristic in `InventoryQueries.DeriveStatus`, still slated for replacement by M5's
+  consumption-rate model.
+- No seeded demo *users* were added — user creation remains Manager+'s job via `POST /users`,
+  and the bootstrap-admin design is unchanged.
+- SKU still not persisted (`[ASK]` #2 / K5) — the SKU column continues to render blank.
+- `appsettings.Development.json`'s LocalDB connection string was deliberately left as-is rather
+  than repointed at `SQLEXPRESS`; that is a team decision, not a fix to slip into a seeder change.
