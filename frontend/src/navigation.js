@@ -8,6 +8,7 @@ import {
   Package,
   Truck,
   Users,
+  PackagePlus,
   HelpCircle,
 } from 'lucide-react'
 
@@ -18,7 +19,8 @@ import {
  *
  * `minRankLevel` hides an item below that rank (Sidebar.jsx filters using AuthContext) — this
  * is UX only, never the real control (Plan §2.5); the server-side policy on the route is.
- * Only User Management currently has a rank floor (Plan §4.2, Manager+).
+ * Inventory, Suppliers, Item Management, and User Management are all Manager+ (page-map.md
+ * §9–12; item management has no numbered wireframe slot, added alongside Catalogue).
  */
 export const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutGrid, end: true },
@@ -27,8 +29,9 @@ export const navItems = [
   { to: '/my-requests', label: 'My Requests', icon: History },
   { to: '/approvals', label: 'Approvals', icon: ClipboardCheck },
   { to: '/reports', label: 'Reports', icon: BarChart3 },
-  { to: '/inventory', label: 'Inventory', icon: Package },
-  { to: '/suppliers', label: 'Suppliers', icon: Truck },
+  { to: '/inventory', label: 'Inventory', icon: Package, minRankLevel: 2 },
+  { to: '/suppliers', label: 'Suppliers', icon: Truck, minRankLevel: 2 },
+  { to: '/catalogue/manage', label: 'Item Management', icon: PackagePlus, minRankLevel: 2 },
   { to: '/user-management', label: 'User Management', icon: Users, minRankLevel: 2 },
   { to: '/help', label: 'Help', icon: HelpCircle },
 ]

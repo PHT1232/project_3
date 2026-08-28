@@ -6,6 +6,8 @@ import ProtectedRoute from './routes/ProtectedRoute.jsx'
 // Owned by this task
 import CataloguePage from './pages/catalogue/CataloguePage.jsx'
 import InventoryPage from './pages/inventory/InventoryPage.jsx'
+import ItemManagement from './pages/manager/ItemManagement.jsx'
+import SupplierManagement from './pages/manager/SupplierManagement.jsx'
 import NotFound from './pages/NotFound.jsx'
 import Login from './pages/Login.jsx'
 import UserManagementPage from './pages/users/UserManagementPage.jsx'
@@ -16,7 +18,6 @@ import NewRequest from './pages/NewRequest.jsx'
 import MyRequests from './pages/MyRequests.jsx'
 import Approvals from './pages/Approvals.jsx'
 import Reports from './pages/Reports.jsx'
-import Suppliers from './pages/Suppliers.jsx'
 import Help from './pages/Help.jsx'
 
 /**
@@ -43,10 +44,11 @@ export default function App() {
           <Route path="/my-requests" element={<MyRequests />} />
           <Route path="/approvals" element={<Approvals />} />
           <Route path="/reports" element={<Reports />} />
-          <Route path="/inventory" element={<InventoryPage />} />
-          <Route path="/suppliers" element={<Suppliers />} />
 
           <Route element={<ProtectedRoute requireManager />}>
+            <Route path="/inventory" element={<InventoryPage />} />
+            <Route path="/suppliers" element={<SupplierManagement />} />
+            <Route path="/catalogue/manage" element={<ItemManagement />} />
             <Route path="/user-management" element={<UserManagementPage />} />
           </Route>
 
