@@ -345,3 +345,78 @@ fixed in the plan-review pass):**
 - Decide whether the bootstrap-admin approach is acceptable long-term, or whether initial user
   provisioning should work differently (e.g., a setup wizard, a seeded-from-config admin list).
 - Revisit the inventory status thresholds once M5's actual consumption-rate model exists.
+
+## 2026-08-28 — New-machine audit, `khang` rebase onto `origin/main`, environment repair
+
+**Task:** After the project moved to a new Windows 10 machine (USB copy), audit the repo and dev
+environment, then — on explicit instruction — rebase the stale local `khang` branch onto
+`origin/main`, push the result, drop a leftover conflicted stash, and fix the frontend install.
+
+**What was found (audit, no changes yet):**
+- `origin` had switched between an unreachable SSH remote and, later in the session, a working
+  HTTPS one (`git fetch`/`git ls-remote` began succeeding partway through — cause not fully
+  determined, credential.helper is `manager`).
+- Local `khang` (`1796f49`) was **15 commits behind `origin/main`** and 1 ahead. The one local
+  commit, "Add EF Core SQL Server dependencies," had **unresolved Git conflict markers committed
+  into `WebApi/WebApi.csproj`** (`<<<<<<< Updated upstream` / `=======` / `>>>>>>> Stashed
+  changes`), leaving the project file invalid XML — `dotnet restore` failed with `MSB4025`. A
+  matching unresolved stash (`On main: EF Core SQL Server setup`) was still present.
+- `frontend/node_modules` was first found installed for **Linux** (wrong-platform native
+  binaries, no `.cmd` shims — `npm run build` failed with `'vite' is not recognized`), then later
+  found **fully absent** (mid-fix from an earlier recommendation, `npm ci` never run).
+- `origin/main` (unreachable before HTTPS started working, then inspected read-only via
+  `git show`) turned out to hold substantial, already-tested M1 work — see the 2026-08-27/28
+  entries above — that did not exist in the local working copy at all.
+
+**What changed, by action:**
+- **Rebase** (`git rebase origin/main` on `khang`): merge-base was `a43ecef`, so only `1796f49`
+  needed replaying. The ~88 stale `bin`/`obj` files in that commit auto-merged with no conflict.
+  The one real conflict, `WebApi/WebApi.csproj`, was resolved by taking `origin/main`'s side
+  entirely (`git checkout --ours`) — `1796f49`'s intent (add `EntityFrameworkCore.SqlServer`/
+  `.Tools` to `WebApi.csproj`) was both broken and redundant: `origin/main` already has the
+  equivalent packages correctly placed in `Infrastructure.csproj` per the Plan's dependency rule
+  (§2.3 — EF/SqlServer belongs in Infrastructure, not WebApi). Verified after rebase:
+  `dotnet restore && dotnet build Project.slnx` — 0 errors; no leftover conflict markers anywhere
+  in tracked source (`grep` swept `.cs`/`.csproj`/`.json`/`.js`/`.jsx`).
+- **Push** (`git push --force-with-lease origin khang`, after confirming `origin/khang` hadn't
+  moved since the rebase): succeeded, `1796f49...0728279 khang -> khang (forced update)`.
+  `origin/khang` and local `khang` are now content-identical to `origin/main` plus one
+  build-artifact-only commit.
+- **Stash drop**: diffed `stash@{0}` against the post-rebase tree first — confirmed its only
+  non-artifact content was the same `WebApi.csproj` change already reconciled above — then
+  `git stash drop`.
+- **Frontend install fix**: `cd frontend && npm ci` — 245 packages installed cleanly from the
+  existing (valid) lockfile. `npm run build` — succeeds (Vite 8.2.2, 1671 modules, no
+  errors/warnings). `npm audit` — 2 moderate vulnerabilities (`react-router` open-redirect /
+  constructor-injection advisories; fix requires `react-router-dom@7.18.2`, a breaking major
+  bump) — **not applied**, flagged for the team to schedule deliberately.
+- **This log entry, and `CLAUDE.md`** — updated §0/§1/§2/§7 to replace the stale "nothing is
+  built" / "SDK 8.0.422 blocks the build" content (which predated this machine's move and this
+  session's rebase) with the verified current state.
+
+**Tests actually executed after the rebase (all on branch `khang`, post-push):**
+- `dotnet test Project.slnx` — **32/32 passed** (17 `Application.UnitTests` + 15
+  `WebApi.IntegrationTests`).
+- `npx vitest run --pool=threads` (frontend) — **15/15 passed**, 4 files.
+  ⚠️ Plain `npm test` (`vitest run`, default forks pool) **hung and timed out** on this machine
+  ("Timeout waiting for worker to respond") — looks like a local child-process-spawning
+  restriction in this environment, not a test defect. `--pool=threads` works; flagging for anyone
+  else hitting the same hang rather than silently switching the project default.
+- `npm run build` (frontend) and `dotnet build Project.slnx` — both succeed, 0 errors.
+
+**Assumptions made (flagged, not silently decided):**
+- Resolving the `WebApi.csproj` conflict in favour of `origin/main`'s side was a judgment call,
+  not a mechanical one — reasoned from architecture (Plan §2.3) and from the fact that the local
+  side was already broken. Recorded here in case that reasoning needs to be revisited.
+- Did not investigate why `origin` changed from SSH to HTTPS mid-session; noted as unresolved
+  rather than guessed at.
+
+**Left out of scope:**
+- Did **not** run `npm audit fix --force` — a breaking `react-router-dom` major bump is a team
+  decision, not one to make silently mid-environment-repair.
+- Did **not** install SQL Server LocalDB or repoint the dev connection string at the running
+  `SQLEXPRESS` instance — flagged in `CLAUDE.md` §2 for whoever picks it up next.
+- Did **not** touch `docs/development/architecture.md`'s staleness banner (added in an earlier
+  session, now itself partly superseded by this rebase) — out of scope for this task's explicit
+  ask (`CLAUDE.md` and this file only).
+- No feature code was written; this was environment/repo-hygiene work only.

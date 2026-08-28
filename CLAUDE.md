@@ -1,6 +1,7 @@
 # CLAUDE.md — Project Memory
 
-> Last synchronised with `origin/main` at **95b4553** on **2026-08-24**.
+> Last synchronised with `origin/main` at **93e3b25** on **2026-08-28** (branch `khang`, rebased
+> onto and pushed to match `origin/main` the same day — see [AI_usage_report.md](AI_usage_report.md)).
 > This file is a *pointer and reconciliation* layer, not a copy of the documentation.
 > The detailed source of truth is **the Plan** (§7). Read it; don't paraphrase it from memory.
 > Anything not verifiable from a project document is marked **NOT SPECIFIED** — never replace
@@ -17,10 +18,52 @@ stationery request process. Aptech eProject, **5 developers, 3 weeks** (Mon 10 A
 Covers: full request lifecycle, role-based spending eligibility, dual-party notifications on six
 triggers, three manager cost reports, and one user-facing AI feature.
 
-**⚠️ Implementation status: nothing is built.** The repo is still template scaffolding
-(`Class1.cs` ×3, `WeatherForecastController`, the stock Vite counter demo). The Plan's calendar
-puts 2026-08-24 at Day 11 / M5, but actual state is **pre-M0** — none of the M0 tasks are done.
-The first implementation of anything sets the precedent; say so in your report.
+**✅ Implementation status — verified 2026-08-28 (branch `khang`, content-identical to `origin/main`).**
+(Supersedes every earlier "nothing is built" / "pre-M0" note in this file — those described a
+branch state that no longer exists after the 2026-08-28 rebase.)
+
+- **Auth & Identity — implemented and tested (M1).** Full ASP.NET Core Identity
+  (`ApplicationUser`/`ApplicationRole` : `IdentityUser<int>`/`IdentityRole<int>`,
+  `IdentityDbContext<ApplicationUser,ApplicationRole,int>`) with a project-owned JWT layer on top
+  (`JwtTokenService`, `IdentityAccountAdapter`, `IdentityPasswordService`). One EF migration
+  (`20260827133027_InitialIdentity`) generates the standard `AspNetUsers`/`AspNetRoles` tables
+  carrying the domain fields (`Name`, `Grade`, `Location`, `SuperiorEmployeeNumber`, `IsActive`,
+  `CreatedAtUtc`, `RankLevel`), a `CK_Users_EmployeeNumber` check (1–1000), and the
+  self-referencing superior FK. **Not yet applied to a real SQL Server database** — see below.
+  Endpoints live: `POST /api/v1/auth/login`, `GET /api/v1/auth/me`,
+  `POST /api/v1/auth/change-password`. `RequireManager`/`RequireApprover` policies plus an
+  active-user check on token validation are wired in `Program.cs`.
+- **User management — implemented and tested.** `UsersController`
+  (`GET/POST /api/v1/users`, `PUT /api/v1/users/{empNo}`, `PATCH /api/v1/users/{empNo}/status`,
+  `GET /api/v1/users/{empNo}/subordinates`) plus a full CRUD UI at
+  `frontend/src/pages/users/UserManagementPage.jsx`.
+- **Frontend auth — implemented.** `AuthContext`, `ProtectedRoute`, a real `Login` page
+  (`SignUp.jsx`/`AuthPlaceholder.jsx` deleted — self-registration isn't in the Plan), logout via
+  the header account menu.
+- **Frontend product pages — implemented, still on mock data.** Catalogue and Inventory
+  (`pages/catalogue/`, `pages/inventory/`) are built with loading/error/empty states, but read
+  from `src/api/mock/*.mock.js`, not the live API. Several other pages remain 5-line
+  `PagePlaceholder` stubs (Dashboard, New Request, My Requests, Approvals, Reports, Suppliers,
+  Help).
+- **Tests exist and pass (verified 2026-08-28):** backend `dotnet test Project.slnx` —
+  **32/32 passed** (17 `Tests/Application.UnitTests` + 15 `Tests/WebApi.IntegrationTests`, the
+  latter via `WebApplicationFactory<Program>` + real EF Core SQLite in-memory, `appsettings.Testing.json`).
+  Frontend `npx vitest run --pool=threads` — **15/15 passed** across 4 files
+  (`AuthContext`, `Login`, `ProtectedRoute`, `UserManagementPage`).
+  ⚠️ **On this machine, the default `npm test` (`vitest run`, forks pool) hangs and times out** —
+  "Timeout waiting for worker to respond." Use `npx vitest run --pool=threads` instead; this looks
+  like a local process-spawning restriction, not a test bug — re-check on other machines before
+  assuming it's universal.
+- **Never smoke-tested against a live server.** No SQL Server instance was available when this
+  work was done, so the migration has never been applied to a real database and the API has never
+  been run end-to-end in a browser — only through the test suite. Do not treat this as verified
+  outside of tests. (This machine now has SQL Server Express running locally — see §2 — so that
+  gap is closeable here.)
+- **Everything else is still pre-M0/M1**: no request lifecycle, no notifications, no reports, no
+  AI feature, no `RoleThresholds`. `Core/Interfaces/IRepository.cs` and the generic
+  `Application/Services/Service.cs` are unused scaffolding, not yet wired to anything real.
+- Full detail: [docs/development/identity-and-user-management-implementation-plan.md](docs/development/identity-and-user-management-implementation-plan.md)
+  and the 2026-08-27/28 entries in [AI_usage_report.md](AI_usage_report.md).
 
 ---
 
@@ -31,23 +74,35 @@ Per the Plan §1.2.4, §2.2, §9 — **not** per the current `.csproj`/`README`,
 | Layer | Technology |
 |---|---|
 | Backend | **.NET 10**, ASP.NET Core, Clean Architecture (`Core`/`Application`/`Infrastructure`/`WebApi`) — **team decision 2026-08-24, overrides the Plan's .NET 8; see K7** |
-| Database | **SQL Server 2022**, EF Core (10.0.10 referenced), migrations only — never hand-edit the DB |
+| Database | **SQL Server**, EF Core (10.0.10), migrations only — never hand-edit the DB. Dev connection string targets **LocalDB** (`(localdb)\mssqllocaldb`), see below |
 | Frontend | **React 18** + Vite + **Tailwind** + React Router + axios; `AuthContext` for session, **no Redux** |
-| Auth | **JWT** bearer, HS256, 8-hour expiry, `sub` = EmployeeNumber; token in `localStorage` (documented trade-off, Plan §9.2) |
-| Validation | FluentValidation (Application layer) |
-| Errors | one `ExceptionHandlingMiddleware` → RFC 7807 `ProblemDetails` |
-| Logging | `ILogger<T>` + Serilog (console + rolling file) |
-| Testing | xUnit · FluentAssertions · Moq; integration via `WebApplicationFactory<Program>` + EF Core **SQLite in-memory** (*not* the `InMemory` provider); Vitest + RTL for ~5 components |
-| CI/CD | Jenkins + Docker multi-stage, NGINX + Tailscale Funnel |
+| Auth | ASP.NET Core **Identity** (kept, overrides the Plan's custom design — see K8) issuing a project-owned **JWT** (HS256, `sub` = EmployeeNumber, `Jwt:ExpiryHours` config, default 8h); token in `localStorage` (documented trade-off, Plan §9.2) |
+| Validation | FluentValidation (Application layer) — implemented for auth/user DTOs |
+| Errors | one `ExceptionHandlingMiddleware` → RFC 7807 `ProblemDetails` — implemented |
+| Logging | `ILogger<T>` + Serilog (console + rolling file) — **not yet added**, still the ASP.NET default logger |
+| Testing | xUnit · FluentAssertions · Moq; integration via `WebApplicationFactory<Program>` + EF Core **SQLite in-memory**; Vitest + RTL — **all now real and passing**, see §1 |
+| CI/CD | Jenkins + Docker, **now two independent containers** (`WebApi/Dockerfile` + `frontend/Dockerfile`/nginx, orchestrated by root `docker-compose.yml`) rather than the single combined image the root `Dockerfile` still describes — both paths exist, the independent one is what Jenkins builds now |
 
-**⚠️ The build is blocked on tooling, not on the code.** All four `.csproj` target `net10.0` and
-`README.md` says .NET 10 — both correct as of the 2026-08-24 decision. But the only SDK installed
-on this machine is **8.0.422**, so:
-- `dotnet build` fails with **`NETSDK1045`** (SDK cannot target .NET 10.0);
-- `Project.slnx` fails with **`MSB4068`** — the `.slnx` solution format needs a .NET 9+ SDK too.
+**✅ The .NET toolchain builds and tests cleanly on this machine (verified 2026-08-28).**
+`dotnet restore && dotnet build Project.slnx` — 0 errors (1 pre-existing `NU1903` warning on
+`SQLitePCLRaw.lib.e_sqlite3` 2.1.11, used by the integration tests). `dotnet test` — 32/32 passed.
+`bin/`+`obj/` are still committed repo-wide (`.gitignore` has no .NET section, except a narrow
+`Tests/**/bin|obj` carve-out added 2026-08-27) — a known, still-open hygiene gap, not a blocker.
 
-**Installing the .NET 10 SDK is the unblock**; there is nothing to fix in the project files.
-`bin/`+`obj/` are still committed (`.gitignore` has no .NET section).
+**Config keys that now exist** (`WebApi/appsettings.json` / `appsettings.Development.json` /
+`appsettings.Testing.json`): `ConnectionStrings:DefaultConnection` (empty in the base file — set
+via environment/secrets in real deployments; a LocalDB dev value is checked into
+`appsettings.Development.json`, `SigningKey` too, explicitly marked "LOCAL-DEV-ONLY") and
+`Jwt:{Issuer,Audience,ExpiryHours,SigningKey}`. `docker-compose.yml` expects
+`DB_CONNECTION_STRING` / `JWT_SIGNING_KEY` from the environment, never hardcoded.
+
+**This machine's dev environment (audited 2026-08-28):** .NET SDK 10.0.400 · Node 24.20.0 / npm
+12.0.2 · Git 2.55.0, GitHub reachable over **HTTPS** (the remote was SSH and unreachable before
+that day) · **`dotnet-ef` 10.0.11 installed** · a **SQL Server Express** service
+(`MSSQL$SQLEXPRESS`) is installed and running, but the dev connection string wants **LocalDB**
+specifically (`sqllocaldb` not found here) — either install LocalDB or repoint the dev connection
+string at `Server=.\SQLEXPRESS`, a deliberate choice for whoever does it next. Docker and `gh` CLI
+are still absent.
 
 ---
 
@@ -148,7 +203,7 @@ with a default implemented behind a flag. Read that list before asking a new que
 | 5 | [docs/Diagrams/](docs/Diagrams) | ERD (12 tables) · DFD L0–L2 · request state machine + flows · UML activity |
 | 6 | [docs/Wireframe/](docs/Wireframe) | Dashboard · Catalogue · Request · Approvals · Inventory (5 only) |
 | — | [AI_usage_report.md](AI_usage_report.md) | Root-level AI usage log. **Append, never overwrite** (`systemprompt.md`) |
-| — | [docs/development/](docs/development) | My reconciliation notes: architecture gaps, coding rules, page map |
+| — | [docs/development/](docs/development) | Reconciliation notes and handoffs: architecture gaps, coding rules, page map, and the [Identity/user-management implementation plan](docs/development/identity-and-user-management-implementation-plan.md) (the design doc behind the auth work landed 2026-08-27/28 — see §1) |
 
 **Superseded:** `__ai_agents/Database/Project 3.sql` — an earlier draft with a *different* domain
 model (Department / Storage / SubCategory / StationeryRequestPasson). Kept only for diffing.
