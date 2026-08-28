@@ -49,9 +49,14 @@ plan doc's own inline notes) plus a few more found necessary during implementati
 
 One migration, `CatalogueSuppliersAndStock`: `Categories`, `Suppliers`, `StationeryItems`,
 `StockTransactions`. Check constraints `CK_StationeryItems_MinRankLevelToRequest` (1–4) and
-`CK_StockTransactions_ChangeQuantity` (`<> 0`). **Not applied to a real SQL Server instance** —
-none was available in this environment. Verified instead via the SQLite-in-memory integration
-tests and `dotnet ef migrations has-pending-model-changes` (reports none pending).
+`CK_StockTransactions_ChangeQuantity` (`<> 0`).
+
+**✅ Applied to a real SQL Server instance on 2026-08-28** — SQL Server 2022 Express
+(`.\SQLEXPRESS`, 16.0.1000.6), database `StationeryManagementSystem.Dev`. Both migrations ran
+clean; all 12 tables and all 3 check constraints were created as designed. This supersedes the
+earlier "not applied to a real SQL Server instance" note. The connection string was supplied as
+the `ConnectionStrings__DefaultConnection` environment variable — `appsettings.Development.json`
+still points at LocalDB, which is not installed on that machine (see follow-up 6).
 
 ## Setup and usage
 
@@ -119,11 +124,48 @@ boundary, not just an M2 implementation detail — flag it if M1's design is eve
   plan's stated scale, worth revisiting if item/user counts grow far beyond ~1000).
 - No image/SKU/barcode support, per `[CUT]`/`[ASK]` #2 — do not add without a Plan update.
 
+## Seed-data correction — 2026-08-28
+
+The live smoke test exposed two defects in seeded data (not in application code). Both are fixed
+in `Infrastructure/Data/DbSeeder.cs`; **no schema or migration change was involved.**
+
+1. **The catalogue was a cartesian product.** A single 8-item template was applied to all 5
+   categories with the category name prepended — "Printing Supplies — Ballpoint Pens",
+   "Organization — Premium Cardstock" — so only 8 distinct products existed across 40 rows.
+   Replaced with `CatalogueSeeds`, a real per-category product list (still 5 × 8 = 40) and no
+   name prefix. Now 40 distinct, correctly-categorised names.
+2. **The low-stock path was unreachable.** Opening balance was `ReorderLevel * 3` against a
+   net-positive random walk, so all 40 items finished `OK`: `lowStockAlerts` 0 and
+   `/inventory/low-stock` empty, making the `WATCH`/`REORDER_NOW` badges and the dashboard
+   low-stock tile impossible to demonstrate. Each item seed now carries a `StockPosture`
+   (`Healthy`/`Watch`/`Reorder`); opening balance and issue probability vary by posture so low
+   items drain across the 90 days, and one closing movement lands the balance in band via
+   `TargetBalanceFor` (0.6× / 1.25× / 2.5× the item's own reorder level).
+
+Result after re-seeding: **27 OK / 7 WATCH / 6 REORDER_NOW**, `lowStockAlerts` = 6, and the
+ledger-vs-cached-balance invariant still holds across all 40 items. Suites re-run: 49/49 backend,
+22/22 frontend.
+
+The seeder is idempotent and skips a populated catalogue, so an **existing dev database will not
+pick this up** — drop and re-create it (`dotnet ef database drop --force`, then start the app) to
+get the corrected data.
+
+Item names, costs, reorder levels and posture assignments are **invented plausible values**, not
+`[SPEC]`-derived — the Plan specifies no product list. Replace them if the instructor supplies
+real data.
+
 ## Reviewer follow-ups
 
-1. Apply the migration to a real SQL Server and do a manual browser smoke test before merging.
+1. ~~Apply the migration to a real SQL Server and do a manual browser smoke test.~~
+   **Done 2026-08-28** — see the DB changes section above and the dated `AI_usage_report.md`
+   entry. Still worth repeating on a second machine before the defence.
 2. Confirm `[ASK]` #3 (role filter direction) and the lead-time unit with the instructor/team.
 3. Decide whether the bootstrap-admin approach is acceptable long-term or should be replaced
    (e.g., a setup wizard, a seeded-from-config admin list) — this affects M1's design too.
 4. Revisit inventory status thresholds once M5's real consumption-rate model exists.
 5. Two reviewers required for stock/catalogue changes per `CLAUDE.md` §5.
+6. **Decide how dev connects to SQL Server.** `appsettings.Development.json` targets
+   `(localdb)\mssqllocaldb`, which is not installed on every machine; the 2026-08-28 run used a
+   `ConnectionStrings__DefaultConnection` env var pointing at `.\SQLEXPRESS` instead. Either
+   install LocalDB team-wide or change the checked-in dev default — a team decision, deliberately
+   not made unilaterally.

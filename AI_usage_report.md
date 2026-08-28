@@ -345,3 +345,271 @@ fixed in the plan-review pass):**
 - Decide whether the bootstrap-admin approach is acceptable long-term, or whether initial user
   provisioning should work differently (e.g., a setup wizard, a seeded-from-config admin list).
 - Revisit the inventory status thresholds once M5's actual consumption-rate model exists.
+
+## 2026-08-28 — New-machine audit, `khang` rebase onto `origin/main`, environment repair
+
+**Task:** After the project moved to a new Windows 10 machine (USB copy), audit the repo and dev
+environment, then — on explicit instruction — rebase the stale local `khang` branch onto
+`origin/main`, push the result, drop a leftover conflicted stash, and fix the frontend install.
+
+**What was found (audit, no changes yet):**
+- `origin` had switched between an unreachable SSH remote and, later in the session, a working
+  HTTPS one (`git fetch`/`git ls-remote` began succeeding partway through — cause not fully
+  determined, credential.helper is `manager`).
+- Local `khang` (`1796f49`) was **15 commits behind `origin/main`** and 1 ahead. The one local
+  commit, "Add EF Core SQL Server dependencies," had **unresolved Git conflict markers committed
+  into `WebApi/WebApi.csproj`** (`<<<<<<< Updated upstream` / `=======` / `>>>>>>> Stashed
+  changes`), leaving the project file invalid XML — `dotnet restore` failed with `MSB4025`. A
+  matching unresolved stash (`On main: EF Core SQL Server setup`) was still present.
+- `frontend/node_modules` was first found installed for **Linux** (wrong-platform native
+  binaries, no `.cmd` shims — `npm run build` failed with `'vite' is not recognized`), then later
+  found **fully absent** (mid-fix from an earlier recommendation, `npm ci` never run).
+- `origin/main` (unreachable before HTTPS started working, then inspected read-only via
+  `git show`) turned out to hold substantial, already-tested M1 work — see the 2026-08-27/28
+  entries above — that did not exist in the local working copy at all.
+
+**What changed, by action:**
+- **Rebase** (`git rebase origin/main` on `khang`): merge-base was `a43ecef`, so only `1796f49`
+  needed replaying. The ~88 stale `bin`/`obj` files in that commit auto-merged with no conflict.
+  The one real conflict, `WebApi/WebApi.csproj`, was resolved by taking `origin/main`'s side
+  entirely (`git checkout --ours`) — `1796f49`'s intent (add `EntityFrameworkCore.SqlServer`/
+  `.Tools` to `WebApi.csproj`) was both broken and redundant: `origin/main` already has the
+  equivalent packages correctly placed in `Infrastructure.csproj` per the Plan's dependency rule
+  (§2.3 — EF/SqlServer belongs in Infrastructure, not WebApi). Verified after rebase:
+  `dotnet restore && dotnet build Project.slnx` — 0 errors; no leftover conflict markers anywhere
+  in tracked source (`grep` swept `.cs`/`.csproj`/`.json`/`.js`/`.jsx`).
+- **Push** (`git push --force-with-lease origin khang`, after confirming `origin/khang` hadn't
+  moved since the rebase): succeeded, `1796f49...0728279 khang -> khang (forced update)`.
+  `origin/khang` and local `khang` are now content-identical to `origin/main` plus one
+  build-artifact-only commit.
+- **Stash drop**: diffed `stash@{0}` against the post-rebase tree first — confirmed its only
+  non-artifact content was the same `WebApi.csproj` change already reconciled above — then
+  `git stash drop`.
+- **Frontend install fix**: `cd frontend && npm ci` — 245 packages installed cleanly from the
+  existing (valid) lockfile. `npm run build` — succeeds (Vite 8.2.2, 1671 modules, no
+  errors/warnings). `npm audit` — 2 moderate vulnerabilities (`react-router` open-redirect /
+  constructor-injection advisories; fix requires `react-router-dom@7.18.2`, a breaking major
+  bump) — **not applied**, flagged for the team to schedule deliberately.
+- **This log entry, and `CLAUDE.md`** — updated §0/§1/§2/§7 to replace the stale "nothing is
+  built" / "SDK 8.0.422 blocks the build" content (which predated this machine's move and this
+  session's rebase) with the verified current state.
+
+**Tests actually executed after the rebase (all on branch `khang`, post-push):**
+- `dotnet test Project.slnx` — **32/32 passed** (17 `Application.UnitTests` + 15
+  `WebApi.IntegrationTests`).
+- `npx vitest run --pool=threads` (frontend) — **15/15 passed**, 4 files.
+  ⚠️ Plain `npm test` (`vitest run`, default forks pool) **hung and timed out** on this machine
+  ("Timeout waiting for worker to respond") — looks like a local child-process-spawning
+  restriction in this environment, not a test defect. `--pool=threads` works; flagging for anyone
+  else hitting the same hang rather than silently switching the project default.
+- `npm run build` (frontend) and `dotnet build Project.slnx` — both succeed, 0 errors.
+
+**Assumptions made (flagged, not silently decided):**
+- Resolving the `WebApi.csproj` conflict in favour of `origin/main`'s side was a judgment call,
+  not a mechanical one — reasoned from architecture (Plan §2.3) and from the fact that the local
+  side was already broken. Recorded here in case that reasoning needs to be revisited.
+- Did not investigate why `origin` changed from SSH to HTTPS mid-session; noted as unresolved
+  rather than guessed at.
+
+**Left out of scope:**
+- Did **not** run `npm audit fix --force` — a breaking `react-router-dom` major bump is a team
+  decision, not one to make silently mid-environment-repair.
+- Did **not** install SQL Server LocalDB or repoint the dev connection string at the running
+  `SQLEXPRESS` instance — flagged in `CLAUDE.md` §2 for whoever picks it up next.
+- Did **not** touch `docs/development/architecture.md`'s staleness banner (added in an earlier
+  session, now itself partly superseded by this rebase) — out of scope for this task's explicit
+  ask (`CLAUDE.md` and this file only).
+- No feature code was written; this was environment/repo-hygiene work only.
+
+## 2026-08-28 — First live SQL Server run, browser smoke test, and seed-data fix
+
+**Task:** Close M2 reviewer follow-up #1 — apply the migrations to a real SQL Server instance and
+smoke-test the app end to end (neither had ever been done) — then fix the two seed-data defects
+that the smoke test exposed.
+
+### Part 1 — migration + smoke test (no code changed)
+
+Applied `20260827133027_InitialIdentity` and `20260828131329_CatalogueSuppliersAndStock` to the
+local **SQL Server 2022 Express** instance (`.\SQLEXPRESS`, 16.0.1000.6), database
+`StationeryManagementSystem.Dev`. All 12 tables and all 3 check constraints
+(`CK_Users_EmployeeNumber`, `CK_StationeryItems_MinRankLevelToRequest`,
+`CK_StockTransactions_ChangeQuantity`) created as designed.
+
+`appsettings.Development.json` was **not** edited — its connection string still targets LocalDB,
+which is not installed on this machine. The override was supplied as the
+`ConnectionStrings__DefaultConnection` environment variable, matching the project's own
+"connection strings via environment variables" rule and leaving the repo untouched.
+
+API smoke test (all against the live SQL Server, not SQLite): unauthenticated `/items` → 401;
+login as the bootstrap admin → 200; `/categories`, `/items`, `/items/{id}`, `/inventory`,
+`/low-stock`, `/{itemId}/transactions` all correct; receive +25 → balance 400→425 with one new
+ledger row; **replaying a stale `RowVersion` → 409**; adjust −999999 → 400 `ProblemDetails`;
+adjust 0 → 400. Verified in SQL that **the cached balance reconciled with `SUM(ChangeQuantity)`
+for all 40 items (zero mismatches)** and that the *rejected* calls wrote **zero** ledger rows —
+i.e. the transaction rollback behaves correctly on SQL Server, not just on the test provider.
+
+Browser smoke test: login → Dashboard → Catalogue → Inventory all render live API data with
+Manager+ nav gating; a **Receive Goods performed through the UI** moved a row 276→286 and wrote
+ledger row #937, with the total-value tile moving by exactly 10 × $5.75.
+
+One false alarm worth recording: the stock modal first appeared to be broken because neither the
+accessibility-tree reader nor a `<main>` text dump showed it. A direct DOM query found
+`[role=dialog]` present and fully functional — the modal renders without a portal, outside
+`<main>`, so those tools miss it. **Not a bug**; no code was changed for it.
+
+### Part 2 — seed-data fix (`Infrastructure/Data/DbSeeder.cs`, the only file changed)
+
+The smoke test exposed two genuine defects in seeded data. Neither affected correctness, both
+would have been visible in the demo/defence:
+
+1. **The catalogue was a cartesian product.** One shared 8-item `ItemTemplate` was applied to
+   every one of the 5 categories, with the category name prepended to each item, producing
+   "Printing Supplies — Ballpoint Pens", "Organization — Premium Cardstock", and the same 8
+   products listed five times (8 distinct names across 40 items).
+2. **The low-stock path could never be demonstrated.** Opening balance was `ReorderLevel * 3` and
+   the random walk was net-positive (≈70% issues of 1–5 against 20% receipts of 10–30), so every
+   item finished well clear of its reorder level: all 40 items `OK`, `lowStockAlerts` 0,
+   `/inventory/low-stock` empty. The `WATCH`/`REORDER_NOW` badges and the dashboard low-stock
+   tile were unreachable with seeded data.
+
+**What changed, by file:**
+- `Infrastructure/Data/DbSeeder.cs` —
+  - replaced `CategorySeeds` + `ItemTemplate` with `CatalogueSeeds`: a real per-category product
+    list (still 5 categories × 8 items = 40, so the documented count is unchanged), with the
+    category-name prefix dropped. Now 40 distinct, semantically correct names.
+  - added a private `StockPosture` enum (`Healthy`/`Watch`/`Reorder`) on each item seed, and
+    `TargetBalanceFor(reorderLevel, posture)` returning a balance expressed as a multiple of the
+    item's own reorder level, so the bands in `InventoryQueries.DeriveStatus` are hit regardless
+    of item scale (0.6× → REORDER_NOW, 1.25× → WATCH, 2.5× → OK).
+  - made `SeedTransactionHistory` posture-aware: opening balance and issue probability now vary
+    by posture so low items drain over the 90 days rather than being levelled by one implausible
+    bulk movement, then a single closing movement (typed Issue or Receipt by sign, dated
+    yesterday) lands the balance exactly in band.
+
+**DB changes:** none. **No migration was added** — this is seed data only; the schema is
+unchanged. **APIs changed:** none.
+
+**Tests actually executed (after the change):**
+- `dotnet build Project.slnx` — succeeds, 0 errors.
+- `dotnet test Project.slnx` — **49/49 passed** (26 unit + 23 integration). No test depends on
+  the catalogue seeder; the integration tests use `DbSeeder.SeedRolesAsync` only and build their
+  own fixtures via `CatalogueTestData`, which is why the item-shape change is safe.
+- `npx vitest run --pool=threads` — **22/22 passed**.
+- Dropped and re-created the dev database (`dotnet ef database drop --force`, then app start) to
+  actually exercise the new seeder, since it is idempotent and skips a populated catalogue.
+- Verified after re-seed, in SQL and through the API and UI: **27 OK / 7 WATCH / 6 REORDER_NOW**;
+  `lowStockAlerts` = 6; `/inventory/low-stock` returns those 6; 40 distinct item names; **0**
+  names containing the old category prefix; and the ledger-vs-cached-balance invariant still
+  holds across all 40 items (0 mismatches).
+
+**Assumptions made (flagged, not silently decided):**
+- The posture assignment (which 6 items sit below reorder, which 7 are on watch) is a judgement
+  call for demo realism — fast-moving consumables and expensive low-volume items were chosen. It
+  is not derived from any spec.
+- Item names, unit costs and reorder levels are invented plausible values. The Plan does not
+  specify a product list, so these are **not** `[SPEC]`-derived and should be replaced if the
+  instructor supplies real data.
+- `Executive Fountain Pen` (rank 3) and several Tech items (rank 2–3) keep a spread of
+  `MinRankLevelToRequest` so the role filter (`[ASK]` #3) stays demonstrable.
+
+**Explicitly left out of scope:**
+- The `WATCH`/`REORDER_NOW` thresholds themselves are untouched — still the simple ratio
+  heuristic in `InventoryQueries.DeriveStatus`, still slated for replacement by M5's
+  consumption-rate model.
+- No seeded demo *users* were added — user creation remains Manager+'s job via `POST /users`,
+  and the bootstrap-admin design is unchanged.
+- SKU still not persisted (`[ASK]` #2 / K5) — the SKU column continues to render blank.
+- `appsettings.Development.json`'s LocalDB connection string was deliberately left as-is rather
+  than repointed at `SQLEXPRESS`; that is a team decision, not a fix to slip into a seeder change.
+
+## 2026-08-28 — Supplier request cart (Inventory → suppliers)
+
+**Task:** Turn the inventory item selection into a Shopee-style cart: tick items, review them in a
+modal with per-item quantities, submit, and have the backend create one supplier order per
+supplier — without moving stock.
+
+### ⚠️ Scope: this builds a `[CUT]` item, on the owning developer's explicit decision
+
+Plan §1.3 lists **"payment or procurement PO generation"** under `[CUT] WON'T`, with *"If someone
+starts building one, that is a scope breach — escalate to the Project Leader."* `CLAUDE.md` §5
+repeats it. The Plan's §4.2 endpoint catalogue has no supplier-request endpoint, and
+`POST /inventory/{itemId}/receive` is specified as goods **receipt**, not ordering.
+
+This was raised **before any code was written**, with an in-scope alternative offered (a
+multi-item *goods receipt* cart needing no new entities). The user chose to build the supplier
+request anyway and accepted the scope-breach risk. Recording that here so the decision is not
+mistaken for an oversight. The Plan itself was **not** edited — that is a Project Leader call.
+
+**What changed, by file:**
+
+- **Core** — `Entities/SupplierRequest.cs`, `Entities/SupplierRequestItem.cs`. Header/line split
+  mirroring the Plan's `Requests`/`RequestItems` (§3.4), with `UnitCostSnapshot` frozen per line
+  (CLAUDE.md principle #8). Deliberately **no status column** — no document specifies a supplier
+  order lifecycle and inventing one is what K3 flagged.
+- **Application** — `DTOs/SupplierRequests/{CreateSupplierRequestCommand,SupplierRequestDto}.cs`,
+  `Interfaces/SupplierRequests/{ISupplierRequestService,ISupplierRequestQueries}.cs`,
+  `Validators/SupplierRequests/CreateSupplierRequestCommandValidator.cs`. Named `...Command`
+  because `Application.DTOs.Suppliers.CreateSupplierRequest` already exists and means something
+  entirely different (it creates a *Supplier*) — a genuine collision hazard.
+- **Infrastructure** — `Services/SupplierRequestService.cs` (placed here, not Application, for the
+  same reason as `StockService`: it needs `DataContext`, and Application must never reference
+  `DbContext`), `Queries/SupplierRequestQueries.cs`,
+  `Data/Configurations/SupplierRequest{,Item}Configuration.cs`, `DataContext.cs` (+2 DbSets),
+  migration `20260828143526_SupplierRequests`.
+- **WebApi** — `Controllers/SupplierRequestsController.cs` (`POST`/`GET`/`GET {id}`, all
+  `RequireManager`), `Program.cs` (+2 DI registrations, +1 using).
+- **Application (modified)** — `DTOs/Inventory/InventoryRowDto.cs` gained `SupplierId`/
+  `SupplierName` as **defaulted optional** parameters, so nothing consuming it previously breaks;
+  `Infrastructure/Queries/InventoryQueries.cs` projections extended to populate them.
+- **Frontend** — `api/supplierRequests.js` (new),
+  `pages/inventory/components/SupplierRequestModal.jsx` (new),
+  `pages/inventory/InventoryPage.jsx` (cart state + new toolbar button).
+- **Tests** — `Tests/WebApi.IntegrationTests/SupplierRequestsTests.cs` (14),
+  `frontend/src/pages/inventory/InventoryCart.test.jsx` (7).
+- **Docs** — `docs/development/supplier-request-cart-implementation-handoff.md`, and this entry.
+
+**APIs added:** `POST /api/v1/supplier-requests`, `GET /api/v1/supplier-requests`,
+`GET /api/v1/supplier-requests/{id}` — all Manager+.
+
+**DB changes:** one migration adding `SupplierRequests` + `SupplierRequestItems`. **No existing
+table altered**, so no data-loss risk. Check constraint `CK_SupplierRequestItems_Quantity`
+(`> 0`), unique index on `(SupplierRequestId, ItemId)`, FKs `Restrict` except header→lines
+cascade. Applied to the live `.\SQLEXPRESS` database.
+
+**Two design rules the service enforces (both tested):**
+1. *The database owns the supplier.* An item's preferred `SupplierId` always wins; the
+   client-supplied `supplierId` is consulted only for items that have none, and must then resolve
+   to an active supplier. A client cannot redirect an order to an arbitrary supplier.
+2. *All-or-nothing.* Every line is validated before the first `Add`, and the whole submission
+   commits through one `SaveChangesAsync` (no `UnitOfWork` wrapper, per Plan §2.4), so one bad
+   line leaves no partial orders.
+
+**Tests actually executed:**
+- `dotnet test Project.slnx` — **63/63 passed** (26 unit + 37 integration; 49 before).
+- `npx vitest run --pool=threads` — **29/29 passed** (22 before).
+- `dotnet build` / `npm run build` — both clean.
+- **Live end-to-end against SQL Server:** 3 items spanning 3 suppliers → 3 correctly grouped
+  orders with correct totals; SQL confirmed **stock unchanged and zero ledger rows written**, and
+  the ledger-vs-cached-balance invariant still holding across all 40 items; selection and cart
+  cleared on success; Catalogue and Inventory both still functional.
+
+**Assumptions made (flagged, not silently decided):**
+- Default cart quantity is **1**. A suggested reorder amount would be more useful but is an
+  invented business rule.
+- **UI deviation:** the cart is behind a new **"Request from Suppliers"** button rather than the
+  existing *Receive Goods* button the brief specified, because that label would otherwise mean two
+  opposite things (the row action genuinely receives stock; the cart only orders). Flagged for the
+  team to rename if they disagree.
+- Supplier-less items are resolved by a picker in the modal (the user's chosen option), with the
+  server validating the choice exists and is active.
+
+**Explicitly left out of scope:**
+- **No order lifecycle** — orders cannot be marked received or cancelled, and there is no link
+  between a `SupplierRequest` and the `StockTransaction` that eventually fulfils it. Pending spec.
+- **No UI to browse past orders**; `GET /supplier-requests` exists and is tested but unused by the
+  frontend.
+- **SKU still not persisted** (`[ASK]` #2 / K5), so the cart shows no SKU column despite the brief
+  asking for one — that remains a separate scope decision.
+- The Plan document was not edited to reflect this feature; that is a Project Leader decision.
+- The toolbar *Adjust Stock* button still acts on `visibleRows[0]` rather than the selection —
+  pre-existing behaviour, left untouched.
