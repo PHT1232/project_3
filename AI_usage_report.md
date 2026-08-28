@@ -167,3 +167,37 @@ via the SQLite-in-memory integration tests and `dotnet ef migrations has-pending
   follow-up) before the next schema-touching PR.
 - Run the migration against a real SQL Server instance and do a manual browser smoke test before
   merging — neither happened in this session.
+
+## 2026-08-28 — Catalogue unit-cost filter: value badge above the slider thumb
+
+**Task:** Add a floating value badge (speech-bubble/callout) pinned above the "Unit Cost Max"
+range slider thumb on the catalogue filter panel, so the exact numeric ceiling (e.g. `$52`,
+`$100+`) is visible while dragging.
+
+**What changed, by file:**
+- `frontend/src/pages/catalogue/components/CatalogueFilters.jsx` — extracted the inline
+  `<input type="range">` into a `UnitCostSlider` sub-component (mirrors the existing `FieldSet`
+  helper convention in the same file). Added a `pointer-events-none`, `aria-hidden` badge
+  positioned with `left: calc(<percent>% + <thumbOffset>px)` where `percent = cost / MAX_COST_CAP`
+  and `thumbOffset = (0.5 − percent/100) × 16px` keeps it centred over the native thumb at both
+  ends. Badge styled with the existing `brand-700` token (matches the slider's `accent-brand-700`),
+  a CSS rotated-square arrow, `tabular-nums`, and a short `transition-[left]`. Added
+  `aria-valuetext` on the input so screen readers announce `$52` / `$100+` instead of the raw
+  number. No behaviour/logic change to filtering; `filters.js` untouched.
+
+**Assumptions made (ambiguous, flagged for review):**
+- Native range-thumb width assumed ≈16px for the centring offset. Browsers vary ~14–18px; the
+  badge is centre-anchored so the residual error is sub-pixel visually. Not overridable without a
+  custom-styled thumb (out of scope).
+- Label at the cap shows `$100+` (open-ended), consistent with the existing track label and
+  `describeActiveFilters` chip wording. Currency symbol stays `$` — the unresolved VND/`[ASK] #10`
+  decision lives in `lib/format.js`; this badge deliberately does not introduce a second currency
+  source (it builds the string from `MAX_COST_CAP`, no new symbol inlined).
+
+**Validation actually run:**
+- `npm run build` — passed (Vite 8.2.2, 1671 modules, no errors/warnings).
+- `npm test` — 4 files / 15 tests passed (no test covers `CatalogueFilters`; none added this pass).
+- Vite dev-server HMR applied the change cleanly; not yet manually eyeballed in a browser.
+
+**Left out of scope:** No new component test for the badge/offset maths. No change to the
+mock-data catalogue, `filters.js`, currency handling, or the disabled "Available to Me" radio.
