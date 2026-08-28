@@ -62,7 +62,7 @@ function UnitCostSlider({ cost, onCostChange }) {
  * Catalogue filter panel — category, availability and a unit-cost ceiling, exactly the three
  * groups on the approved wireframe.
  */
-export default function CatalogueFilters({ categories, value, onChange }) {
+export default function CatalogueFilters({ categories, suppliers, value, onChange }) {
   const allSelected = value.categoryIds.length === 0
 
   function toggleCategory(categoryId) {
@@ -100,6 +100,24 @@ export default function CatalogueFilters({ categories, value, onChange }) {
             </label>
           ))}
         </div>
+      </FieldSet>
+
+      <hr className="border-surface-border" />
+
+      <FieldSet legend="Supplier">
+        <select
+          aria-label="Supplier"
+          value={value.supplierId}
+          onChange={(e) => onChange({ ...value, supplierId: e.target.value })}
+          className="w-full rounded-md border border-surface-border bg-surface-card px-3 py-2 text-sm text-ink"
+        >
+          <option value="">All suppliers</option>
+          {suppliers.map((supplier) => (
+            <option key={supplier.supplierId} value={supplier.supplierId}>
+              {supplier.name}
+            </option>
+          ))}
+        </select>
       </FieldSet>
 
       <hr className="border-surface-border" />

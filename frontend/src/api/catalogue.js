@@ -12,8 +12,11 @@ export async function getCategories() {
   return (await client.get('/categories')).data
 }
 
-export async function getItems() {
-  const { data } = await client.get('/items', { params: { pageSize: 500 } })
+export async function getItems({ supplierId } = {}) {
+  const params = { pageSize: 500 }
+  if (supplierId) params.supplierId = supplierId
+
+  const { data } = await client.get('/items', { params })
   return data.items
 }
 

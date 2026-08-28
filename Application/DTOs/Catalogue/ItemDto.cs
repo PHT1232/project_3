@@ -12,4 +12,5 @@ public sealed record ItemDto(
     int MinRankLevelToRequest,
     bool IsActive,
     int? SupplierId,
+    string? SupplierName,
     Guid RowVersion);

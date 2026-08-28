@@ -169,3 +169,28 @@ real data.
    `ConnectionStrings__DefaultConnection` env var pointing at `.\SQLEXPRESS` instead. Either
    install LocalDB team-wide or change the checked-in dev default — a team decision, deliberately
    not made unilaterally.
+
+## Supplier filtering update — 2026-08-28
+
+`StationeryItem` already had the nullable preferred-supplier FK, but the browse contract did not
+use it. This update adds optional `supplierId` filtering to `GET /api/v1/items`.
+
+- `ItemQueryParameters` carries the optional supplier ID.
+- `CatalogueController` model-binds `supplierId` and sends it to the application query path.
+- `ItemQueries` applies `StationeryItem.SupplierId == supplierId` before paging and returns
+  `supplierName` alongside `supplierId` in `ItemDto`.
+- The public catalogue derives its supplier selector only from supplier names already present in
+  returned catalogue items. It does not call the manager-only `/api/v1/suppliers` endpoint.
+- Item Management has an **All suppliers** selector and sends `supplierId` to the server. Its
+  create/edit supplier selector remains unchanged.
+
+No EF migration is required: `StationeryItems.SupplierId` already exists. Supplier filtering only
+includes items explicitly linked to the selected supplier; items without a preferred supplier are
+shown only under **All suppliers**.
+
+Validation after this update:
+
+- `dotnet test Tests/WebApi.IntegrationTests/WebApi.IntegrationTests.csproj --filter FullyQualifiedName~CatalogueTests` — **4/4 passed**.
+- `cd frontend && npm run build` — passed.
+- Existing warning remains: `SQLitePCLRaw.lib.e_sqlite3` `2.1.11` has advisory `NU1903`; unrelated
+  to this change.

@@ -20,6 +20,17 @@ public static class CatalogueTestData
         return (category, supplier);
     }
 
+    public static async Task<Supplier> SeedSupplierAsync(IServiceProvider services, string name)
+    {
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DataContext>();
+
+        var supplier = new Supplier { Name = name, LeadTimeDays = 5, IsActive = true };
+        db.Suppliers.Add(supplier);
+        await db.SaveChangesAsync();
+        return supplier;
+    }
+
     public static async Task<StationeryItem> SeedItemAsync(
         IServiceProvider services, int categoryId, int? supplierId, int minRankLevelToRequest, int quantityAvailable = 50, int reorderLevel = 10)
     {

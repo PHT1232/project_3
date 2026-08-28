@@ -52,7 +52,7 @@ public class ItemServiceTests
             .Setup(r => r.AddAsync(It.IsAny<StationeryItem>()))
             .ReturnsAsync((StationeryItem item) => { item.Id = 42; return item; });
 
-        var expectedDto = new ItemDto(42, "Stapler", 1, "Office", "Each", 4.50m, 0, 10, 1, true, null, Guid.NewGuid());
+        var expectedDto = new ItemDto(42, "Stapler", 1, "Office", "Each", 4.50m, 0, 10, 1, true, null, null, Guid.NewGuid());
         queries.Setup(q => q.GetByIdUnfilteredAsync(42)).ReturnsAsync(expectedDto);
 
         var sut = CreateSut(repository, queries);

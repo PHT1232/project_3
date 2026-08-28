@@ -613,3 +613,28 @@ cascade. Applied to the live `.\SQLEXPRESS` database.
 - The Plan document was not edited to reflect this feature; that is a Project Leader decision.
 - The toolbar *Adjust Stock* button still acts on `visibleRows[0]` rather than the selection —
   pre-existing behaviour, left untouched.
+
+## 2026-08-28 — Add catalogue item filtering by supplier
+
+**Task:** Fix the missing supplier filter for catalogue and item management. `StationeryItem.SupplierId` existed, but `GET /api/v1/items` and the catalogue UI did not expose it as a filter.
+
+**What changed, by file:**
+- `Application/DTOs/Catalogue/ItemQueryParameters.cs` — added optional `SupplierId` query criteria.
+- `Application/DTOs/Catalogue/ItemDto.cs` — added nullable `SupplierName` so authenticated requestors can label filter choices without calling the manager-only suppliers endpoint.
+- `Infrastructure/Queries/ItemQueries.cs` — filters by `SupplierId` before count/page projection; projects optional supplier name for all item reads.
+- `WebApi/Controllers/CatalogueController.cs` — binds optional `supplierId` on `GET /api/v1/items`.
+- `frontend/src/api/catalogue.js` — `getItems` optionally sends `supplierId`.
+- `frontend/src/pages/catalogue/{CataloguePage.jsx,filters.js,components/CatalogueFilters.jsx}` — derives supplier choices from loaded item supplier data; adds selector, local filter logic, and active-filter chip.
+- `frontend/src/pages/manager/ItemManagement.jsx` — adds an All suppliers selector that reloads items with the selected server-side supplier filter.
+- `Tests/WebApi.IntegrationTests/{CatalogueTests.cs,CatalogueTestData.cs}` and `Tests/Application.UnitTests/Catalogue/ItemServiceTests.cs` — added backend supplier-filter coverage and updated `ItemDto` construction.
+- `docs/development/catalogue-inventory-implementation-handoff.md` — documented contract, behavior, no-migration rationale, and validation.
+
+**API change:** `GET /api/v1/items?supplierId={id}` returns only catalogue items whose preferred `SupplierId` matches the supplied ID. The response now includes nullable `supplierName`.
+
+**DB change:** None. `StationeryItems.SupplierId` already exists in migration `CatalogueSuppliersAndStock`.
+
+**Assumption:** A supplier filter means the item's preferred supplier only. Items without a preferred supplier appear under All suppliers, never under a specific supplier. This matches the current single nullable `SupplierId` data model; multiple suppliers per item are NOT SPECIFIED and not implemented.
+
+**Validation actually run:** `dotnet test Tests/WebApi.IntegrationTests/WebApi.IntegrationTests.csproj --filter FullyQualifiedName~CatalogueTests` passed 4/4. `cd frontend && npm run build` passed. Existing unrelated `NU1903` advisory for `SQLitePCLRaw.lib.e_sqlite3` remained.
+
+**Left out of scope:** No migration, no supplier-to-item many-to-many relationship, no public supplier directory endpoint, no manual browser test.

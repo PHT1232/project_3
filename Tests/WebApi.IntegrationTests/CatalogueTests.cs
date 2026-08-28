@@ -45,6 +45,26 @@ public class CatalogueTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetItems_FilteredBySupplier_ReturnsOnlyMatchingItems()
+    {
+        var (category, firstSupplier) = await CatalogueTestData.SeedCategoryAndSupplierAsync(_factory.Services);
+        var secondSupplier = await CatalogueTestData.SeedSupplierAsync(_factory.Services, "Second Test Supplier");
+        var matchingItem = await CatalogueTestData.SeedItemAsync(_factory.Services, category.Id, firstSupplier.Id, minRankLevelToRequest: 1);
+        await CatalogueTestData.SeedItemAsync(_factory.Services, category.Id, secondSupplier.Id, minRankLevelToRequest: 1);
+
+        var client = await AuthedClientAsync(302, "Password1!");
+        var response = await client.GetAsync($"/api/v1/items?supplierId={firstSupplier.Id}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var items = body.GetProperty("items").EnumerateArray().ToList();
+        items.Should().ContainSingle();
+        items[0].GetProperty("itemId").GetInt32().Should().Be(matchingItem.Id);
+        items[0].GetProperty("supplierId").GetInt32().Should().Be(firstSupplier.Id);
+        items[0].GetProperty("supplierName").GetString().Should().Be(firstSupplier.Name);
+    }
+
+    [Fact]
     public async Task Manager_CanCreateItem()
     {
         var (category, _) = await CatalogueTestData.SeedCategoryAndSupplierAsync(_factory.Services);

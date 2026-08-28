@@ -203,18 +203,19 @@ function ItemFormModal({ open, onClose, onSubmit, item, categories, suppliers, e
 }
 
 export default function ItemManagement() {
+  const [supplierFilter, setSupplierFilter] = useState('')
   const [formState, setFormState] = useState({ open: false, item: null, error: null })
   const [deactivateTarget, setDeactivateTarget] = useState(null)
   const [deactivateError, setDeactivateError] = useState(null)
 
   const { data, error, loading, reload } = useAsync(
     () =>
-      Promise.all([getItems(), getCategories(), getSuppliers()]).then(([items, categories, suppliersPage]) => ({
+      Promise.all([getItems({ supplierId: supplierFilter }), getCategories(), getSuppliers()]).then(([items, categories, suppliersPage]) => ({
         items,
         categories,
         suppliers: suppliersPage.items,
       })),
-    [],
+    [supplierFilter],
   )
 
   const items = data?.items ?? []
@@ -272,6 +273,24 @@ export default function ItemManagement() {
       />
 
       <Card>
+        <div className="border-b border-surface-border px-4 py-3">
+          <label htmlFor="item-filter-supplier" className="sr-only">
+            Filter by supplier
+          </label>
+          <select
+            id="item-filter-supplier"
+            value={supplierFilter}
+            onChange={(e) => setSupplierFilter(e.target.value)}
+            className="w-full max-w-xs rounded-md border border-surface-border bg-surface-card px-3 py-2 text-sm text-ink"
+          >
+            <option value="">All suppliers</option>
+            {suppliers.map((supplier) => (
+              <option key={supplier.supplierId} value={supplier.supplierId}>
+                {supplier.name}
+              </option>
+            ))}
+          </select>
+        </div>
         {loading && <LoadingState label="Loading items…" />}
         {!loading && error && <ErrorState error={error} onRetry={reload} />}
         {!loading && !error && items.length === 0 && (

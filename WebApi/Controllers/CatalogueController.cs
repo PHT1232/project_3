@@ -28,10 +28,11 @@ public class CatalogueController(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         [FromQuery] int? categoryId = null,
+        [FromQuery] int? supplierId = null,
         [FromQuery] string? searchTerm = null,
         [FromQuery] bool includeInactive = false)
     {
-        var parameters = new ItemQueryParameters(page, pageSize, categoryId, searchTerm, includeInactive);
+        var parameters = new ItemQueryParameters(page, pageSize, categoryId, supplierId, searchTerm, includeInactive);
         var result = await itemService.GetItemsAsync(parameters, currentUserService.RankLevel ?? 0);
         return Ok(result);
     }

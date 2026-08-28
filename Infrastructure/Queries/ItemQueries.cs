@@ -20,6 +20,11 @@ public class ItemQueries(DataContext db) : IItemQueries
             query = query.Where(i => i.CategoryId == categoryId);
         }
 
+        if (parameters.SupplierId is { } supplierId)
+        {
+            query = query.Where(i => i.SupplierId == supplierId);
+        }
+
         if (!string.IsNullOrWhiteSpace(parameters.SearchTerm))
         {
             var term = parameters.SearchTerm.Trim();
@@ -34,7 +39,8 @@ public class ItemQueries(DataContext db) : IItemQueries
             .Take(parameters.PageSize)
             .Select(i => new ItemDto(
                 i.Id, i.ItemName, i.CategoryId, i.Category!.Name, i.UnitOfMeasure, i.UnitCost,
-                i.QuantityAvailable, i.ReorderLevel, i.MinRankLevelToRequest, i.IsActive, i.SupplierId, i.RowVersion))
+                i.QuantityAvailable, i.ReorderLevel, i.MinRankLevelToRequest, i.IsActive, i.SupplierId,
+                i.Supplier == null ? null : i.Supplier.Name, i.RowVersion))
             .ToListAsync();
 
         return new PagedResult<ItemDto>(items, parameters.Page, parameters.PageSize, totalCount);
@@ -45,7 +51,8 @@ public class ItemQueries(DataContext db) : IItemQueries
             .Where(i => i.Id == itemId && i.IsActive && i.MinRankLevelToRequest <= callerRankLevel)
             .Select(i => new ItemDto(
                 i.Id, i.ItemName, i.CategoryId, i.Category!.Name, i.UnitOfMeasure, i.UnitCost,
-                i.QuantityAvailable, i.ReorderLevel, i.MinRankLevelToRequest, i.IsActive, i.SupplierId, i.RowVersion))
+                i.QuantityAvailable, i.ReorderLevel, i.MinRankLevelToRequest, i.IsActive, i.SupplierId,
+                i.Supplier == null ? null : i.Supplier.Name, i.RowVersion))
             .FirstOrDefaultAsync();
 
     public Task<ItemDto?> GetByIdUnfilteredAsync(int itemId) =>
@@ -53,7 +60,8 @@ public class ItemQueries(DataContext db) : IItemQueries
             .Where(i => i.Id == itemId)
             .Select(i => new ItemDto(
                 i.Id, i.ItemName, i.CategoryId, i.Category!.Name, i.UnitOfMeasure, i.UnitCost,
-                i.QuantityAvailable, i.ReorderLevel, i.MinRankLevelToRequest, i.IsActive, i.SupplierId, i.RowVersion))
+                i.QuantityAvailable, i.ReorderLevel, i.MinRankLevelToRequest, i.IsActive, i.SupplierId,
+                i.Supplier == null ? null : i.Supplier.Name, i.RowVersion))
             .FirstOrDefaultAsync();
 
     public Task<bool> CategoryExistsAsync(int categoryId) =>

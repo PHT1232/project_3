@@ -5,6 +5,7 @@ export const MAX_COST_CAP = 100
 
 export const DEFAULT_FILTERS = {
   categoryIds: [],
+  supplierId: '',
   availability: 'ALL',
   maxUnitCost: MAX_COST_CAP,
 }
@@ -12,6 +13,7 @@ export const DEFAULT_FILTERS = {
 export function isDefaultFilters(filters) {
   return (
     filters.categoryIds.length === 0 &&
+    !filters.supplierId &&
     filters.availability === 'ALL' &&
     filters.maxUnitCost === MAX_COST_CAP
   )
@@ -28,6 +30,9 @@ export function applyCatalogueFilters(items, filters, searchTerm) {
     if (filters.categoryIds.length > 0 && !filters.categoryIds.includes(item.categoryId)) {
       return false
     }
+    if (filters.supplierId && item.supplierId !== Number(filters.supplierId)) {
+      return false
+    }
     if (filters.availability === 'IN_STOCK' && getAvailability(item) === AVAILABILITY.OUT_OF_STOCK) {
       return false
     }
@@ -42,7 +47,7 @@ export function applyCatalogueFilters(items, filters, searchTerm) {
 }
 
 /** Chips shown in the "Active Filters" row. */
-export function describeActiveFilters(filters, categories) {
+export function describeActiveFilters(filters, categories, suppliers) {
   const chips = []
 
   for (const categoryId of filters.categoryIds) {
@@ -55,6 +60,17 @@ export function describeActiveFilters(filters, categories) {
           ...current,
           categoryIds: current.categoryIds.filter((id) => id !== categoryId),
         }),
+      })
+    }
+  }
+
+  if (filters.supplierId) {
+    const supplier = suppliers.find((s) => s.supplierId === Number(filters.supplierId))
+    if (supplier) {
+      chips.push({
+        key: 'supplier',
+        label: supplier.name,
+        clear: (current) => ({ ...current, supplierId: '' }),
       })
     }
   }
