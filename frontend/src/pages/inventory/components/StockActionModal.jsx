@@ -8,13 +8,10 @@ import { adjustStock, receiveGoods } from '../../../api/inventory.js'
 /**
  * Adjust Stock / Receive Goods dialog.
  *
- * Fields mirror the documented request bodies in `src/api/inventory.js`:
- *   adjust  → { changeQuantity, reason }   — reason is REQUIRED (Plan §4.2)
- *   receive → { quantity, reference }
- *
- * Submission goes through the service layer, which currently rejects because the endpoints do
- * not exist yet. The failure is surfaced honestly instead of showing a fake success. When M3
- * ships the endpoints, only `src/api/inventory.js` changes.
+ * `rowVersion` comes from the InventoryRowDto the page last loaded — required so the server can
+ * detect a stale edit (m2 plan §4.5) and return 409 instead of silently overwriting a concurrent
+ * change. A stale-version conflict surfaces here as a normal error; the user just reopens the
+ * modal (which reloads the page's data) and retries.
  */
 const CONFIG = {
   adjust: {
@@ -22,21 +19,23 @@ const CONFIG = {
     submitLabel: 'Apply adjustment',
     quantityLabel: 'Change in quantity',
     quantityHint: 'Use a negative number to reduce stock.',
-    submit: adjustStock,
+    showReason: true,
+    showReference: false,
   },
   receive: {
     title: 'Receive Goods',
     submitLabel: 'Receive goods',
     quantityLabel: 'Quantity received',
     quantityHint: 'Quantity delivered by the supplier.',
-    submit: receiveGoods,
+    showReason: false,
+    showReference: true,
   },
 }
 
 const inputClass =
   'mt-1 h-10 w-full rounded-md border border-surface-border bg-surface-card px-3 text-sm text-ink placeholder:text-ink-subtle'
 
-export default function StockActionModal({ mode, item, onClose }) {
+export default function StockActionModal({ mode, item, onClose, onSuccess }) {
   const [quantity, setQuantity] = useState('')
   const [reason, setReason] = useState('')
   const [error, setError] = useState(null)
@@ -57,7 +56,7 @@ export default function StockActionModal({ mode, item, onClose }) {
     quantity !== '' &&
     Number.isFinite(quantityValue) &&
     (mode === 'adjust' ? quantityValue !== 0 : quantityValue > 0)
-  const reasonValid = mode !== 'adjust' || reason.trim().length > 0
+  const reasonValid = !config.showReason || reason.trim().length > 0
   const canSubmit = quantityValid && reasonValid && !submitting
 
   async function handleSubmit(event) {
@@ -65,10 +64,23 @@ export default function StockActionModal({ mode, item, onClose }) {
     setSubmitting(true)
     setError(null)
     try {
-      await config.submit(item.itemId, { quantity: quantityValue, reason: reason.trim() })
+      if (mode === 'adjust') {
+        await adjustStock(item.itemId, {
+          changeQuantity: quantityValue,
+          reason: reason.trim(),
+          rowVersion: item.rowVersion,
+        })
+      } else {
+        await receiveGoods(item.itemId, {
+          quantity: quantityValue,
+          reference: reason.trim() || null,
+          rowVersion: item.rowVersion,
+        })
+      }
+      onSuccess?.()
       onClose()
     } catch (err) {
-      setError(err)
+      setError(err.response?.data?.detail ?? err.message ?? 'Something went wrong.')
     } finally {
       setSubmitting(false)
     }
@@ -94,7 +106,6 @@ export default function StockActionModal({ mode, item, onClose }) {
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Item</p>
           <p className="mt-1 text-sm font-semibold text-ink">{item.itemName}</p>
-          <p className="font-mono text-xs text-ink-muted">{item.sku}</p>
         </div>
 
         <div>
@@ -112,7 +123,7 @@ export default function StockActionModal({ mode, item, onClose }) {
           <p className="mt-1 text-xs text-ink-muted">{config.quantityHint}</p>
         </div>
 
-        {mode === 'adjust' && (
+        {config.showReason && (
           <div>
             <label htmlFor="stock-reason" className="text-sm font-medium text-ink">
               Reason <span className="text-status-danger">*</span>
@@ -128,10 +139,26 @@ export default function StockActionModal({ mode, item, onClose }) {
           </div>
         )}
 
+        {config.showReference && (
+          <div>
+            <label htmlFor="stock-reference" className="text-sm font-medium text-ink">
+              Reference (optional)
+            </label>
+            <input
+              id="stock-reference"
+              type="text"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="PO number or delivery note"
+              className={inputClass}
+            />
+          </div>
+        )}
+
         {error && (
           <div className="flex gap-2 rounded-md bg-status-dangerBg px-3 py-2 text-sm text-status-danger">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-            <p>{error.message}</p>
+            <p>{error}</p>
           </div>
         )}
       </form>

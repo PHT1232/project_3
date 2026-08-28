@@ -163,6 +163,7 @@ export default function InventoryPage() {
         mode={action.mode}
         item={action.item}
         onClose={() => setAction({ mode: null, item: null })}
+        onSuccess={reload}
       />
     </>
   )
