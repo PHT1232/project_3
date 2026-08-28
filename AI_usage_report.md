@@ -148,6 +148,21 @@ via the SQLite-in-memory integration tests and `dotnet ef migrations has-pending
   environment. The migration is generated and reviewed but unexecuted outside tests.
 - `RoleThresholds` (spend-limit table) was not created — out of scope for auth/user management.
 - The `Grade` and `Location` columns exist on `ApplicationUser` and round-trip through the API/UI,
+
+## 2026-08-28 — Add required-reading checklist to Identity handoff
+
+**Task:** Add an explicit list of files and constraints that another agent must read before changing authentication or user management.
+
+**What changed:**
+- `docs/development/identity-and-user-management-implementation-plan.md` — added a required-reading checklist covering project authority documents, Application services/contracts, Infrastructure Identity and persistence code, Web API integration, frontend auth/user-management files, and CI/deployment files.
+- Added boundary reminders: full ASP.NET Core Identity remains selected; use cases stay in `Application`; Identity, EF Core, SQL Server, and JWT implementations stay in `Infrastructure`; database schema changes use new EF Core migrations; secrets must not be committed.
+- `AI_usage_report.md` — appended this documentation-only record.
+
+**APIs and DB changes:** None.
+
+**Tests actually executed:** None; documentation-only change.
+
+**Assumptions and exclusions:** No architecture decision was changed and no source code, migration, credentials, CI configuration, or deployment configuration was modified.
   but their Plan-sanctioned status is still open per K5/K8 in `CLAUDE.md`.
 - K8 (Identity-vs-custom-auth) is logged as **closed** in `CLAUDE.md` §6 with the user's 2026-08-27
   sign-off, but the Plan document itself (`__ai_agents/Stationery_Management_System_Project_Plan.md`)
@@ -201,3 +216,132 @@ range slider thumb on the catalogue filter panel, so the exact numeric ceiling (
 
 **Left out of scope:** No new component test for the badge/offset maths. No change to the
 mock-data catalogue, `filters.js`, currency handling, or the disabled "Available to Me" radio.
+
+## 2026-08-28 — M2 Catalogue, Suppliers & Stock Ledger implementation plan
+
+**Task:** Create a detailed implementation plan for Milestone 2 (Catalogue, Suppliers & Stock Ledger) per Plan §6.1 and §7 M2, covering Core entities, Application services/DTOs/validators, Infrastructure EF Core entities/configurations/migration/queries/StockService, WebApi controllers, Frontend pages (Catalogue, Manager Item/Supplier management, Inventory), API client swap from mocks, and tests.
+
+**What changed, by file:**
+- `docs/development/m2-catalogue-suppliers-stock-implementation-plan.md` — created the comprehensive implementation plan document with 15 sections: architecture decision, database schema, Application layer (DTOs, interfaces, validators, services), Infrastructure layer (EF entities, DbContext, repositories, queries, StockService, seeder), WebApi controllers and authorization, Frontend integration (pages, API client updates), tests (unit, integration, frontend), delivery steps (10 commits), Git strategy (two branches, rebase rule), risks & mitigations, Definition of Done, open questions, documentation updates, and hour estimates matching Plan §6.1.
+
+**Architecture decisions recorded:**
+- Full Clean Architecture separation: Core entities/interfaces, Application use-cases, Infrastructure EF/SQL/Identity, WebApi HTTP.
+- Stock is a ledger: `StockTransactions` append-only, `QuantityAvailable` cached balance updated in same transaction.
+- Role filtering on catalogue: `MinRankLevelToRequest <= caller.RankLevel` (Engineer=1, Manager=2, Business Manager=3, MD=4), isolated in one query filter.
+- Concurrency via `RowVersion` on `StationeryItem`, `Supplier`, `StockTransaction`.
+- Catalogue write, Suppliers, Inventory require `RequireManager` policy (RankLevel ≥ 2).
+- Two git branches: `feat/M2-catalogue` (M2) and `feat/M2-inventory` (M3), M3 rebases onto M2 before PR to resolve shared migration once.
+
+**Open questions flagged for instructor/team ([ASK]):**
+1. Role filter rule: `<=` (default) vs `==` — Plan ambiguous.
+2. SKU field: Frontend mock has it, Plan lists as future improvement → omit for now.
+3. Supplier lead time unit: assumed days (integer).
+4. Opening stock balance: seed via `StockTransaction` type `Receipt` with `Reference = "OPENING"`.
+
+**Validation actually run:** None; documentation-only planning task.
+
+**Left out of scope:** No code implemented, no migration created, no API endpoints built, no frontend components written, no tests written. This is a plan document only.
+
+## 2026-08-28 — Implement M2: Catalogue, Suppliers & Stock Ledger
+
+**Task:** Execute `docs/development/m2-catalogue-suppliers-stock-implementation-plan.md` end to
+end, following the plan's own §11 fixes made in an earlier review pass (Guid RowVersion instead
+of SQL Server rowversion, FK to ApplicationUser instead of the legacy Users table, real
+ICurrentUserService instead of a stub). User asked for the full plan executed with a commit per
+delivery step, same working style as the M1 identity/user-management implementation.
+
+**What changed, by file (grouped by delivery step / commit):**
+- **Core entities** — `Core/Entities/{Category,Supplier,StationeryItem,StockTransaction,StockTransactionType}.cs`.
+- **Application DTOs/interfaces/validators** — `Application/DTOs/{Catalogue,Suppliers,Inventory}/*`,
+  `Application/Interfaces/{Catalogue,Suppliers,Inventory}/*`,
+  `Application/Validators/{Catalogue,Suppliers,Inventory}/*`. Hoisted
+  `Application.DTOs.Users.PagedResult<T>` to `Application.DTOs.Common.PagedResult<T>` so the new
+  domains could reuse it (updated `IUserManagementService`, `IUserStore`,
+  `UserManagementService`, `UsersController`, `IdentityUserStore` accordingly).
+- **Application services** — `Application/Services/{Catalogue,Suppliers,Inventory}/*Service.cs`.
+- **Infrastructure EF configs + migration** — `Infrastructure/Data/Configurations/{Category,
+  Supplier,StationeryItem,StockTransaction}Configuration.cs`, `DbSet`s added to
+  `Infrastructure/DataContext.cs`, migration `20260828131329_CatalogueSuppliersAndStock`.
+- **Infrastructure queries + StockService** — `Infrastructure/Queries/{Item,Supplier,Inventory,
+  Stock}Queries.cs`, `Infrastructure/Services/StockService.cs`. No dedicated repository classes
+  were needed — the existing generic `IRepository<T>`/`Repository<T>` already covers
+  `Category`/`Supplier`/`StationeryItem`.
+- **Seeder** — `Infrastructure/Data/DbSeeder.cs` gained `SeedCatalogueAndInventoryAsync` (5
+  categories, 6 suppliers, 40 items, ~90 days of synthetic ledger history per item) and
+  `SeedBootstrapAdminAsync` (see below). Wired into `WebApi/Program.cs`'s existing
+  `if (!IsEnvironment("Testing"))` startup block, after role seeding.
+- **WebApi controllers** — `WebApi/Controllers/{Catalogue,ManagerCatalogue,Suppliers,Inventory}Controller.cs`,
+  DI registrations in `WebApi/Program.cs`.
+- **Frontend** — `frontend/src/api/{catalogue,suppliers,inventory}.js` now call the real API
+  (mock files `catalogue.mock.js`/`inventory.mock.js` deleted); `frontend/src/pages/manager/
+  {ItemManagement,SupplierManagement}.jsx` (new, replacing the `Suppliers.jsx` placeholder);
+  `StockActionModal.jsx` updated to send the fields the backend actually expects plus
+  `rowVersion`; routes/nav updated so Inventory, Suppliers, Item Management, and User Management
+  are all gated behind `requireManager` (Inventory previously had no route guard at all).
+- **Tests** — `Tests/Application.UnitTests/{Catalogue,Suppliers}/*ServiceTests.cs` (9 tests),
+  `Tests/WebApi.IntegrationTests/{Catalogue,Inventory,Suppliers}Tests.cs` plus
+  `CatalogueTestData.cs` helper (8 tests), `frontend/src/pages/manager/*.test.jsx` (7 tests).
+
+**APIs added:** `GET /api/v1/categories`, `GET/POST /api/v1/items`, `GET/PUT/PATCH
+/api/v1/items/{id}[/deactivate]`, `POST/PUT/PATCH /api/v1/categories[/{id}][/deactivate]`,
+`GET/POST/PUT/PATCH /api/v1/suppliers[/{id}][/deactivate]`, `GET /api/v1/inventory`,
+`GET /api/v1/inventory/low-stock`, `POST /api/v1/inventory/{itemId}/adjust`,
+`POST /api/v1/inventory/{itemId}/receive`, `GET /api/v1/inventory/{itemId}/transactions`.
+
+**DB changes:** One migration (`CatalogueSuppliersAndStock`) — `Categories`, `Suppliers`,
+`StationeryItems`, `StockTransactions` tables, `StockTransactions.CreatedByEmployeeNumber` FK
+correctly targets `AspNetUsers` (verified in the generated migration, not just assumed). Not
+applied to a real SQL Server — none available in this environment; verified via SQLite
+integration tests and `dotnet ef migrations has-pending-model-changes` (none pending).
+
+**Deviations from the plan doc, found necessary during implementation (beyond the ones already
+fixed in the plan-review pass):**
+1. **Request/response DTOs carry `Guid RowVersion`.** The plan approved an app-managed
+   concurrency token but never specified how the client round-trips it; without that, there's
+   nothing to compare against for a 409. Added to `ItemDto`, `SupplierDto`, `InventoryRowDto`,
+   `UpdateItemRequest`, `UpdateSupplierRequest`, `AdjustStockRequest`, `ReceiveGoodsRequest`.
+2. **Concurrency is a manual compare-then-set, not `DbUpdateConcurrencyException`.** Simpler and
+   fully portable between SQL Server and the SQLite test provider — see `StockService.ApplyAsync`
+   and the `ItemService`/`SupplierService` update paths.
+3. **`Category.IsActive` and `StationeryItem.SupplierId` added** — the plan's §2.1 entity table
+   omitted both, but §3.2's `DeactivateCategoryAsync` and §3.4's "409 if active items reference
+   it" check need them.
+4. **A bootstrap admin account.** M1 deliberately seeds zero users, but M2's seeded
+   `StockTransaction` rows need a real `CreatedByEmployeeNumber`, and with zero users there was
+   also no way to sign in and create the first real user (`POST /api/v1/users` is
+   Manager+-only). Added `DbSeeder.SeedBootstrapAdminAsync` — one Managing Director account,
+   password from `Seed:BootstrapAdminPassword` config (never hardcoded, same pattern as
+   `Jwt:SigningKey`).
+5. **Inventory status thresholds are a simple heuristic**, not the consumption-rate/lead-time
+   model the frontend mock's own comment described (that's explicitly M5 AI territory):
+   `REORDER_NOW` at `QuantityAvailable <= ReorderLevel`, `WATCH` at `<= ReorderLevel * 1.5`, `OK`
+   otherwise. Documented in `IInventoryQueries`' doc comment.
+
+**Tests actually executed:**
+- `dotnet build Project.slnx` — succeeds (only the pre-existing unrelated `SQLitePCLRaw` warning).
+- `dotnet test Project.slnx` — **49/49 passed** (26 unit + 23 integration).
+- `npx vitest run` (frontend) — **22/22 passed**.
+- `npm run build` — succeeds.
+- **Not done:** migration against a real SQL Server (none available), manual browser smoke test.
+  Nobody has clicked through this in a real browser yet — say so rather than claiming it works.
+
+**Explicitly left out of scope:**
+- `[ASK]` #3 (role filter `<=` vs `==`) resolved as `<=` per the plan's stated default; not
+  confirmed with the instructor.
+- `[ASK]` #2 (SKU): not persisted, matching the plan. `InventoryRowDto`/`ItemDto` have no `sku`
+  field; the frontend's SKU column/search now render blank rather than crash.
+- The two-branch git strategy (m2 plan §9) was not followed — flagged in the plan review as
+  likely not applicable to a single-implementer session, and that held here too; all steps landed
+  as sequential commits on `main`.
+- `IStockService.IssueAsync` exists but is not called by any M2 endpoint — reserved for M4's
+  request-fulfillment flow, per the interface's doc comment.
+
+**Shared files touched:** `frontend/src/App.jsx`, `navigation.js`, `Infrastructure/DataContext.cs`,
+`WebApi/Program.cs`, `WebApi/appsettings.json`, `WebApi/appsettings.Development.json`.
+
+**Reviewer follow-ups:**
+- Apply the migration to a real SQL Server and do a manual browser smoke test before merging.
+- Confirm `[ASK]` #3's role-filter direction and the lead-time unit (days, assumed) with the team.
+- Decide whether the bootstrap-admin approach is acceptable long-term, or whether initial user
+  provisioning should work differently (e.g., a setup wizard, a seeded-from-config admin list).
+- Revisit the inventory status thresholds once M5's actual consumption-rate model exists.
