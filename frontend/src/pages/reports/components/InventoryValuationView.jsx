@@ -9,13 +9,13 @@ import { nextSort, applySort } from '../tableSort.js'
  * Report 4 — Inventory Valuation. Point-in-time monetary value of current stock
  * (`quantityAvailable × unitCost` per item). NOT date-range filtered.
  *
- * Data source: `getInventory()` (frontend/src/api/inventory.js) → `{ items, summary }`.
- * Each item is { itemId, itemName, sku, quantityAvailable, reorderLevel, unitCost, status }.
+ * Data source: `getInventory()` (frontend/src/api/inventory.js) → `{ items, summary }`,
+ * the live `GET /api/v1/inventory`. Each item is `InventoryRowDto`
+ * { itemId, itemName, quantityAvailable, reorderLevel, unitCost, status, rowVersion, supplierId?, supplierName? }.
  *
- * DECISION — no Category column. `MOCK_INVENTORY` (inventory.mock.js) has no category
- * field; only the reports mock carries categories. Rather than fabricate categories by
- * parsing item names, this view shows a single "Item" column. Revisit when the real
- * `GET /api/v1/inventory` returns `categoryName`.
+ * DECISION — no Category column. `InventoryRowDto` carries no category field (only the
+ * reports data does). Rather than fabricate categories by parsing item names, this view
+ * shows a single "Item" column. Revisit if `GET /api/v1/inventory` adds `categoryName`.
  *
  * No chart — a valuation ledger is a snapshot, not a trend.
  */

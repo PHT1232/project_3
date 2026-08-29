@@ -96,7 +96,9 @@ Inventory Valuation reuses `GET /api/v1/inventory` (`{ items, summary }`) — no
 - `frontend/src/pages/reports/components/CumulativeCostView.jsx` — "Top Consumed Items This Period" section.
 - `frontend/src/lib/reports.test.js` — +3 cases (`topConsumed`, `buildTeamExpenditure` ×2).
 
-**Untouched (per task):** `reportFilters.js`, `reportFilters.test.js`, `api/mock/inventory.mock.js`, everything outside `pages/reports/` · `lib/` · `api/`.
+**Untouched (per task):** `reportFilters.js`, `reportFilters.test.js`, and everything outside
+`pages/reports/` · `lib/` · `api/`. (`api/mock/inventory.mock.js` and `catalogue.mock.js` were
+later removed by the `origin/main` M2 merge when those pages were wired to the real API — see §9.)
 
 ## 5. Printing
 
@@ -123,9 +125,10 @@ Technologies … — Confidential" line prints at the bottom.
 
 - **No Reports wireframe / Figma access** — layout follows the existing design system
   (Dashboard/Inventory). Needs a visual check by someone with Figma access.
-- **Inventory Valuation has no Category column** — `MOCK_INVENTORY` carries no category and
-  parsing one from the item name would be fabricated data. Single "Item" column instead;
-  revisit when `GET /api/v1/inventory` returns `categoryName`. (Documented in the component.)
+- **Inventory Valuation has no Category column** — `InventoryRowDto` (the live
+  `GET /api/v1/inventory`) carries no category field and parsing one from the item name
+  would be fabricated data. Single "Item" column instead; revisit if the endpoint adds
+  `categoryName`. (Documented in the component.)
 - **Stock-status badge colours** — the brief asks for green/amber/red; the design-system
   `status` tokens are dark/grey/red, so this view uses Tailwind default `emerald/amber/red`
   utilities. Only place in the app that does this.
@@ -145,3 +148,22 @@ Technologies … — Confidential" line prints at the bottom.
 - Confirm the green/amber/red status badge deviation from the `status` design tokens.
 - When the real endpoints land: delete `api/mock/reports.mock.js`, drop the `lib/reports.js`
   import from `api/reports.js`, and (for Inventory Valuation) add the Category column.
+
+## 9. Post-merge with `origin/main` (team M2 work)
+
+Branch `feat/M2-catalogue-cost-badge` merged `origin/main` (`b1e9f35`, the M2 catalogue /
+suppliers / inventory backend + frontend wiring). Conflicts resolved in `App.jsx`,
+`navigation.js`, `AI_usage_report.md` — both sides kept:
+
+- Reports route stays in the `ProtectedRoute requireManager` group (ours); Inventory,
+  Suppliers and the new `/catalogue/manage` Item Management route joined that same group
+  (theirs). Reports nav item keeps `minRankLevel: 2`.
+- The team wired Inventory to the real API and **deleted** `api/mock/inventory.mock.js` /
+  `catalogue.mock.js`. The Inventory Valuation tab already calls `getInventory()` (not a
+  mock import), so it now reads live `GET /api/v1/inventory` data — shape unchanged
+  (`{ items, summary }`, `InventoryRowDto` rows). The four report tabs still use
+  `reports.mock.js`.
+
+Post-merge verification: `npm run build` pass (1692 modules); `npm test` **51 passed** (9
+files — our 3 reports test files + the team's new suites).
+
