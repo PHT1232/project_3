@@ -9,13 +9,13 @@ import InventoryPage from './pages/inventory/InventoryPage.jsx'
 import NotFound from './pages/NotFound.jsx'
 import Login from './pages/Login.jsx'
 import UserManagementPage from './pages/users/UserManagementPage.jsx'
+import ReportsPage from './pages/reports/ReportsPage.jsx'
 
 // Placeholders — owned by other developers (see Plan §6.1 and docs/development/page-map.md)
 import Dashboard from './pages/Dashboard.jsx'
 import NewRequest from './pages/NewRequest.jsx'
 import MyRequests from './pages/MyRequests.jsx'
 import Approvals from './pages/Approvals.jsx'
-import Reports from './pages/Reports.jsx'
 import Suppliers from './pages/Suppliers.jsx'
 import Help from './pages/Help.jsx'
 
@@ -42,11 +42,12 @@ export default function App() {
           <Route path="/new-request" element={<NewRequest />} />
           <Route path="/my-requests" element={<MyRequests />} />
           <Route path="/approvals" element={<Approvals />} />
-          <Route path="/reports" element={<Reports />} />
           <Route path="/inventory" element={<InventoryPage />} />
           <Route path="/suppliers" element={<Suppliers />} />
 
+          {/* Manager+ only (page-map §9 / §12); server-side 403 is the real control. */}
           <Route element={<ProtectedRoute requireManager />}>
+            <Route path="/reports" element={<ReportsPage />} />
             <Route path="/user-management" element={<UserManagementPage />} />
           </Route>
 
