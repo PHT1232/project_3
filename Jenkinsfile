@@ -2,9 +2,13 @@
 // two independent containers on a shared Docker network, rather than the single combined
 // image the root Dockerfile produces.
 //
-// Required Jenkins credentials (Manage Jenkins > Credentials), both "Secret text":
-//   stationeryms-db-connection-string   — SQL Server connection string
-//   stationeryms-jwt-signing-key        — HS256 signing key, 32+ bytes
+// Required Jenkins credentials (Manage Jenkins > Credentials), all "Secret text":
+//   stationeryms-db-connection-string     — SQL Server connection string
+//   stationeryms-jwt-signing-key          — HS256 signing key, 32+ bytes
+//   stationeryms-bootstrap-admin-password — initial password for the seeded MD account
+//     (employee #1); Program.cs throws and the container exits at startup if this is
+//     missing in any non-Testing environment, which looks like a 502 from the outside,
+//     not an auth error — see AI_usage_report.md 2026-08-28 "bootstrap admin".
 pipeline {
     agent any
 
@@ -15,8 +19,9 @@ pipeline {
         DOCKER_NETWORK = 'stationeryms-net'
         BACKEND_CONTAINER  = 'stationeryms-backend'
         FRONTEND_CONTAINER = 'stationeryms-frontend'
-        JWT_SIGNING_KEY       = credentials('stationeryms-jwt-signing-key')
-        DB_CONNECTION_STRING  = credentials('stationeryms-db-connection-string')
+        JWT_SIGNING_KEY           = credentials('stationeryms-jwt-signing-key')
+        DB_CONNECTION_STRING      = credentials('stationeryms-db-connection-string')
+        BOOTSTRAP_ADMIN_PASSWORD  = credentials('stationeryms-bootstrap-admin-password')
     }
 
     stages {
@@ -73,6 +78,7 @@ pipeline {
                         -e ASPNETCORE_ENVIRONMENT=Production \
                         -e ConnectionStrings__DefaultConnection="${DB_CONNECTION_STRING}" \
                         -e Jwt__SigningKey="${JWT_SIGNING_KEY}" \
+                        -e Seed__BootstrapAdminPassword="${BOOTSTRAP_ADMIN_PASSWORD}" \
                         --restart unless-stopped \
                         ${BACKEND_IMAGE}:${IMAGE_TAG}
                 """

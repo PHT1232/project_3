@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "/home/phat/Documents/csharp/Project/Application/Application.csproj": {}
+    "/home/phat/Projects/project_3/Application/Application.csproj": {}
   },
   "projects": {
-    "/home/phat/Documents/csharp/Project/Application/Application.csproj": {
+    "/home/phat/Projects/project_3/Application/Application.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/home/phat/Documents/csharp/Project/Application/Application.csproj",
+        "projectUniqueName": "/home/phat/Projects/project_3/Application/Application.csproj",
         "projectName": "Application",
-        "projectPath": "/home/phat/Documents/csharp/Project/Application/Application.csproj",
+        "projectPath": "/home/phat/Projects/project_3/Application/Application.csproj",
         "packagesPath": "/home/phat/.nuget/packages/",
-        "outputPath": "/home/phat/Documents/csharp/Project/Application/obj/",
+        "outputPath": "/home/phat/Projects/project_3/Application/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "/home/phat/.nuget/NuGet/NuGet.Config"
@@ -26,8 +26,8 @@
           "net10.0": {
             "targetAlias": "net10.0",
             "projectReferences": {
-              "/home/phat/Documents/csharp/Project/Core/Core.csproj": {
-                "projectPath": "/home/phat/Documents/csharp/Project/Core/Core.csproj"
+              "/home/phat/Projects/project_3/Core/Core.csproj": {
+                "projectPath": "/home/phat/Projects/project_3/Core/Core.csproj"
               }
             }
           }
@@ -47,6 +47,12 @@
       "frameworks": {
         "net10.0": {
           "targetAlias": "net10.0",
+          "dependencies": {
+            "FluentValidation": {
+              "target": "Package",
+              "version": "[11.11.0, )"
+            }
+          },
           "imports": [
             "net461",
             "net462",
@@ -63,7 +69,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "/var/snap/dotnet/common/dotnet/sdk/10.0.109/PortableRuntimeIdentifierGraph.json",
+          "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/10.0.111/PortableRuntimeIdentifierGraph.json",
           "packagesToPrune": {
             "Microsoft.CSharp": "(,4.7.32767]",
             "Microsoft.VisualBasic": "(,10.4.32767]",
@@ -341,14 +347,14 @@
         }
       }
     },
-    "/home/phat/Documents/csharp/Project/Core/Core.csproj": {
+    "/home/phat/Projects/project_3/Core/Core.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/home/phat/Documents/csharp/Project/Core/Core.csproj",
+        "projectUniqueName": "/home/phat/Projects/project_3/Core/Core.csproj",
         "projectName": "Core",
-        "projectPath": "/home/phat/Documents/csharp/Project/Core/Core.csproj",
+        "projectPath": "/home/phat/Projects/project_3/Core/Core.csproj",
         "packagesPath": "/home/phat/.nuget/packages/",
-        "outputPath": "/home/phat/Documents/csharp/Project/Core/obj/",
+        "outputPath": "/home/phat/Projects/project_3/Core/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "/home/phat/.nuget/NuGet/NuGet.Config"
@@ -396,7 +402,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "/var/snap/dotnet/common/dotnet/sdk/10.0.109/PortableRuntimeIdentifierGraph.json",
+          "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/10.0.111/PortableRuntimeIdentifierGraph.json",
           "packagesToPrune": {
             "Microsoft.CSharp": "(,4.7.32767]",
             "Microsoft.VisualBasic": "(,10.4.32767]",

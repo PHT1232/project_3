@@ -1,8 +1,15 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using Application.Interfaces.Auth;
+using Application.Interfaces.Catalogue;
+using Application.Interfaces.Inventory;
+using Application.Interfaces.SupplierRequests;
+using Application.Interfaces.Suppliers;
 using Application.Interfaces.Users;
 using Application.Services.Auth;
+using Application.Services.Catalogue;
+using Application.Services.Inventory;
+using Application.Services.Suppliers;
 using Application.Services.Users;
 using Application.Validators.Users;
 using Core.Interfaces;
@@ -10,6 +17,8 @@ using FluentValidation;
 using Infrastructure;
 using Infrastructure.Data;
 using Infrastructure.Identity;
+using Infrastructure.Queries;
+using Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -113,6 +122,19 @@ builder.Services.AddScoped<IPasswordService, IdentityPasswordService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserStore, IdentityUserStore>();
 builder.Services.AddScoped<IUserManagementService, UserManagementService>();
+
+builder.Services.AddScoped<IItemQueries, ItemQueries>();
+builder.Services.AddScoped<IItemService, ItemService>();
+builder.Services.AddScoped<ICategoryService, CategoryService>();
+builder.Services.AddScoped<ISupplierQueries, SupplierQueries>();
+builder.Services.AddScoped<ISupplierService, SupplierService>();
+builder.Services.AddScoped<IInventoryQueries, InventoryQueries>();
+builder.Services.AddScoped<IStockQueries, StockQueries>();
+builder.Services.AddScoped<IStockService, StockService>();
+builder.Services.AddScoped<IInventoryService, InventoryService>();
+builder.Services.AddScoped<ISupplierRequestQueries, SupplierRequestQueries>();
+builder.Services.AddScoped<ISupplierRequestService, SupplierRequestService>();
+
 builder.Services.AddValidatorsFromAssemblyContaining<CreateUserRequestValidator>();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -153,6 +175,18 @@ if (!app.Environment.IsEnvironment("Testing"))
 
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
     await DbSeeder.SeedRolesAsync(roleManager);
+
+    var bootstrapAdminPassword = builder.Configuration["Seed:BootstrapAdminPassword"];
+    if (string.IsNullOrWhiteSpace(bootstrapAdminPassword))
+    {
+        throw new InvalidOperationException(
+            "Seed:BootstrapAdminPassword is not configured. Set it via appsettings.Development.json locally or the Seed__BootstrapAdminPassword environment variable in every other environment.");
+    }
+
+    var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+    var bootstrapAdminId = await DbSeeder.SeedBootstrapAdminAsync(userManager, bootstrapAdminPassword);
+
+    await DbSeeder.SeedCatalogueAndInventoryAsync(dbContext, bootstrapAdminId);
 }
 
 // Enabled in every environment (not just Development) — this is a small internal eProject

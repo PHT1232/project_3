@@ -1,3 +1,4 @@
+using Application.DTOs.Common;
 using Application.DTOs.Users;
 using Application.Exceptions;
 using Application.Interfaces.Users;

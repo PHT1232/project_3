@@ -1,3 +1,4 @@
+using Application.DTOs.Common;
 using Application.DTOs.Users;
 using Application.Interfaces.Auth;
 using Application.Interfaces.Users;

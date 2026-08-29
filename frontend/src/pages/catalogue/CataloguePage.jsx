@@ -23,20 +23,29 @@ export default function CataloguePage() {
   const [panelOpen, setPanelOpen] = useState(true)
 
   const { data, error, loading, reload } = useAsync(
-    () => Promise.all([getItems(), getCategories()]).then(([items, categories]) => ({ items, categories })),
+    () =>
+      Promise.all([getItems(), getCategories()]).then(([items, categories]) => ({
+        items,
+        categories,
+        suppliers: [...new Map(items.filter((item) => item.supplierId && item.supplierName).map((item) => [
+          item.supplierId,
+          { supplierId: item.supplierId, name: item.supplierName },
+        ])).values()],
+      })),
     [],
   )
 
   const items = data?.items ?? []
   const categories = data?.categories ?? []
+  const suppliers = data?.suppliers ?? []
 
   const visibleItems = useMemo(
     () => applyCatalogueFilters(items, filters, searchTerm),
     [items, filters, searchTerm],
   )
   const activeChips = useMemo(
-    () => describeActiveFilters(filters, categories),
-    [filters, categories],
+    () => describeActiveFilters(filters, categories, suppliers),
+    [filters, categories, suppliers],
   )
 
   function clearAll() {
@@ -73,7 +82,7 @@ export default function CataloguePage() {
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
         {panelOpen && (
           <div className="w-full shrink-0 lg:w-64">
-            <CatalogueFilters categories={categories} value={filters} onChange={setFilters} />
+            <CatalogueFilters categories={categories} suppliers={suppliers} value={filters} onChange={setFilters} />
           </div>
         )}
 
