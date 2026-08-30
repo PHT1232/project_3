@@ -638,3 +638,177 @@ cascade. Applied to the live `.\SQLEXPRESS` database.
 **Validation actually run:** `dotnet test Tests/WebApi.IntegrationTests/WebApi.IntegrationTests.csproj --filter FullyQualifiedName~CatalogueTests` passed 4/4. `cd frontend && npm run build` passed. Existing unrelated `NU1903` advisory for `SQLitePCLRaw.lib.e_sqlite3` remained.
 
 **Left out of scope:** No migration, no supplier-to-item many-to-many relationship, no public supplier directory endpoint, no manual browser test.
+
+## 2026-08-28 — Reports page (Manager's cost report) — frontend / UI half
+
+**Tool:** Claude Code (claude-sonnet-5).
+
+**Task:** Build the Reports page (`/reports`, Manager+) in the SPA — the three cost reports
+from Plan §4.2/§5 and page-map §9: Cost by Item (+ % of total), Cost & distinct-requestor
+Headcount, Cumulative Cost over time — with a date-range filter. Backend (`GET /reports/*`,
+M3's SQL work) does not exist, so this follows the established mock-backed frontend pattern
+(`catalogue.js`/`inventory.js`).
+
+**What AI produced, by file:**
+- `frontend/src/lib/reports.js` (new) — pure aggregations: `buildCostByItem`,
+  `buildItemHeadcount`, `buildCumulativeCost`, `distributeTo100` (shares forced to sum to
+  exactly 100.00 as `100 − Σ(others)`, per TC-16), `filterLinesByRange`,
+  `resolveRangeFromPreset`.
+- `frontend/src/lib/reports.test.js` (new) — 10 Vitest cases: 100.00% sum incl. rounding
+  residual, distinct-requestor count (TC-17 analogue), cumulative monotonic + reconciles with
+  the cost-by-item total, inclusive range filter, preset→range resolution.
+- `frontend/src/api/mock/reports.mock.js` (new) — TEMPORARY. Deterministic generator
+  (mulberry32, fixed seed) → 95 approved requests / 178 lines over ~120 days, 15 items with
+  names/costs copied from `catalogue.mock.js`/`inventory.mock.js`. Delete when `GET /reports/*`
+  lands.
+- `frontend/src/api/reports.js` (new) — documents the expected Manager+ / Approved-only /
+  `?fromDate=&toDate=` contract for all three endpoints; mock bodies call the `lib/reports.js`
+  builders so the date picker actually filters. Commented `client.get(...)` lines for go-live.
+- `frontend/src/pages/reports/ReportsPage.jsx` + `components/{ReportTabs, DateRangeControl,
+  CostByItemTable, ItemHeadcountTable, CumulativeCostView}.jsx` (new) — tablist of 3 distinct
+  views, preset + `<input type="date">` range control, per-tab KPI `StatCard` row,
+  loading/error/empty states via the shared `StateBlock`. Cost-by-item has an inline CSS % bar
+  and a footer proving 100.00%; cumulative has a hand-drawn inline-SVG area chart (no charting
+  dependency — Plan marks visualisations P2 and `AI_INSTRUCTIONS.md` §5 bars undiscussed deps).
+- Shared files (additive): `frontend/src/App.jsx` — `/reports` moved into the existing
+  `<ProtectedRoute requireManager>` group + import path; `frontend/src/navigation.js` —
+  `minRankLevel: 2` on the Reports nav item. Deleted the `frontend/src/pages/Reports.jsx`
+  placeholder.
+
+**Developer verification performed this session:**
+- `npm run build` — passed (Vite 8.2.2, 1679 modules, no errors).
+- `npm test` — 5 files / 25 tests passed (15 prior + 10 new).
+- Ran the generator + builders under Node and eyeballed output: top item ≈19.9% down to
+  0.37%, percentages sum to exactly 100, headcount shows distinct requestors < request count
+  (pens: 9 vs 16), cumulative monotonic and reconciles with the cost-by-item total.
+- Dev server (`:5173` fresh + backend `:5263`) serving; `ReportsPage.jsx` transforms cleanly.
+  **Not yet clicked through in a browser by the developer.**
+
+**Assumptions made (ambiguous — flagged, not silently decided):**
+- **No Reports wireframe exists** (`docs/Wireframe/` has 5 PNGs, none for Reports) and the
+  Figma proto link needs edit access the tool does not have. UI built to the established design
+  system (Dashboard/Inventory). Layout may differ from the Figma — needs a check by someone
+  with access.
+- Cumulative granularity assumed **monthly** (Plan doesn't specify).
+- Date-range default assumed **last 90 days** (matches Plan §3.8 seed window).
+- Currency stays `$` via `lib/format.js` — same unresolved VND `[ASK] #10` caveat as every
+  page; not re-decided here.
+
+**Left out of scope:** No backend (`IReportQueries`, controllers, SQL, migration) — that is
+M3's work. No CSV export (Plan P2). No Recharts. No component/render tests for the new page
+(helper logic is covered; the page itself is not). `AI_usage_report.md` not committed.
+
+## 2026-08-28 — Reports page: fix tab-switch crash, add charts, add item search/filter
+
+**Tool:** Claude Code (claude-sonnet-5).
+
+**Task (developer-reported bugs + requests):** (1) white screen when opening the
+Cumulative Cost tab and when switching Cost & Headcount → Cost by Item; (2) add a line
+chart (monthly spend), a pie/donut (spend proportion by item) and a bar chart (most
+requested items); (3) add a search box + Category and Approved-cost dropdown filters above
+the report item list.
+
+**Root cause of the white screen:** `useAsync` keeps the previous tab's payload in `data`
+for one render after a tab switch, before the refetch resolves. The page then rendered a
+cost-by-item table against cumulative data (no `rows`) or a headcount row against the
+cost-by-item view (`percentOfTotal.toFixed` on `undefined`) → `TypeError` → blank screen.
+
+**What AI produced / changed, by file:**
+- `frontend/src/api/reports.js` — each payload now carries `kind` ('COST_BY_ITEM' |
+  'HEADCOUNT' | 'CUMULATIVE').
+- `frontend/src/pages/reports/ReportsPage.jsx` — `report = data && data.kind === tab ? data
+  : null`; every read is gated on `report`, so a mid-switch render shows the loading state
+  instead of throwing. Added filter state + toolbar wiring + a "no items match filters"
+  empty state.
+- `frontend/src/lib/reports.js` — `buildItemHeadcount` rows gain `unitsApproved` (Σ quantity).
+- `frontend/src/pages/reports/reportFilters.js` (new) + `reportFilters.test.js` (new, 7
+  cases) — pure search / category / cost-band filter over report rows.
+- `frontend/src/pages/reports/components/ReportToolbar.jsx` (new) — shared `SearchInput` +
+  Category `<select>` + Approved-cost band `<select>` + "N of M items" + Clear. Shown on the
+  two item-list tabs only.
+- `frontend/src/pages/reports/components/charts/{LineChart,BarChart,DonutChart}.jsx` (new) —
+  inline SVG / HTML, no charting dependency (Plan marks visualisations P2; AI_INSTRUCTIONS
+  §5 bars undiscussed deps). Single-series charts use one brand hue + native `<title>`
+  tooltips; the donut uses a single-hue brand ramp by rank (darkest = largest), caps at 6
+  slices + an "Other" roll-up, and labels identity in the legend text/value — not colour
+  alone. Guidance taken from the `dataviz` skill (form-first, no dual-axis, no cycled hues,
+  legend/table for identity).
+- `CostByItemView.jsx` / `ItemHeadcountView.jsx` (new, replace the `*Table.jsx` files) —
+  chart + table; footer switches to the shown subset when a filter is active, with a note
+  that the `% of Total` column is still each item's share of the full period spend.
+- `CumulativeCostView.jsx` — now two small-multiple line charts (monthly spend; cumulative)
+  plus the table, instead of one hand-rolled area chart.
+
+**Developer verification this session:**
+- `npm run build` — passed (Vite, 1684 modules, no errors).
+- `npm test` — 6 files / 34 tests passed (10 reports-lib + 7 reports-filters + 17 prior).
+- Node run of the real data path: `kind` guard returns `null` for stale cross-tab data;
+  donut input = 15 items → top 6 + Other; bar chart top units = Highlighters 138 / Sticky
+  Notes 134 / A4 122; monthly line = 4 points; category + search filters return expected
+  rows.
+- Fresh dev server (`:5173`) serves every new module; backend `:5263` up. **The rendered
+  page has not been clicked through in a browser by the developer this session.**
+
+**Assumptions (flagged):**
+- Donut interpreted as "share of approved spend by item"; bar chart as "most requested by
+  units approved"; line chart as "approved spend per month" over whatever months the date
+  range covers (a 12-month view is the `12mo` preset). None of these three metrics is
+  spelled out in the Plan — confirm they are what was wanted.
+- Filtering is client-side over the rows the report returned; when a filter is active the
+  donut/bar reflect the filtered subset and the table footer shows the shown subtotal.
+- Still no Reports wireframe / Figma access — chart and toolbar styling follow the existing
+  design system.
+
+**Left out of scope:** full crosshair-tooltip interaction layer on the charts (native SVG
+`<title>` only); dark-mode chart steps (app has no dark mode); CSV export; any backend.
+`AI_usage_report.md` not committed.
+
+## 2026-08-30 — Reports page upgrade: meta bar, CSV/print, sortable columns, 2 new tabs, usage snapshot
+
+**Tool:** Claude Code (claude-sonnet-5).
+
+**Task:** Prescriptive spec (5 groups) to make `/reports` read as a financial report:
+(1) a document-style metadata bar on every tab; (2) Export-CSV + Print buttons; (3) sortable
+columns on the two item tables; (4) two new tabs — Inventory Valuation (point-in-time, reuses
+the inventory API) and By Team (approved spend grouped by approving manager); (5) a "Top
+Consumed Items" section on the Cumulative tab. Frontend only; no backend, no new npm packages.
+
+**What AI produced / changed, by file** — full list in `docs/development/reports-page.md` §4.
+New: `lib/csvExport.js`, `pages/reports/tableSort.js`,
+`pages/reports/components/{SortHeader,ReportMetaBar,InventoryValuationView,TeamExpenditureView}.jsx`.
+Modified: `api/mock/reports.mock.js` (added `MOCK_TEAM_MAP` export **only** — generator, PRNG
+and seed untouched per the brief), `lib/reports.js` (`buildTeamExpenditure`; `buildCumulativeCost`
+now also returns `topConsumed`), `api/reports.js` (`getTeamExpenditureReport` + contract block),
+`ReportsPage.jsx` (2 tabs, inventory branch via a 2nd `useAsync`, Export/Print buttons, meta
+bar, injected `@media print` stylesheet, `ITEM_TABS` set), `CostByItemView.jsx` /
+`ItemHeadcountView.jsx` (sortable), `CumulativeCostView.jsx` (Top Consumed section),
+`lib/reports.test.js` (+3 cases).
+
+**Developer verification this session:**
+- `npm run build` — pass (Vite, no errors/warnings).
+- `npm test` — 37 passed (6 files); `npx vitest run reportFilters` — 8 passed, unchanged.
+- Node harness on the real data path: By-Team 4 teams, shares sum to exactly 100.00, sorted
+  desc; `topConsumed` = top 5 by units; inventory valuation total $5,727.95 / 7 in stock /
+  1 reorder; CSV quoting of `Lever Arch Files, A4, Pack of 5` and embedded `"` verified.
+- Dev server serves every new module; HMR clean. **Not clicked through in a browser by the
+  developer; print output not visually inspected; no render tests for the new views.**
+
+**Assumptions (flagged, not silently decided):**
+- No Reports wireframe / Figma access — styling follows the existing design system.
+- Inventory Valuation has **no Category column** — `MOCK_INVENTORY` carries no category and
+  deriving one from the name would be fabricated; single "Item" column instead (documented in
+  the component and CSV).
+- Stock-status badge uses Tailwind `emerald/amber/red` (the brief's green/amber/red intent);
+  the design-system `status` tokens are dark/grey/red. Only place in the app doing this.
+- `MOCK_TEAM_MAP` team names are invented per the brief; stands in for the
+  `Users.SuperiorEmployeeNumber` join. Unmapped requestors → "Unassigned".
+- `BY_TEAM` KPI tiles (Approved Spend / Teams / Approved Requests) not in the brief — chosen
+  to match the other date-range tabs. `cost-by-team` is not in the Plan §4.2 endpoint
+  catalogue — flagged for the reviewer.
+- CSV for the two item tabs exports the **filtered** rows (what's shown), in report order.
+
+**Left out of scope:** no backend; no CSV for a "current sort order"; no dark-mode chart
+steps; no component/render tests for the new views. Shared frontend files touched: none
+outside `pages/reports/`, `lib/`, `api/` (route/nav were already wired in the prior session).
+`package.json` unchanged; `package-lock.json` shows 30 unrelated deletions from an earlier
+session. Not committed.
