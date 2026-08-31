@@ -951,3 +951,42 @@ steps; no component/render tests for the new views. Shared frontend files touche
 outside `pages/reports/`, `lib/`, `api/` (route/nav were already wired in the prior session).
 `package.json` unchanged; `package-lock.json` shows 30 unrelated deletions from an earlier
 session. Not committed.
+
+## 2026-08-31 — New Request and My Requests Pages (Backend & Frontend)
+
+**Tool:** Antigravity (Gemini 3.7 Flash).
+
+**Task:** Build full backend and frontend implementation for the "New Request" and "My Requests" pages per the project plan and architecture specs.
+
+**What was done, by file:**
+- **Application Layer:**
+  - `Application/Interfaces/Requests/IRequestQueries.cs` — Added optional `statusFilter` parameter to `GetByRequestorAsync`.
+- **Infrastructure Layer:**
+  - `Infrastructure/Queries/RequestQueries.cs` — Implemented `statusFilter` query filtering in `GetByRequestorAsync`.
+- **WebApi Layer:**
+  - `WebApi/Controllers/RequestsController.cs` (new) — Full REST controller for request lifecycle: `GET /api/v1/requests` (paged, visible to caller), `GET /api/v1/requests/mine` (current user's requests), `GET /api/v1/requests/{id}` (detail, 404 for unpermitted access), `POST /api/v1/requests` (create request), `POST /api/v1/requests/{id}/submit` (submit for approval), `POST /api/v1/requests/{id}/withdraw` (withdraw pending), `POST /api/v1/requests/{id}/request-cancellation` (cancellation request), `DELETE /api/v1/requests/{id}` (delete unsubmitted pending), `GET /api/v1/requests/dashboard-summary` (status counts).
+- **Frontend API & Components:**
+  - `frontend/src/api/requests.js` — Expanded with full requestor endpoints (`getRequests`, `getMyRequests`, `getRequest`, `createRequest`, `submitRequest`, `withdrawRequest`, `requestCancellation`, `deletePendingRequest`, `getRequestSummary`, `getPendingApprovals`, `approveRequest`, `approveCancellation`).
+  - `frontend/src/pages/requests/components/RequestDetailModal.jsx` (new) — Modal showing full request header, requestor/approver details, snapshotted line items table, and status history timeline audit trail with contextual actions.
+  - `frontend/src/pages/requests/components/CancellationModal.jsx` (new) — Form modal to prompt cancellation reason for Approved/PartiallyApproved orders.
+  - `frontend/src/pages/requests/NewRequestPage.jsx` (new) — Complete stationery requisition form with catalogue item selector, quantity inputs, estimated subtotal/totals calculation, "Save as Draft", and "Submit Request" flows.
+  - `frontend/src/pages/requests/MyRequestsPage.jsx` (new) — Requisition management dashboard with status filter, paged requests table, view details, submit, withdraw, request cancellation, and delete actions.
+  - `frontend/src/App.jsx` — Updated routes for `/new-request` and `/my-requests` to render `NewRequestPage` and `MyRequestsPage`.
+  - `frontend/src/pages/NewRequest.jsx` & `frontend/src/pages/MyRequests.jsx` — Re-exported page components for compatibility.
+- **Tests Added:**
+  - `Tests/WebApi.IntegrationTests/RequestsTests.cs` (new) — Integration tests covering create, submit, withdraw, delete, own-request filtering (`/mine`), and ownership-aware 404 security checks.
+  - `frontend/src/pages/requests/NewRequestPage.test.jsx` (new) — Component tests for NewRequestPage: catalogue loading, item selection, quantity adjustment, save draft, immediate submit.
+  - `frontend/src/pages/requests/MyRequestsPage.test.jsx` (new) — Component tests for MyRequestsPage: loading, empty state, table rendering, status actions, modal view, submit, withdraw, cancellation flow.
+- **Documentation:**
+  - `docs/development/request-pages-implementation-handoff.md` (new) — Comprehensive implementation and verification handoff document.
+
+**Tests actually executed:**
+- Backend: `.NET 10 test Project.slnx` — **70/70 passed** (26 unit + 44 integration tests).
+- Frontend: `vitest run --pool=threads` — **67/67 passed** across 12 test suites.
+- Both backend build and frontend build run cleanly.
+
+**Assumptions & Design Choices:**
+- Concurrency control adheres to Guid-based `RowVersion` compare-then-set across all mutations.
+- Unsubmitted pending requests are detected via absence of a `Pending -> Pending` transition in `StatusHistory`.
+- Status transitions, audit trail history, and ownership checks are enforced server-side.
+
