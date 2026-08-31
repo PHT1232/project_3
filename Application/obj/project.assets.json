@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "targets": {
     "net10.0": {
       "FluentValidation/11.11.0": {
@@ -66,19 +66,19 @@
     ]
   },
   "packageFolders": {
-    "/home/phat/.nuget/packages/": {}
+    "C:\\Users\\Administrator\\.nuget\\packages\\": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "/home/phat/Projects/project_3/Application/Application.csproj",
+      "projectUniqueName": "D:\\Program Files\\APTECH\\project_3\\Application\\Application.csproj",
       "projectName": "Application",
-      "projectPath": "/home/phat/Projects/project_3/Application/Application.csproj",
-      "packagesPath": "/home/phat/.nuget/packages/",
-      "outputPath": "/home/phat/Projects/project_3/Application/obj/",
+      "projectPath": "D:\\Program Files\\APTECH\\project_3\\Application\\Application.csproj",
+      "packagesPath": "C:\\Users\\Administrator\\.nuget\\packages\\",
+      "outputPath": "D:\\Program Files\\APTECH\\project_3\\Application\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
-        "/home/phat/.nuget/NuGet/NuGet.Config"
+        "C:\\Users\\Administrator\\AppData\\Roaming\\NuGet\\NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net10.0"
@@ -88,10 +88,11 @@
       },
       "frameworks": {
         "net10.0": {
+          "framework": "net10.0",
           "targetAlias": "net10.0",
           "projectReferences": {
-            "/home/phat/Projects/project_3/Core/Core.csproj": {
-              "projectPath": "/home/phat/Projects/project_3/Core/Core.csproj"
+            "D:\\Program Files\\APTECH\\project_3\\Core\\Core.csproj": {
+              "projectPath": "D:\\Program Files\\APTECH\\project_3\\Core\\Core.csproj"
             }
           }
         }
@@ -106,10 +107,11 @@
         "auditLevel": "low",
         "auditMode": "all"
       },
-      "SdkAnalysisLevel": "10.0.100"
+      "SdkAnalysisLevel": "10.0.300"
     },
     "frameworks": {
       "net10.0": {
+        "framework": "net10.0",
         "targetAlias": "net10.0",
         "dependencies": {
           "FluentValidation": {
@@ -133,7 +135,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/10.0.111/PortableRuntimeIdentifierGraph.json",
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.302/PortableRuntimeIdentifierGraph.json",
         "packagesToPrune": {
           "Microsoft.CSharp": "(,4.7.32767]",
           "Microsoft.VisualBasic": "(,10.4.32767]",

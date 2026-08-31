@@ -20,6 +20,12 @@ public class DataContext(DbContextOptions<DataContext> options)
 
     public DbSet<SupplierRequestItem> SupplierRequestItems => Set<SupplierRequestItem>();
 
+    public DbSet<Request> Requests => Set<Request>();
+
+    public DbSet<RequestItem> RequestItems => Set<RequestItem>();
+
+    public DbSet<RequestStatusHistory> RequestStatusHistories => Set<RequestStatusHistory>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
