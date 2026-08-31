@@ -1,10 +1,10 @@
 {
   "version": 2,
-  "dgSpecHash": "5vRFfCvG8MA=",
+  "dgSpecHash": "4O/oPC1S1Pg=",
   "success": true,
-  "projectFilePath": "/home/phat/Projects/project_3/Application/Application.csproj",
+  "projectFilePath": "D:\\Program Files\\APTECH\\project_3\\Application\\Application.csproj",
   "expectedPackageFiles": [
-    "/home/phat/.nuget/packages/fluentvalidation/11.11.0/fluentvalidation.11.11.0.nupkg.sha512"
+    "C:\\Users\\Administrator\\.nuget\\packages\\fluentvalidation\\11.11.0\\fluentvalidation.11.11.0.nupkg.sha512"
   ],
   "logs": []
 }

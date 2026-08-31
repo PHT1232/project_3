@@ -9,3 +9,15 @@
 /home/phat/Documents/csharp/Project/Core/obj/Debug/net10.0/refint/Core.dll
 /home/phat/Documents/csharp/Project/Core/obj/Debug/net10.0/Core.pdb
 /home/phat/Documents/csharp/Project/Core/obj/Debug/net10.0/ref/Core.dll
+D:\Program Files\APTECH\project_3\Core\bin\Debug\net10.0\Core.deps.json
+D:\Program Files\APTECH\project_3\Core\bin\Debug\net10.0\Core.dll
+D:\Program Files\APTECH\project_3\Core\bin\Debug\net10.0\Core.pdb
+D:\Program Files\APTECH\project_3\Core\obj\Debug\net10.0\Core.GeneratedMSBuildEditorConfig.editorconfig
+D:\Program Files\APTECH\project_3\Core\obj\Debug\net10.0\Core.AssemblyInfoInputs.cache
+D:\Program Files\APTECH\project_3\Core\obj\Debug\net10.0\Core.AssemblyInfo.cs
+D:\Program Files\APTECH\project_3\Core\obj\Debug\net10.0\Core.csproj.CoreCompileInputs.cache
+D:\Program Files\APTECH\project_3\Core\obj\Debug\net10.0\Core.sourcelink.json
+D:\Program Files\APTECH\project_3\Core\obj\Debug\net10.0\Core.dll
+D:\Program Files\APTECH\project_3\Core\obj\Debug\net10.0\refint\Core.dll
+D:\Program Files\APTECH\project_3\Core\obj\Debug\net10.0\Core.pdb
+D:\Program Files\APTECH\project_3\Core\obj\Debug\net10.0\ref\Core.dll

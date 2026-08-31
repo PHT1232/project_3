@@ -16,6 +16,7 @@ public class ApplicationUserConfiguration : IEntityTypeConfiguration<Application
         builder.Property(u => u.UserName).HasMaxLength(25).IsRequired();
         builder.Property(u => u.Grade).HasMaxLength(50);
         builder.Property(u => u.Location).HasMaxLength(100);
+        builder.Property(u => u.RankLevel).IsRequired().HasDefaultValue(1);
         builder.Property(u => u.IsActive).IsRequired();
         builder.Property(u => u.CreatedAtUtc).IsRequired();
 

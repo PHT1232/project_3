@@ -3,6 +3,7 @@ using System.Text;
 using Application.Interfaces.Auth;
 using Application.Interfaces.Catalogue;
 using Application.Interfaces.Inventory;
+using Application.Interfaces.Requests;
 using Application.Interfaces.SupplierRequests;
 using Application.Interfaces.Suppliers;
 using Application.Interfaces.Users;
@@ -134,6 +135,8 @@ builder.Services.AddScoped<IStockService, StockService>();
 builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<ISupplierRequestQueries, SupplierRequestQueries>();
 builder.Services.AddScoped<ISupplierRequestService, SupplierRequestService>();
+builder.Services.AddScoped<IRequestQueries, RequestQueries>();
+builder.Services.AddScoped<IRequestService, RequestService>();
 
 builder.Services.AddValidatorsFromAssemblyContaining<CreateUserRequestValidator>();
 builder.Services.AddControllers();

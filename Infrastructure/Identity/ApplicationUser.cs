@@ -18,6 +18,13 @@ public class ApplicationUser : IdentityUser<int>
 
     public ApplicationUser? Superior { get; set; }
 
+    /// <summary>
+    /// Rank level for role-based access control (Plan §3.1):
+    /// 1 = Engineer, 2 = Manager, 3 = Business Manager, 4 = Managing Director.
+    /// Used for eligibility checks and spending limits.
+    /// </summary>
+    public int RankLevel { get; set; } = 1;
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
