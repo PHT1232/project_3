@@ -22,3 +22,9 @@ export function formatNumber(value) {
   if (value == null || Number.isNaN(value)) return '—'
   return new Intl.NumberFormat('en-US').format(value)
 }
+
+/** Dates are stored/transmitted as UTC ISO strings (CLAUDE.md principle #11); render local. */
+export function formatDate(value) {
+  if (!value) return '—'
+  return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(new Date(value))
+}

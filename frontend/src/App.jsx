@@ -12,12 +12,14 @@ import NotFound from './pages/NotFound.jsx'
 import Login from './pages/Login.jsx'
 import UserManagementPage from './pages/users/UserManagementPage.jsx'
 import ReportsPage from './pages/reports/ReportsPage.jsx'
+import ApprovalsPage from './pages/requests/ApprovalsPage.jsx'
 
-// Placeholders — owned by other developers (see Plan §6.1 and docs/development/page-map.md)
+// Placeholders — owned by other developers (see Plan §6.1 and docs/development/page-map.md).
+// New Request / My Requests stay placeholders: no RequestsController exists yet, only
+// ApprovalsController — see docs/development/request-approval-frontend-implementation-plan.md.
 import Dashboard from './pages/Dashboard.jsx'
 import NewRequest from './pages/NewRequest.jsx'
 import MyRequests from './pages/MyRequests.jsx'
-import Approvals from './pages/Approvals.jsx'
 import Help from './pages/Help.jsx'
 
 /**
@@ -42,7 +44,7 @@ export default function App() {
           <Route path="/catalogue" element={<CataloguePage />} />
           <Route path="/new-request" element={<NewRequest />} />
           <Route path="/my-requests" element={<MyRequests />} />
-          <Route path="/approvals" element={<Approvals />} />
+          <Route path="/approvals" element={<ApprovalsPage />} />
 
           {/* Manager+ only (page-map §9–12); server-side 403 is the real control. */}
           <Route element={<ProtectedRoute requireManager />}>
