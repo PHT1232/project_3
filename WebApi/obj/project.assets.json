@@ -3721,19 +3721,19 @@
     ]
   },
   "packageFolders": {
-    "/home/dat/.nuget/packages/": {}
+    "/home/phat/.nuget/packages/": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "/home/dat/EProject/project_3/WebApi/WebApi.csproj",
+      "projectUniqueName": "/home/phat/Projects/project_3/WebApi/WebApi.csproj",
       "projectName": "WebApi",
-      "projectPath": "/home/dat/EProject/project_3/WebApi/WebApi.csproj",
-      "packagesPath": "/home/dat/.nuget/packages/",
-      "outputPath": "/home/dat/EProject/project_3/WebApi/obj/",
+      "projectPath": "/home/phat/Projects/project_3/WebApi/WebApi.csproj",
+      "packagesPath": "/home/phat/.nuget/packages/",
+      "outputPath": "/home/phat/Projects/project_3/WebApi/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
-        "/home/dat/.nuget/NuGet/NuGet.Config"
+        "/home/phat/.nuget/NuGet/NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net10.0"
@@ -3745,11 +3745,11 @@
         "net10.0": {
           "targetAlias": "net10.0",
           "projectReferences": {
-            "/home/dat/EProject/project_3/Application/Application.csproj": {
-              "projectPath": "/home/dat/EProject/project_3/Application/Application.csproj"
+            "/home/phat/Projects/project_3/Application/Application.csproj": {
+              "projectPath": "/home/phat/Projects/project_3/Application/Application.csproj"
             },
-            "/home/dat/EProject/project_3/Infrastructure/Infrastructure.csproj": {
-              "projectPath": "/home/dat/EProject/project_3/Infrastructure/Infrastructure.csproj"
+            "/home/phat/Projects/project_3/Infrastructure/Infrastructure.csproj": {
+              "projectPath": "/home/phat/Projects/project_3/Infrastructure/Infrastructure.csproj"
             }
           }
         }
@@ -3764,7 +3764,7 @@
         "auditLevel": "low",
         "auditMode": "all"
       },
-      "SdkAnalysisLevel": "10.0.200"
+      "SdkAnalysisLevel": "10.0.100"
     },
     "frameworks": {
       "net10.0": {
@@ -3808,7 +3808,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "/opt/JetBrains Rider-2026.1.4/lib/ReSharperHost/linux-x64/dotnet/sdk/10.0.201/PortableRuntimeIdentifierGraph.json",
+        "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/10.0.111/PortableRuntimeIdentifierGraph.json",
         "packagesToPrune": {
           "Microsoft.AspNetCore": "(,10.0.32767]",
           "Microsoft.AspNetCore.Antiforgery": "(,10.0.32767]",
