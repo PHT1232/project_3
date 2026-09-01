@@ -3,6 +3,7 @@ using System.Text;
 using Application.Interfaces.Auth;
 using Application.Interfaces.Catalogue;
 using Application.Interfaces.Inventory;
+using Application.Interfaces.Reports;
 using Application.Interfaces.Requests;
 using Application.Interfaces.SupplierRequests;
 using Application.Interfaces.Suppliers;

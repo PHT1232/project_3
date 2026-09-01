@@ -43,9 +43,12 @@ export default function App() {
           <Route path="/my-requests" element={<MyRequestsPage />} />
           <Route path="/approvals" element={<ApprovalsPage />} />
 
+          {/* Any authenticated user — the report data is row-scoped to their role
+              server-side (ReportQueries), so a requestor only ever sees their own spend. */}
+          <Route path="/reports" element={<ReportsPage />} />
+
           {/* Manager+ only (page-map §9–12); server-side 403 is the real control. */}
           <Route element={<ProtectedRoute requireManager />}>
-            <Route path="/reports" element={<ReportsPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/suppliers" element={<SupplierManagement />} />
             <Route path="/catalogue/manage" element={<ItemManagement />} />

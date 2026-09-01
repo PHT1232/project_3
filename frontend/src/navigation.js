@@ -19,9 +19,9 @@ import {
  *
  * `minRankLevel` hides an item below that rank (Sidebar.jsx filters using AuthContext) — this
  * is UX only, never the real control (Plan §2.5); the server-side policy on the route is.
- * Reports, Inventory, Suppliers, Item Management and User Management are all Manager+
- * (Plan §4.2, page-map.md §9–12; item management has no numbered wireframe slot, added
- * alongside Catalogue).
+ * Inventory, Suppliers, Item Management and User Management are Manager+ (Plan §4.2,
+ * page-map.md §9–12). Reports is open to everyone — its data is row-scoped per role
+ * server-side (a requestor sees only their own spend), so there's no rank floor on the tab.
  */
 export const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutGrid, end: true },
@@ -29,7 +29,7 @@ export const navItems = [
   { to: '/new-request', label: 'New Request', icon: PlusCircle },
   { to: '/my-requests', label: 'My Requests', icon: History },
   { to: '/approvals', label: 'Approvals', icon: ClipboardCheck },
-  { to: '/reports', label: 'Reports', icon: BarChart3, minRankLevel: 2 },
+  { to: '/reports', label: 'Reports', icon: BarChart3 },
   { to: '/inventory', label: 'Inventory', icon: Package, minRankLevel: 2 },
   { to: '/suppliers', label: 'Suppliers', icon: Truck, minRankLevel: 2 },
   { to: '/catalogue/manage', label: 'Item Management', icon: PackagePlus, minRankLevel: 2 },

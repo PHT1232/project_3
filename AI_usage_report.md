@@ -991,6 +991,136 @@ session. Not committed.
 - Status transitions, audit trail history, and ownership checks are enforced server-side.
 
 
+## 2026-08-31 — Reports page: role-scoped data (server-side) + per-tab insight line
+
+**Tool:** Claude Code (claude-sonnet-5).
+
+**Task:** Scope the Reports page's underlying data by the logged-in user's role/reporting
+line — Requestor sees only their own spend (no By Team tab), Manager sees only their direct
+team plus an always-visible personal "My Requests" tab, Business Manager sees their group
+(their managers + those managers' teams) with a per-team breakdown, Managing Director sees
+everything — enforced server-side, not client-side filtering. Add a one-line computed
+insight (period-over-period + top-mover) at the top of each report tab, derived from data
+already being queried. Keep existing tabs, filters, Print and Export CSV intact.
+
+**Investigation before writing code (per systemprompt.md):** inspected the existing
+auth/role model (Identity roles with `RankLevel`, `SuperiorEmployeeNumber` hierarchy, JWT
+claims, `RequestQueries`'s row-scoping pattern) and the current Reports page (100% client-side
+mock, **no backend at all** — no `IReportQueries`/`ReportsController`/`/reports/*` route
+anywhere). Reported both findings back to the user before proceeding, since honouring "never
+returned by the API" required building the backend, and the codebase's existing scoping is
+binary (rank<2 vs rank>=2) with no team/group concept. User confirmed: build the real backend;
+Manager and Business Manager both scope to direct reports only (no recursion — Business
+Manager's "direct reports" are Managers, so By Team still shows one row per Manager); generate
+a demo hierarchy + request history since the live DB only had one MD→Manager→Engineer chain
+and zero requests.
+
+**What changed, by file:**
+- **Backend, new:** `Application/DTOs/Reports/*.cs` (`ReportInsightDto` + `ReportScope` enum,
+  and one DTO per report), `Application/Interfaces/Reports/IReportQueries.cs`,
+  `Infrastructure/Queries/ReportQueries.cs`, `WebApi/Controllers/ReportsController.cs`
+  (`[Authorize]` only — not Manager+, since a plain Requestor is a legitimate audience for
+  their own data), `Tests/WebApi.IntegrationTests/ReportsTests.cs` (6-test scope-boundary
+  matrix: Engineer/Manager/Business-Manager/MD nesting, My-Requests always-self, By-Team
+  sibling-group isolation).
+- **Backend, modified:** `WebApi/Program.cs` (registers `IReportQueries`; calls the new demo
+  seeder when `Seed:DemoData=true`), `WebApi/appsettings.Development.json` (`Seed:DemoData:
+  true`), `Infrastructure/Data/DbSeeder.cs` (`SeedDemoDataAsync` — dev-only, idempotent, 1
+  MD + 2 Business Managers + 4 Managers + 12 Engineers with real `SuperiorEmployeeNumber`
+  links, a fallback 15-item catalogue, 100 synthetic approved-ish requests).
+- **Frontend, new:** `frontend/src/lib/insights.js` (+ test) — turns `ReportInsightDto` into
+  the sentence; `components/ReportInsight.jsx` (dumb renderer); `components/MyActivityView.jsx`
+  (the new always-on personal tab).
+- **Frontend, modified:** `api/reports.js` (real `client.get` calls, `getMyActivityReport`
+  added), `lib/reports.js` (trimmed — aggregation moved server-side, kept only the date-range
+  helpers; `reports.test.js` rewritten to match), `ReportsPage.jsx` (`useAuth()`-driven tab
+  visibility — My Requests always on, Inventory Valuation rank≥2, By Team rank≥3; renders
+  `ReportInsight`; date bounds no longer sourced from mock data), `App.jsx`/`navigation.js`
+  (Reports route/nav entry no longer Manager+-gated — the page itself is now open to everyone,
+  row-level scoping is the real control).
+- **Deleted:** `frontend/src/api/mock/reports.mock.js`.
+- **Docs:** `docs/development/reports-page.md` — added §10–§17 documenting the new
+  architecture; old mock-era sections kept but marked superseded rather than deleted.
+
+**Bugs caught and fixed during implementation (not present in the final code):**
+1. **Wrong rank source.** First draft read `ApplicationUser.RankLevel` for scope resolution.
+   That column is never populated by the real user-creation path — `IdentityAccountAdapter`
+   and `IdentityUserStore` both derive rank from the assigned Identity role
+   (`AspNetUserRoles` → `AspNetRoles.RankLevel`). Every normally-created user would have
+   scoped as rank 0/1 regardless of actual role. Caught by testing against real
+   `TestUserFactory`-created users (not just the demo seeder, which happened to set the
+   column too) before it shipped. Fixed to join through the role, matching `/auth/me`.
+2. **EF query translation failure on SQLite.** The first aggregation design composed
+   `GroupBy` directly with `RequestItem → Request/StationeryItem/Category` navigation joins;
+   this throws `could not be translated` on SQLite (the integration-test provider) even
+   though the same shape may work on SQL Server. Rewrote to filter+project to a flat
+   in-memory row set in one SQL query, then aggregate with LINQ-to-Objects — documented as a
+   deliberate, flagged deviation from "SQL-side GROUP BY" (class-level doc comment on
+   `ReportQueries`), with the same precedent already present in this codebase
+   (`InventoryQueries.GetSummaryAsync`).
+
+**Assumptions made (flagged in the handoff, not silently decided):**
+- Business Manager "Group" scope is a **fixed depth-2** lookup (their direct-report managers'
+  teams), not a recursive descendant walk — confirmed with the user, but flagged that a third
+  management layer would under-report for the top tier.
+- "Committed spend" = `Approved` ∪ `PartiallyApproved` ∪ `Fulfilled` (the Plan says "Approved
+  only"; the status enum splits committed money into three terminal states).
+- Insight `DriverLabel` is always an item name, even on the By Team tab ("driven by [item]",
+  not "driven by [team]").
+- Demo seed hierarchy and names are invented for demonstration, not real HR data.
+
+**Validation actually run:**
+- `dotnet build Project.slnx` — 0 errors.
+- `dotnet test Project.slnx` — **76 passed** (26 unit + 50 integration, incl. the new 6-test
+  `ReportsTests`).
+- `npm run build` — pass (1699 modules). `npm test` — **64 passed** (13 files).
+- Live HTTP smoke test against the real seeded hierarchy on this machine's SQL Server
+  instance: Engineer `#26` Self ($1,111.67) ⊂ Manager `#22` Team ($10,945.22) ⊂ Business
+  Manager `#20` Group ($23,154.94); `By Team` for `#20` lists exactly the 4 teams in their
+  group, correctly excluding sibling Business Manager `#21`'s teams; `My Requests` returns a
+  different (smaller) number than each user's scoped report, confirming it is genuinely
+  self-only.
+
+**Left out of scope:** No browser click-through of the finished page by the developer (module
+resolution + live API calls verified, not the rendered UI). Managing-Director scope verified
+via the integration test's own synthetic MD, not the live DB's pre-existing `#1` account
+(its password predates this session and is unknown). No UI regression test for tab visibility
+by role.
+
+### 2026-08-31 (same day) — follow-up: backend convention alignment + route-gating fix
+
+Review pass ("ensure the backend aligns with the flow/conventions of the other pages"):
+
+- **`ReportsController`**: converted the 5 expression-bodied actions to block bodies with a
+  `var result = await …; return Ok(result);` shape + per-method `<summary>`, matching
+  `RequestsController` / `UsersController`. Added `[FromQuery] DateOnly? fromDate/toDate = null`
+  with a controller-side default (last 90 days) so the endpoints are usable without params —
+  the other list endpoints all give their query params defaults (`page = 1`, etc.). Kept the
+  private `Actor` helper (DRY over five near-identical reads; wording matches the siblings'
+  inline `?? throw`).
+- **DTOs**: `Scope` field changed from the `ReportScope` enum + `[JsonConverter]` to a plain
+  `string` (`scope.ToString()` at the boundary), matching the one existing precedent —
+  `InventoryRowDto.Status` carries its state as a string "rather than an enum + JSON
+  converter". `ReportInsightDto.Kind` was already a string, so the DTOs are now internally
+  consistent. `ReportScope` stays as an enum used internally by `ReportQueries` for type
+  safety, moved to its own file.
+- **Kept as-is (already aligned)**: controller depends on `IReportQueries` directly (Plan §2.4
+  names this exact pattern for reports/joins; `RequestsController` does the same — no
+  pass-through `IReportService` needed); `Infrastructure.Queries` / `Application.Interfaces.Reports`
+  / `Application.DTOs.Reports` namespaces; `AsNoTracking`; private `sealed record` helpers
+  inside the query class (as `InventoryQueries` does); thin controller with no `try/catch`
+  (middleware handles it, per `RequestsController`/`InventoryController`).
+
+- **Route-gating fix** (this was documented as done in the prior entry but the code change had
+  been missed): `/reports` is now genuinely outside the `ProtectedRoute requireManager` group
+  in `App.jsx`, and the `navigation.js` Reports entry no longer has `minRankLevel: 2`. Without
+  this an Engineer was still redirected away from the page the feature is built to serve them.
+
+**Validation:** `dotnet build` 0 errors; `dotnet test` **76 passed**; `npm run build` +
+`npm test` **64 passed**. Live smoke test: Engineer `#26` now reaches all five `/reports/*`
+endpoints (HTTP 200, `scope: "Self"`); `/reports/by-team` for that Engineer returns their thin
+self-scoped view rather than 403 (row-scoping is the control, not the route); a no-param call
+resolves to a trailing 90-day window.
 ## 2026-09-01 — ELK observability (Serilog → Elasticsearch + Kibana)
 
 **Tool:** Claude Code (Sonnet 5).

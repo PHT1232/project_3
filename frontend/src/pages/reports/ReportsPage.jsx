@@ -6,15 +6,17 @@ import Button from '../../components/ui/Button.jsx'
 import StatCard from '../../components/ui/StatCard.jsx'
 import { LoadingState, ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
 import useAsync from '../../hooks/useAsync.js'
+import { useAuth } from '../../contexts/AuthContext.jsx'
 import { formatCurrency, formatNumber } from '../../lib/format.js'
 import { exportToCsv } from '../../lib/csvExport.js'
-import { resolveRangeFromPreset } from '../../lib/reports.js'
+import { defaultReportBounds, resolveRangeFromPreset } from '../../lib/reports.js'
+import { buildInsightSentence, buildInventoryInsightSentence } from '../../lib/insights.js'
 import {
   getCostByItemReport,
   getItemHeadcountReport,
   getCumulativeCostReport,
   getTeamExpenditureReport,
-  REPORT_DATA_BOUNDS,
+  getMyActivityReport,
 } from '../../api/reports.js'
 import { getInventory } from '../../api/inventory.js'
 import {
@@ -28,6 +30,8 @@ import ReportTabs from './components/ReportTabs.jsx'
 import DateRangeControl from './components/DateRangeControl.jsx'
 import ReportToolbar from './components/ReportToolbar.jsx'
 import ReportMetaBar from './components/ReportMetaBar.jsx'
+import ReportInsight from './components/ReportInsight.jsx'
+import MyActivityView from './components/MyActivityView.jsx'
 import CostByItemView from './components/CostByItemView.jsx'
 import ItemHeadcountView from './components/ItemHeadcountView.jsx'
 import CumulativeCostView from './components/CumulativeCostView.jsx'
@@ -36,16 +40,31 @@ import TeamExpenditureView from './components/TeamExpenditureView.jsx'
 
 const DEFAULT_PRESET_DAYS = 90
 
-const TABS = [
+/**
+ * Tab visibility by role (page-map §9 + the 2026-08-30 role-scoping change):
+ * "My Requests" is always on — a manager who is also a requestor needs their own
+ * personal spend separate from their team's. Inventory Valuation stays Manager+
+ * (unchanged — it calls the existing Manager+ `/inventory` endpoint). By Team only
+ * means something once there's more than one team to compare (Business Manager+);
+ * a plain Manager has exactly one team, so it's hidden for them.
+ *
+ * This is UX only. The data itself is scoped server-side regardless of what tabs the
+ * client shows (Infrastructure/Queries/ReportQueries.cs) — a requestor calling
+ * /reports/by-team directly would get their own single-row scope back, not an error
+ * and not someone else's data.
+ */
+const ALL_TABS = [
+  { id: 'MY_REQUESTS', label: 'My Requests' },
   { id: 'COST_BY_ITEM', label: 'Cost by Item' },
   { id: 'HEADCOUNT', label: 'Cost & Headcount' },
   { id: 'CUMULATIVE', label: 'Cumulative Cost' },
-  { id: 'INVENTORY_VALUATION', label: 'Inventory Valuation' },
-  { id: 'BY_TEAM', label: 'By Team' },
+  { id: 'INVENTORY_VALUATION', label: 'Inventory Valuation', minRankLevel: 2 },
+  { id: 'BY_TEAM', label: 'By Team', minRankLevel: 3 },
 ]
 
 /** Tabs whose data comes from a date-range report endpoint. INVENTORY_VALUATION is not one. */
 const FETCHERS = {
+  MY_REQUESTS: getMyActivityReport,
   COST_BY_ITEM: getCostByItemReport,
   HEADCOUNT: getItemHeadcountReport,
   CUMULATIVE: getCumulativeCostReport,
@@ -94,6 +113,14 @@ const DownloadIcon = () => (
 
 /** Tab-specific KPI tiles, computed from the report payload for the active tab. */
 function statsFor(tabId, report) {
+  if (tabId === 'MY_REQUESTS') {
+    return [
+      { label: 'Approved Spend', value: formatCurrency(report.approvedCost) },
+      { label: 'Requests', value: formatNumber(report.requestCount) },
+      { label: 'Items', value: formatNumber(report.itemCount) },
+    ]
+  }
+
   const spend = { label: 'Approved Spend', value: formatCurrency(report.totalApprovedCost) }
 
   if (tabId === 'COST_BY_ITEM') {
@@ -137,14 +164,20 @@ function statsFor(tabId, report) {
 }
 
 export default function ReportsPage() {
-  const [tab, setTab] = useState('COST_BY_ITEM')
-  const [range, setRange] = useState(() =>
-    resolveRangeFromPreset(DEFAULT_PRESET_DAYS, REPORT_DATA_BOUNDS),
+  const { user } = useAuth()
+  const rankLevel = user?.rankLevel ?? 0
+  const visibleTabs = useMemo(
+    () => ALL_TABS.filter((t) => !t.minRankLevel || rankLevel >= t.minRankLevel),
+    [rankLevel],
   )
+
+  const [tab, setTab] = useState('COST_BY_ITEM')
+  const [range, setRange] = useState(() => resolveRangeFromPreset(DEFAULT_PRESET_DAYS, defaultReportBounds()))
   const [filters, setFilters] = useState(DEFAULT_REPORT_FILTERS)
   const [generatedAt, setGeneratedAt] = useState(() => new Date())
 
-  const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), [])
+  const bounds = useMemo(() => defaultReportBounds(), [])
+  const todayIso = bounds.toDate
   const invActive = tab === 'INVENTORY_VALUATION'
 
   useEffect(() => {
@@ -196,6 +229,17 @@ export default function ReportsPage() {
     [report, isItemTab],
   )
 
+  const insightText = useMemo(() => {
+    if (invActive) {
+      if (!inventoryItems) return null
+      const totalValue = inventoryItems.reduce((sum, it) => sum + it.quantityAvailable * it.unitCost, 0)
+      const itemsInStock = inventoryItems.filter((it) => it.quantityAvailable > 0).length
+      const itemsNeedingReorder = inventoryItems.filter((it) => it.status === 'REORDER_NOW').length
+      return buildInventoryInsightSentence({ totalValue, itemsInStock, itemsNeedingReorder })
+    }
+    return report ? buildInsightSentence(report.insight) : null
+  }, [invActive, inventoryItems, report])
+
   const loadingReport = loading || !currentData
   const reportEmpty =
     !loadingReport &&
@@ -215,6 +259,13 @@ export default function ReportsPage() {
     if (!canExport) return
     const { fromDate, toDate } = range
 
+    if (tab === 'MY_REQUESTS') {
+      return exportToCsv(
+        `my-requests-${fromDate}-${toDate}.csv`,
+        ['Item', 'Category', 'Approved Cost', 'Units'],
+        report.rows.map((r) => [r.itemName, r.categoryName, formatCurrency(r.approvedCost), String(r.unitsApproved)]),
+      )
+    }
     if (tab === 'COST_BY_ITEM') {
       return exportToCsv(
         `cost-by-item-${fromDate}-${toDate}.csv`,
@@ -283,13 +334,13 @@ export default function ReportsPage() {
     <div data-print-region>
       <PageHeader
         title="Reports"
-        description="Approved stationery spend, headcount, trend, inventory value and team breakdown."
+        description="Approved stationery spend, headcount, trend, inventory value and team breakdown — scoped to what your role can see."
         actions={
           <div data-print-hide className="flex flex-wrap items-end gap-2">
             {invActive ? (
               <span className="text-sm text-ink-muted">Point-in-time snapshot</span>
             ) : (
-              <DateRangeControl value={range} bounds={REPORT_DATA_BOUNDS} onChange={setRange} />
+              <DateRangeControl value={range} bounds={bounds} onChange={setRange} />
             )}
             <Button variant="secondary" onClick={() => window.print()}>
               <PrinterIcon />
@@ -309,7 +360,7 @@ export default function ReportsPage() {
       />
 
       <div data-print-hide className="mb-5">
-        <ReportTabs tabs={TABS} activeId={tab} onChange={setTab} />
+        <ReportTabs tabs={visibleTabs} activeId={tab} onChange={setTab} />
       </div>
 
       <ReportMetaBar
@@ -326,6 +377,8 @@ export default function ReportsPage() {
           ))}
         </div>
       )}
+
+      <ReportInsight text={insightText} />
 
       {isItemTab && report && !reportEmpty && (
         <div data-print-hide>
@@ -369,6 +422,7 @@ export default function ReportsPage() {
 
         {!loadingReport && !error && !reportEmpty && !filteredEmpty && (
           <>
+            {tab === 'MY_REQUESTS' && <MyActivityView report={report} />}
             {tab === 'COST_BY_ITEM' && (
               <CostByItemView
                 rows={filteredRows}
