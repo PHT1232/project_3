@@ -18,10 +18,10 @@ export default function NewRequestPage() {
 
   // Catalogue items for picker
   const { data: catalogueItems, error: loadError, loading: itemsLoading, reload } = useAsync(
-    async () => {
-      const res = await getItems({ pageSize: 500, includeInactive: false })
-      return res.items ?? []
-    },
+    // getItems() already unwraps the paged envelope and returns the item array (see
+    // api/catalogue.js). Reading `.items` off that array yielded undefined, so the picker fell
+    // back to [] and always showed "0 available" — no request could be built at all.
+    async () => (await getItems()) ?? [],
     [],
   )
 

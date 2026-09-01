@@ -9,7 +9,8 @@ using FluentValidation;
 ///
 /// - Items list must not be empty and must be distinct by ItemId.
 /// - Each item quantity must be > 0.
-/// - RequiredByDate, if provided, does not need validation (can be null or any date).
+/// - RequiredByDate, if provided, must not be in the past — page-map.md §5 lists
+///   "RequiredByDate >= today -> else 400" as a mandatory server-side guard.
 /// </summary>
 public class CreateRequestCommandValidator : AbstractValidator<CreateRequestCommand>
 {
@@ -22,6 +23,13 @@ public class CreateRequestCommandValidator : AbstractValidator<CreateRequestComm
         RuleFor(x => x.Items)
             .Must(items => items.Select(i => i.ItemId).Distinct().Count() == items.Count)
             .WithMessage("Duplicate items are not allowed.");
+
+        // Compared as a UTC date, not an instant, so "today" is still valid all day rather than
+        // expiring at the moment of submission.
+        RuleFor(x => x.RequiredByDate)
+            .Must(date => date!.Value.ToUniversalTime().Date >= DateTime.UtcNow.Date)
+            .When(x => x.RequiredByDate.HasValue)
+            .WithMessage("Required-by date cannot be in the past.");
 
         RuleForEach(x => x.Items)
             .ChildRules(item =>

@@ -37,15 +37,25 @@ public class RequestService(
             .FirstOrDefaultAsync(u => u.Id == requestorEmployeeNumber && u.IsActive)
             ?? throw new NotFoundException($"Requestor {requestorEmployeeNumber} not found or inactive.");
 
-        // Approver is the requestor's superior (up to the caller to enforce role-based access)
-        var approverEmployeeNumber = requestor.SuperiorEmployeeNumber;
-        if (approverEmployeeNumber != null)
-        {
-            var approver = await db.Users
-                .AsNoTracking()
-                .FirstOrDefaultAsync(u => u.Id == approverEmployeeNumber && u.IsActive)
-                ?? throw new NotFoundException($"Approver {approverEmployeeNumber} not found or inactive.");
-        }
+        // Approver is the requestor's superior (up to the caller to enforce role-based access).
+        //
+        // A requestor at the top of the hierarchy has no superior, so there is nobody who could
+        // ever approve the request. Creating one anyway left it Pending with a null approver,
+        // which every /approvals/{id}/approve call then rejected with 404 — a request permanently
+        // stuck in Pending. page-map.md §5 ("New Request", server-side guards) states the rule:
+        // "the MD (no superior) cannot raise a request (Plan [ASK] #11 default)".
+        var approverEmployeeNumber = requestor.SuperiorEmployeeNumber
+            ?? throw new ValidationException(
+            [
+                new FluentValidation.Results.ValidationFailure(
+                    "requestorEmployeeNumber",
+                    "You have no superior to approve this request, so it cannot be raised."),
+            ]);
+
+        _ = await db.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == approverEmployeeNumber && u.IsActive)
+            ?? throw new NotFoundException($"Approver {approverEmployeeNumber} not found or inactive.");
 
         // Load and validate items
         var requestedItemIds = command.Items.Select(i => i.ItemId).ToList();
