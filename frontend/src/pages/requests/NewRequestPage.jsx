@@ -186,7 +186,7 @@ export default function NewRequestPage() {
         {/* Left 2 Cols: Form details & Item selection */}
         <div className="space-y-6 lg:col-span-2">
           {/* Metadata Card */}
-          <Card>
+          <Card className="p-5">
             <h3 className="text-base font-semibold text-ink">Request Details</h3>
             <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
@@ -217,7 +217,7 @@ export default function NewRequestPage() {
           </Card>
 
           {/* Item Selector Card */}
-          <Card>
+          <Card className="p-5">
             <h3 className="text-base font-semibold text-ink">Add Items from Catalogue</h3>
             <p className="mt-1 text-sm text-ink-muted">
               Choose stationery items to add to your requisition list.
@@ -266,7 +266,7 @@ export default function NewRequestPage() {
           </Card>
 
           {/* Selected Items Table Card */}
-          <Card>
+          <Card className="p-5">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-semibold text-ink">
                 Requisition Items ({selectedItems.length})
@@ -349,7 +349,7 @@ export default function NewRequestPage() {
 
         {/* Right 1 Col: Summary & Actions */}
         <div className="space-y-6">
-          <Card>
+          <Card className="p-5">
             <h3 className="text-base font-semibold text-ink">Summary</h3>
 
             <dl className="mt-4 divide-y divide-surface-border text-sm">
