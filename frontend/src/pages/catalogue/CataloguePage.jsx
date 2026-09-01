@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { X, SlidersHorizontal } from 'lucide-react'
 
 import PageHeader from '../../components/layout/PageHeader.jsx'
@@ -17,10 +17,13 @@ import {
   describeActiveFilters,
 } from './filters.js'
 
+const PAGE_SIZE = 15
+
 export default function CataloguePage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
   const [panelOpen, setPanelOpen] = useState(true)
+  const [page, setPage] = useState(1)
 
   const { data, error, loading, reload } = useAsync(
     () =>
@@ -46,6 +49,18 @@ export default function CataloguePage() {
   const activeChips = useMemo(
     () => describeActiveFilters(filters, categories, suppliers),
     [filters, categories, suppliers],
+  )
+
+  // Any change to filters or search reshuffles which items match, so the current page number
+  // may no longer be valid (or may now be showing a stale slice) — reset to page 1.
+  useEffect(() => {
+    setPage(1)
+  }, [filters, searchTerm])
+
+  const totalPages = Math.max(1, Math.ceil(visibleItems.length / PAGE_SIZE))
+  const pagedItems = useMemo(
+    () => visibleItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [visibleItems, page],
   )
 
   function clearAll() {
@@ -140,11 +155,38 @@ export default function CataloguePage() {
           )}
 
           {!loading && !error && visibleItems.length > 0 && (
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
-              {visibleItems.map((item) => (
-                <ItemCard key={item.itemId} item={item} />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
+                {pagedItems.map((item) => (
+                  <ItemCard key={item.itemId} item={item} />
+                ))}
+              </div>
+
+              <div className="mt-4 flex items-center justify-between border-t border-surface-border px-4 py-3 text-sm text-ink-muted">
+                <span>
+                  Page {page} of {totalPages} · {visibleItems.length} item
+                  {visibleItems.length === 1 ? '' : 's'}
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={page <= 1}
+                    onClick={() => setPage((p) => p - 1)}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={page >= totalPages}
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            </>
           )}
         </div>
       </div>
