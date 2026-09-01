@@ -1,20 +1,20 @@
 {
   "format": 1,
   "restore": {
-    "/home/dat/EProject/project_3/WebApi/WebApi.csproj": {}
+    "/home/phat/Projects/project_3/WebApi/WebApi.csproj": {}
   },
   "projects": {
-    "/home/dat/EProject/project_3/Application/Application.csproj": {
+    "/home/phat/Projects/project_3/Application/Application.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/home/dat/EProject/project_3/Application/Application.csproj",
+        "projectUniqueName": "/home/phat/Projects/project_3/Application/Application.csproj",
         "projectName": "Application",
-        "projectPath": "/home/dat/EProject/project_3/Application/Application.csproj",
-        "packagesPath": "/home/dat/.nuget/packages/",
-        "outputPath": "/home/dat/EProject/project_3/Application/obj/",
+        "projectPath": "/home/phat/Projects/project_3/Application/Application.csproj",
+        "packagesPath": "/home/phat/.nuget/packages/",
+        "outputPath": "/home/phat/Projects/project_3/Application/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "/home/dat/.nuget/NuGet/NuGet.Config"
+          "/home/phat/.nuget/NuGet/NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net10.0"
@@ -26,8 +26,8 @@
           "net10.0": {
             "targetAlias": "net10.0",
             "projectReferences": {
-              "/home/dat/EProject/project_3/Core/Core.csproj": {
-                "projectPath": "/home/dat/EProject/project_3/Core/Core.csproj"
+              "/home/phat/Projects/project_3/Core/Core.csproj": {
+                "projectPath": "/home/phat/Projects/project_3/Core/Core.csproj"
               }
             }
           }
@@ -42,7 +42,7 @@
           "auditLevel": "low",
           "auditMode": "all"
         },
-        "SdkAnalysisLevel": "10.0.200"
+        "SdkAnalysisLevel": "10.0.100"
       },
       "frameworks": {
         "net10.0": {
@@ -69,7 +69,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "/opt/JetBrains Rider-2026.1.4/lib/ReSharperHost/linux-x64/dotnet/sdk/10.0.201/PortableRuntimeIdentifierGraph.json",
+          "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/10.0.111/PortableRuntimeIdentifierGraph.json",
           "packagesToPrune": {
             "Microsoft.CSharp": "(,4.7.32767]",
             "Microsoft.VisualBasic": "(,10.4.32767]",
@@ -347,17 +347,17 @@
         }
       }
     },
-    "/home/dat/EProject/project_3/Core/Core.csproj": {
+    "/home/phat/Projects/project_3/Core/Core.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/home/dat/EProject/project_3/Core/Core.csproj",
+        "projectUniqueName": "/home/phat/Projects/project_3/Core/Core.csproj",
         "projectName": "Core",
-        "projectPath": "/home/dat/EProject/project_3/Core/Core.csproj",
-        "packagesPath": "/home/dat/.nuget/packages/",
-        "outputPath": "/home/dat/EProject/project_3/Core/obj/",
+        "projectPath": "/home/phat/Projects/project_3/Core/Core.csproj",
+        "packagesPath": "/home/phat/.nuget/packages/",
+        "outputPath": "/home/phat/Projects/project_3/Core/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "/home/dat/.nuget/NuGet/NuGet.Config"
+          "/home/phat/.nuget/NuGet/NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net10.0"
@@ -381,7 +381,7 @@
           "auditLevel": "low",
           "auditMode": "all"
         },
-        "SdkAnalysisLevel": "10.0.200"
+        "SdkAnalysisLevel": "10.0.100"
       },
       "frameworks": {
         "net10.0": {
@@ -402,7 +402,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "/opt/JetBrains Rider-2026.1.4/lib/ReSharperHost/linux-x64/dotnet/sdk/10.0.201/PortableRuntimeIdentifierGraph.json",
+          "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/10.0.111/PortableRuntimeIdentifierGraph.json",
           "packagesToPrune": {
             "Microsoft.CSharp": "(,4.7.32767]",
             "Microsoft.VisualBasic": "(,10.4.32767]",
@@ -680,17 +680,17 @@
         }
       }
     },
-    "/home/dat/EProject/project_3/Infrastructure/Infrastructure.csproj": {
+    "/home/phat/Projects/project_3/Infrastructure/Infrastructure.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/home/dat/EProject/project_3/Infrastructure/Infrastructure.csproj",
+        "projectUniqueName": "/home/phat/Projects/project_3/Infrastructure/Infrastructure.csproj",
         "projectName": "Infrastructure",
-        "projectPath": "/home/dat/EProject/project_3/Infrastructure/Infrastructure.csproj",
-        "packagesPath": "/home/dat/.nuget/packages/",
-        "outputPath": "/home/dat/EProject/project_3/Infrastructure/obj/",
+        "projectPath": "/home/phat/Projects/project_3/Infrastructure/Infrastructure.csproj",
+        "packagesPath": "/home/phat/.nuget/packages/",
+        "outputPath": "/home/phat/Projects/project_3/Infrastructure/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "/home/dat/.nuget/NuGet/NuGet.Config"
+          "/home/phat/.nuget/NuGet/NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net10.0"
@@ -702,11 +702,11 @@
           "net10.0": {
             "targetAlias": "net10.0",
             "projectReferences": {
-              "/home/dat/EProject/project_3/Application/Application.csproj": {
-                "projectPath": "/home/dat/EProject/project_3/Application/Application.csproj"
+              "/home/phat/Projects/project_3/Application/Application.csproj": {
+                "projectPath": "/home/phat/Projects/project_3/Application/Application.csproj"
               },
-              "/home/dat/EProject/project_3/Core/Core.csproj": {
-                "projectPath": "/home/dat/EProject/project_3/Core/Core.csproj"
+              "/home/phat/Projects/project_3/Core/Core.csproj": {
+                "projectPath": "/home/phat/Projects/project_3/Core/Core.csproj"
               }
             }
           }
@@ -721,7 +721,7 @@
           "auditLevel": "low",
           "auditMode": "all"
         },
-        "SdkAnalysisLevel": "10.0.200"
+        "SdkAnalysisLevel": "10.0.100"
       },
       "frameworks": {
         "net10.0": {
@@ -769,7 +769,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "/opt/JetBrains Rider-2026.1.4/lib/ReSharperHost/linux-x64/dotnet/sdk/10.0.201/PortableRuntimeIdentifierGraph.json",
+          "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/10.0.111/PortableRuntimeIdentifierGraph.json",
           "packagesToPrune": {
             "Microsoft.AspNetCore": "(,10.0.32767]",
             "Microsoft.AspNetCore.Antiforgery": "(,10.0.32767]",
@@ -1187,17 +1187,17 @@
         }
       }
     },
-    "/home/dat/EProject/project_3/WebApi/WebApi.csproj": {
+    "/home/phat/Projects/project_3/WebApi/WebApi.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/home/dat/EProject/project_3/WebApi/WebApi.csproj",
+        "projectUniqueName": "/home/phat/Projects/project_3/WebApi/WebApi.csproj",
         "projectName": "WebApi",
-        "projectPath": "/home/dat/EProject/project_3/WebApi/WebApi.csproj",
-        "packagesPath": "/home/dat/.nuget/packages/",
-        "outputPath": "/home/dat/EProject/project_3/WebApi/obj/",
+        "projectPath": "/home/phat/Projects/project_3/WebApi/WebApi.csproj",
+        "packagesPath": "/home/phat/.nuget/packages/",
+        "outputPath": "/home/phat/Projects/project_3/WebApi/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "/home/dat/.nuget/NuGet/NuGet.Config"
+          "/home/phat/.nuget/NuGet/NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net10.0"
@@ -1209,11 +1209,11 @@
           "net10.0": {
             "targetAlias": "net10.0",
             "projectReferences": {
-              "/home/dat/EProject/project_3/Application/Application.csproj": {
-                "projectPath": "/home/dat/EProject/project_3/Application/Application.csproj"
+              "/home/phat/Projects/project_3/Application/Application.csproj": {
+                "projectPath": "/home/phat/Projects/project_3/Application/Application.csproj"
               },
-              "/home/dat/EProject/project_3/Infrastructure/Infrastructure.csproj": {
-                "projectPath": "/home/dat/EProject/project_3/Infrastructure/Infrastructure.csproj"
+              "/home/phat/Projects/project_3/Infrastructure/Infrastructure.csproj": {
+                "projectPath": "/home/phat/Projects/project_3/Infrastructure/Infrastructure.csproj"
               }
             }
           }
@@ -1228,7 +1228,7 @@
           "auditLevel": "low",
           "auditMode": "all"
         },
-        "SdkAnalysisLevel": "10.0.200"
+        "SdkAnalysisLevel": "10.0.100"
       },
       "frameworks": {
         "net10.0": {
@@ -1247,6 +1247,14 @@
               "suppressParent": "All",
               "target": "Package",
               "version": "[10.0.10, )"
+            },
+            "Serilog.AspNetCore": {
+              "target": "Package",
+              "version": "[8.0.3, )"
+            },
+            "Serilog.Sinks.Elasticsearch": {
+              "target": "Package",
+              "version": "[10.0.0, )"
             },
             "Swashbuckle.AspNetCore": {
               "target": "Package",
@@ -1272,7 +1280,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "/opt/JetBrains Rider-2026.1.4/lib/ReSharperHost/linux-x64/dotnet/sdk/10.0.201/PortableRuntimeIdentifierGraph.json",
+          "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/10.0.111/PortableRuntimeIdentifierGraph.json",
           "packagesToPrune": {
             "Microsoft.AspNetCore": "(,10.0.32767]",
             "Microsoft.AspNetCore.Antiforgery": "(,10.0.32767]",

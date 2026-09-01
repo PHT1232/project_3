@@ -1,9 +1,9 @@
 # Local/reference orchestration for the independent-container deployment (see Jenkinsfile
 # for the pipeline that builds and runs these same two images in CI).
 #
-# Secrets are read from the shell/CI environment, never hardcoded — set DB_CONNECTION_STRING
-# and JWT_SIGNING_KEY before running `docker compose up`, e.g. via a local, gitignored .env
-# file (DB_CONNECTION_STRING=..., JWT_SIGNING_KEY=...).
+# Secrets are read from the shell/CI environment, never hardcoded — set DB_CONNECTION_STRING,
+# JWT_SIGNING_KEY and BOOTSTRAP_ADMIN_PASSWORD before running `docker compose up`, e.g. via a
+# local, gitignored .env file.
 services:
   backend:
     build:
@@ -16,6 +16,10 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       ConnectionStrings__DefaultConnection: ${DB_CONNECTION_STRING:?DB_CONNECTION_STRING is required}
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?JWT_SIGNING_KEY is required}
+      Seed__BootstrapAdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD:?BOOTSTRAP_ADMIN_PASSWORD is required}
+      Elasticsearch__Uri: http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
     restart: unless-stopped
 
   frontend:
@@ -30,3 +34,28 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    restart: unless-stopped
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.0
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
+
+volumes:
+  es-data:
