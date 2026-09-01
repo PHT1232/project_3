@@ -27,9 +27,15 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using Serilog;
+using Serilog.Debugging;
 using WebApi.Authorization;
 using WebApi.Middleware;
 using WebApi.Services;
+
+// Serilog swallows its own sink errors (e.g. Elasticsearch connection/auth failures) by
+// default — without this, a broken ES sink fails completely silently and just never writes
+// anything, which is otherwise indistinguishable from "no logs happened yet".
+SelfLog.Enable(msg => Console.Error.WriteLine($"[Serilog] {msg}"));
 
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
