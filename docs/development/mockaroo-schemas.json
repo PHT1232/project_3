@@ -1,0 +1,117 @@
+{
+  "_readme": [
+    "Mockaroo schemas for every table in the data model, generated 2026-08-30.",
+    "Each top-level key's array is a standalone Mockaroo schema — copy just that array (not this",
+    "whole file) into Mockaroo's Schema -> Import from JSON, one table at a time.",
+    "Not verified against a live Mockaroo import: field-type names and option keys (blank,",
+    "formula, date format) follow Mockaroo's documented conventions, not a test run — check them",
+    "against the current UI after import.",
+    "FK-style columns (categoryId, itemId, requestorEmployeeNumber, etc.) are unconstrained random",
+    "numbers, not real references to rows you'll actually generate — referential integrity across",
+    "tables isn't guaranteed unless you use Mockaroo's paid Series/related-dataset feature or",
+    "post-process the exports yourself.",
+    "StockTransactions.changeQuantity must be nonzero (CK_StockTransactions_ChangeQuantity);",
+    "Mockaroo can't exclude 0 from a Number range natively, so filter it out after export."
+  ],
+
+  "Categories": [
+    { "name": "id", "type": "Row Number" },
+    { "name": "name", "type": "Custom List", "values": ["Paper & Notebooks", "Writing Instruments", "Tech & Accessories", "Organization", "Printing Supplies"] },
+    { "name": "isActive", "type": "Boolean", "trueChance": 90 }
+  ],
+
+  "Suppliers": [
+    { "name": "id", "type": "Row Number" },
+    { "name": "name", "type": "Company Name" },
+    { "name": "leadTimeDays", "type": "Number", "min": 1, "max": 30, "decimals": 0 },
+    { "name": "isActive", "type": "Boolean", "trueChance": 90 },
+    { "name": "rowVersion", "type": "GUID" }
+  ],
+
+  "StationeryItems": [
+    { "name": "id", "type": "Row Number" },
+    { "name": "itemName", "type": "Words", "min": 2, "max": 5 },
+    { "name": "categoryId", "type": "Number", "min": 1, "max": 5, "decimals": 0 },
+    { "name": "supplierId", "type": "Number", "min": 1, "max": 6, "decimals": 0, "blank": 20 },
+    { "name": "unitOfMeasure", "type": "Custom List", "values": ["Each", "Box", "Pack", "Ream", "Case"] },
+    { "name": "unitCost", "type": "Number", "min": 0.5, "max": 100, "decimals": 2 },
+    { "name": "quantityAvailable", "type": "Number", "min": 0, "max": 500, "decimals": 0 },
+    { "name": "reorderLevel", "type": "Number", "min": 5, "max": 100, "decimals": 0 },
+    { "name": "minRankLevelToRequest", "type": "Number", "min": 1, "max": 4, "decimals": 0 },
+    { "name": "isActive", "type": "Boolean", "trueChance": 90 },
+    { "name": "rowVersion", "type": "GUID" }
+  ],
+
+  "StockTransactions": [
+    { "name": "id", "type": "Row Number" },
+    { "name": "itemId", "type": "Number", "min": 1, "max": 40, "decimals": 0 },
+    { "name": "txType", "type": "Custom List", "values": ["Receipt", "Issue", "Adjustment"] },
+    { "name": "changeQuantity", "type": "Number", "min": -50, "max": 50, "decimals": 0 },
+    { "name": "unitCostSnapshot", "type": "Number", "min": 0.5, "max": 100, "decimals": 2 },
+    { "name": "reference", "type": "Words", "min": 1, "max": 3 },
+    { "name": "supplierId", "type": "Number", "min": 1, "max": 6, "decimals": 0, "blank": 40 },
+    { "name": "createdAtUtc", "type": "Datetime", "min": "01/01/2026", "max": "08/28/2026", "format": "%Y-%m-%dT%H:%M:%SZ" },
+    { "name": "createdByEmployeeNumber", "type": "Number", "min": 1, "max": 1000, "decimals": 0 }
+  ],
+
+  "Users": [
+    { "name": "employeeNumber", "type": "Row Number" },
+    { "name": "name", "type": "First Name" },
+    { "name": "email", "type": "Email Address" },
+    { "name": "grade", "type": "Custom List", "values": ["A1", "A2", "B1", "B2", "C1"], "blank": 30 },
+    { "name": "location", "type": "City" },
+    { "name": "superiorEmployeeNumber", "type": "Number", "min": 1, "max": 1000, "decimals": 0, "blank": 10 },
+    { "name": "rankLevel", "type": "Number", "min": 1, "max": 4, "decimals": 0 },
+    { "name": "isActive", "type": "Boolean", "trueChance": 95 },
+    { "name": "createdAtUtc", "type": "Datetime", "min": "01/01/2025", "max": "08/28/2026", "format": "%Y-%m-%dT%H:%M:%SZ" }
+  ],
+
+  "Requests": [
+    { "name": "id", "type": "Row Number" },
+    { "name": "requestorEmployeeNumber", "type": "Number", "min": 1, "max": 1000, "decimals": 0 },
+    { "name": "approverEmployeeNumber", "type": "Number", "min": 1, "max": 1000, "decimals": 0, "blank": 5 },
+    { "name": "status", "type": "Custom List", "values": ["Pending", "Approved", "PartiallyApproved", "Rejected", "Withdrawn", "CancellationPending", "Cancelled", "Fulfilled"] },
+    { "name": "totalEstimatedCost", "type": "Number", "min": 5, "max": 1000, "decimals": 2 },
+    { "name": "requiredByDate", "type": "Date", "min": "08/28/2026", "max": "12/31/2026", "blank": 30 },
+    { "name": "decisionComment", "type": "Sentence", "min": 3, "max": 12, "blank": 50 },
+    { "name": "createdAtUtc", "type": "Datetime", "min": "01/01/2026", "max": "08/28/2026", "format": "%Y-%m-%dT%H:%M:%SZ" },
+    { "name": "decidedAtUtc", "type": "Datetime", "min": "01/01/2026", "max": "08/28/2026", "format": "%Y-%m-%dT%H:%M:%SZ", "blank": 30 },
+    { "name": "rowVersion", "type": "GUID" }
+  ],
+
+  "RequestItems": [
+    { "name": "id", "type": "Row Number" },
+    { "name": "requestId", "type": "Number", "min": 1, "max": 100, "decimals": 0 },
+    { "name": "itemId", "type": "Number", "min": 1, "max": 40, "decimals": 0 },
+    { "name": "quantity", "type": "Number", "min": 1, "max": 20, "decimals": 0 },
+    { "name": "unitCostSnapshot", "type": "Number", "min": 0.5, "max": 100, "decimals": 2 },
+    { "name": "lineTotal", "type": "Formula", "formula": "this.quantity * this.unitCostSnapshot" }
+  ],
+
+  "RequestStatusHistory": [
+    { "name": "id", "type": "Row Number" },
+    { "name": "requestId", "type": "Number", "min": 1, "max": 100, "decimals": 0 },
+    { "name": "fromStatus", "type": "Custom List", "values": ["Pending", "Approved", "PartiallyApproved", "Rejected", "CancellationPending"], "blank": 15 },
+    { "name": "toStatus", "type": "Custom List", "values": ["Pending", "Approved", "PartiallyApproved", "Rejected", "Withdrawn", "CancellationPending", "Cancelled", "Fulfilled"] },
+    { "name": "actorEmployeeNumber", "type": "Number", "min": 1, "max": 1000, "decimals": 0 },
+    { "name": "comment", "type": "Sentence", "min": 3, "max": 12, "blank": 60 },
+    { "name": "createdAtUtc", "type": "Datetime", "min": "01/01/2026", "max": "08/28/2026", "format": "%Y-%m-%dT%H:%M:%SZ" }
+  ],
+
+  "SupplierRequests": [
+    { "name": "id", "type": "Row Number" },
+    { "name": "supplierId", "type": "Number", "min": 1, "max": 6, "decimals": 0 },
+    { "name": "totalCost", "type": "Number", "min": 20, "max": 5000, "decimals": 2 },
+    { "name": "createdAtUtc", "type": "Datetime", "min": "01/01/2026", "max": "08/28/2026", "format": "%Y-%m-%dT%H:%M:%SZ" },
+    { "name": "createdByEmployeeNumber", "type": "Number", "min": 1, "max": 1000, "decimals": 0 }
+  ],
+
+  "SupplierRequestItems": [
+    { "name": "id", "type": "Row Number" },
+    { "name": "supplierRequestId", "type": "Number", "min": 1, "max": 50, "decimals": 0 },
+    { "name": "itemId", "type": "Number", "min": 1, "max": 40, "decimals": 0 },
+    { "name": "quantity", "type": "Number", "min": 1, "max": 100, "decimals": 0 },
+    { "name": "unitCostSnapshot", "type": "Number", "min": 0.5, "max": 100, "decimals": 2 },
+    { "name": "lineTotal", "type": "Formula", "formula": "this.quantity * this.unitCostSnapshot" }
+  ]
+}

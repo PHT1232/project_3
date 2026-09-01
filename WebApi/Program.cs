@@ -187,9 +187,7 @@ if (!app.Environment.IsEnvironment("Testing"))
     }
 
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
-    var bootstrapAdminId = await DbSeeder.SeedBootstrapAdminAsync(userManager, bootstrapAdminPassword);
-
-    await DbSeeder.SeedCatalogueAndInventoryAsync(dbContext, bootstrapAdminId);
+    await DbSeeder.SeedBootstrapAdminAsync(userManager, bootstrapAdminPassword);
 }
 
 // Enabled in every environment (not just Development) — this is a small internal eProject
