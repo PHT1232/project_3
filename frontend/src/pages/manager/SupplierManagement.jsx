@@ -8,9 +8,18 @@ import Badge from '../../components/ui/Badge.jsx'
 import Modal from '../../components/ui/Modal.jsx'
 import { LoadingState, ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
 import useAsync from '../../hooks/useAsync.js'
+import useSortableTable from '../../hooks/useSortableTable.js'
+import SortableHeader from '../../components/ui/SortableHeader.jsx'
 import { getSuppliers, createSupplier, updateSupplier, deactivateSupplier } from '../../api/suppliers.js'
 
 const EMPTY_FORM = { name: '', leadTimeDays: '' }
+
+/** Lead time sorts numerically (the cell renders "5 days"); status sorts active first. */
+const SUPPLIER_SORT_COLUMNS = {
+  name: { type: 'string' },
+  leadTimeDays: { type: 'number' },
+  isActive: { type: 'boolean' },
+}
 
 function SupplierFormModal({ open, onClose, onSubmit, supplier, error }) {
   const isEdit = Boolean(supplier)
@@ -87,6 +96,10 @@ export default function SupplierManagement() {
 
   const { data, error, loading, reload } = useAsync(() => getSuppliers(), [])
   const suppliers = data?.items ?? []
+  const { sortedRows: sortedSuppliers, headerProps } = useSortableTable(suppliers, SUPPLIER_SORT_COLUMNS, {
+    key: 'name',
+    dir: 'asc',
+  })
 
   function openCreate() {
     setFormState({ open: true, supplier: null, error: null })
@@ -151,14 +164,20 @@ export default function SupplierManagement() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-surface-border text-xs uppercase tracking-wide text-ink-muted">
-                  <th className="px-4 py-3 font-semibold">Name</th>
-                  <th className="px-4 py-3 font-semibold">Lead time</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
+                  <SortableHeader {...headerProps('name')} className="font-semibold">
+                    Name
+                  </SortableHeader>
+                  <SortableHeader {...headerProps('leadTimeDays')} className="font-semibold">
+                    Lead time
+                  </SortableHeader>
+                  <SortableHeader {...headerProps('isActive')} className="font-semibold">
+                    Status
+                  </SortableHeader>
                   <th className="px-4 py-3 font-semibold text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-border">
-                {suppliers.map((supplier) => (
+                {sortedSuppliers.map((supplier) => (
                   <tr key={supplier.supplierId}>
                     <td className="px-4 py-3 font-medium text-ink">{supplier.name}</td>
                     <td className="px-4 py-3 text-ink-muted">{supplier.leadTimeDays} days</td>

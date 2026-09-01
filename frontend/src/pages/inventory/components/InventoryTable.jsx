@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { MoreVertical } from 'lucide-react'
 
 import { formatNumber } from '../../../lib/format.js'
+import SortableHeader from '../../../components/ui/SortableHeader.jsx'
 import StockStatusBadge from './StockStatusBadge.jsx'
 
 function RowMenu({ row, onAdjust, onReceive }) {
@@ -58,7 +59,15 @@ function RowMenu({ row, onAdjust, onReceive }) {
  * offered — the Plan specifies none (K5 in CLAUDE.md §6). The selection count is surfaced so
  * the control is not inert, and a bulk action can be added once one is specified.
  */
-export default function InventoryTable({ rows, selectedIds, onToggle, onToggleAll, onAdjust, onReceive }) {
+export default function InventoryTable({
+  rows,
+  selectedIds,
+  onToggle,
+  onToggleAll,
+  onAdjust,
+  onReceive,
+  headerProps,
+}) {
   const allSelected = rows.length > 0 && rows.every((row) => selectedIds.includes(row.itemId))
 
   return (
@@ -75,11 +84,28 @@ export default function InventoryTable({ rows, selectedIds, onToggle, onToggleAl
                 className="h-4 w-4 rounded border-surface-border text-brand-700 focus:ring-brand-500"
               />
             </th>
-            <th scope="col" className="px-4 py-3 font-semibold text-ink">Item Name</th>
+            <SortableHeader {...headerProps('itemName')} className="font-semibold text-ink">
+              Item Name
+            </SortableHeader>
+            {/* SKU is not persisted ([ASK] #2 / K5) and renders blank, so it stays unsortable. */}
             <th scope="col" className="px-4 py-3 font-semibold text-ink">SKU</th>
-            <th scope="col" className="px-4 py-3 text-right font-semibold text-ink">Current Stock</th>
-            <th scope="col" className="px-4 py-3 text-right font-semibold text-ink">Reorder Level</th>
-            <th scope="col" className="px-4 py-3 font-semibold text-ink">Status</th>
+            <SortableHeader
+              {...headerProps('quantityAvailable')}
+              align="right"
+              className="font-semibold text-ink"
+            >
+              Current Stock
+            </SortableHeader>
+            <SortableHeader
+              {...headerProps('reorderLevel')}
+              align="right"
+              className="font-semibold text-ink"
+            >
+              Reorder Level
+            </SortableHeader>
+            <SortableHeader {...headerProps('status')} className="font-semibold text-ink">
+              Status
+            </SortableHeader>
             <th scope="col" className="w-12 px-4 py-3">
               <span className="sr-only">Actions</span>
             </th>

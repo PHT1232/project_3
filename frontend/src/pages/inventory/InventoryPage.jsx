@@ -7,7 +7,8 @@ import Button from '../../components/ui/Button.jsx'
 import StatCard from '../../components/ui/StatCard.jsx'
 import { LoadingState, ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
 import useAsync from '../../hooks/useAsync.js'
-import { getInventory } from '../../api/inventory.js'
+import useSortableTable from '../../hooks/useSortableTable.js'
+import { getInventory, INVENTORY_STATUS } from '../../api/inventory.js'
 import { formatCurrency, formatNumber } from '../../lib/format.js'
 
 import InventoryToolbar from './components/InventoryToolbar.jsx'
@@ -15,24 +16,24 @@ import InventoryTable from './components/InventoryTable.jsx'
 import StockActionModal from './components/StockActionModal.jsx'
 import SupplierRequestModal from './components/SupplierRequestModal.jsx'
 
-function sortRows(rows, sort) {
-  const sorted = [...rows]
-  switch (sort) {
-    case 'NAME_DESC':
-      return sorted.sort((a, b) => b.itemName.localeCompare(a.itemName))
-    case 'STOCK_ASC':
-      return sorted.sort((a, b) => a.quantityAvailable - b.quantityAvailable)
-    case 'STOCK_DESC':
-      return sorted.sort((a, b) => b.quantityAvailable - a.quantityAvailable)
-    default:
-      return sorted.sort((a, b) => a.itemName.localeCompare(b.itemName))
-  }
+/**
+ * Sortable columns. The itemName/quantityAvailable comparators are the ones the old "Sort by"
+ * dropdown used, unchanged — only the trigger moved to the column headers. Status is ordered by
+ * severity rather than alphabetically, because A–Z would read "OK, REORDER_NOW, WATCH".
+ */
+const SORT_COLUMNS = {
+  itemName: { type: 'string' },
+  quantityAvailable: { type: 'number' },
+  reorderLevel: { type: 'number' },
+  status: {
+    type: 'order',
+    order: [INVENTORY_STATUS.REORDER_NOW, INVENTORY_STATUS.WATCH, INVENTORY_STATUS.OK],
+  },
 }
 
 export default function InventoryPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [status, setStatus] = useState('ALL')
-  const [sort, setSort] = useState('NAME_ASC')
   const [selectedIds, setSelectedIds] = useState([])
   const [action, setAction] = useState({ mode: null, item: null })
   // The inventory cart: selectedIds is the membership, cartQuantities the per-item amount.
@@ -46,17 +47,21 @@ export default function InventoryPage() {
   const rows = data?.items ?? []
   const summary = data?.summary
 
-  const visibleRows = useMemo(() => {
+  const filteredRows = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
-    const filtered = rows.filter((row) => {
+    return rows.filter((row) => {
       if (status !== 'ALL' && row.status !== status) return false
       if (!term) return true
       return (
         row.itemName.toLowerCase().includes(term) || (row.sku ?? '').toLowerCase().includes(term)
       )
     })
-    return sortRows(filtered, sort)
-  }, [rows, searchTerm, status, sort])
+  }, [rows, searchTerm, status])
+
+  const { sortedRows: visibleRows, headerProps } = useSortableTable(filteredRows, SORT_COLUMNS, {
+    key: 'itemName',
+    dir: 'asc',
+  })
 
   function toggleRow(itemId) {
     setSelectedIds((current) =>
@@ -152,8 +157,6 @@ export default function InventoryPage() {
           onSearch={setSearchTerm}
           status={status}
           onStatus={setStatus}
-          sort={sort}
-          onSort={setSort}
         />
       )}
 
@@ -195,6 +198,7 @@ export default function InventoryPage() {
             onToggleAll={toggleAll}
             onAdjust={(item) => setAction({ mode: 'adjust', item })}
             onReceive={(item) => setAction({ mode: 'receive', item })}
+            headerProps={headerProps}
           />
         )}
       </Card>

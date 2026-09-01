@@ -3,13 +3,6 @@ import Card from '../../../components/ui/Card.jsx'
 import SearchInput from '../../../components/ui/SearchInput.jsx'
 import { INVENTORY_STATUS } from '../../../api/inventory.js'
 
-export const SORT_OPTIONS = [
-  { id: 'NAME_ASC', label: 'Item Name (A–Z)' },
-  { id: 'NAME_DESC', label: 'Item Name (Z–A)' },
-  { id: 'STOCK_ASC', label: 'Current Stock (Low–High)' },
-  { id: 'STOCK_DESC', label: 'Current Stock (High–Low)' },
-]
-
 /*
   The wireframe shows a "Filter" control but does not say what it filters. Status is the only
   filterable dimension actually rendered in the table, so this narrows by status. Flagged as an
@@ -25,7 +18,8 @@ const STATUS_FILTERS = [
 const selectClass =
   'h-10 rounded-md border border-surface-border bg-surface-card px-3 text-sm text-ink'
 
-export default function InventoryToolbar({ searchTerm, onSearch, status, onStatus, sort, onSort }) {
+/** Sorting is not here — it lives on the table's column headers (see SortableHeader). */
+export default function InventoryToolbar({ searchTerm, onSearch, status, onStatus }) {
   return (
     <Card className="mb-4 flex flex-col gap-3 p-3 lg:flex-row lg:items-center">
       <SearchInput
@@ -53,23 +47,6 @@ export default function InventoryToolbar({ searchTerm, onSearch, status, onStatu
           </select>
         </div>
 
-        <div className="flex items-center gap-2">
-          <label htmlFor="inventory-sort" className="text-sm text-ink-muted">
-            Sort by:
-          </label>
-          <select
-            id="inventory-sort"
-            value={sort}
-            onChange={(e) => onSort(e.target.value)}
-            className={selectClass}
-          >
-            {SORT_OPTIONS.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
       </div>
     </Card>
   )
