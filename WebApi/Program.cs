@@ -3,6 +3,7 @@ using System.Text;
 using Application.Interfaces.Auth;
 using Application.Interfaces.Catalogue;
 using Application.Interfaces.Inventory;
+using Application.Interfaces.Reports;
 using Application.Interfaces.Requests;
 using Application.Interfaces.SupplierRequests;
 using Application.Interfaces.Suppliers;
@@ -137,6 +138,7 @@ builder.Services.AddScoped<ISupplierRequestQueries, SupplierRequestQueries>();
 builder.Services.AddScoped<ISupplierRequestService, SupplierRequestService>();
 builder.Services.AddScoped<IRequestQueries, RequestQueries>();
 builder.Services.AddScoped<IRequestService, RequestService>();
+builder.Services.AddScoped<IReportQueries, ReportQueries>();
 
 builder.Services.AddValidatorsFromAssemblyContaining<CreateUserRequestValidator>();
 builder.Services.AddControllers();
@@ -188,6 +190,12 @@ if (!app.Environment.IsEnvironment("Testing"))
 
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
     await DbSeeder.SeedBootstrapAdminAsync(userManager, bootstrapAdminPassword);
+
+    // Dev-only demo hierarchy + request history for the role-scoped Reports page.
+    if (builder.Configuration.GetValue<bool>("Seed:DemoData"))
+    {
+        await DbSeeder.SeedDemoDataAsync(userManager, dbContext, bootstrapAdminPassword);
+    }
 }
 
 // Enabled in every environment (not just Development) — this is a small internal eProject
