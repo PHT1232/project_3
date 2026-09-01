@@ -224,7 +224,8 @@ public class RequestQueries(DataContext db) : IRequestQueries
         int requestorEmployeeNumber,
         int page,
         int pageSize,
-        int visibleToEmployeeNumber)
+        int visibleToEmployeeNumber,
+        string? statusFilter = null)
     {
         // Requestor visibility: only they can see their own requests, unless caller is Manager+
         var caller = await db.Users
@@ -244,6 +245,11 @@ public class RequestQueries(DataContext db) : IRequestQueries
         var query = db.Requests
             .AsNoTracking()
             .Where(r => r.RequestorEmployeeNumber == requestorEmployeeNumber);
+
+        if (!string.IsNullOrWhiteSpace(statusFilter))
+        {
+            query = query.Where(r => r.Status == statusFilter);
+        }
 
         var totalCount = await query.CountAsync();
 

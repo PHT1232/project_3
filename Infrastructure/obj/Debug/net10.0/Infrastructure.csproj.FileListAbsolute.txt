@@ -13,23 +13,43 @@
 /home/phat/Documents/csharp/Project/Infrastructure/obj/Debug/net10.0/refint/Infrastructure.dll
 /home/phat/Documents/csharp/Project/Infrastructure/obj/Debug/net10.0/Infrastructure.pdb
 /home/phat/Documents/csharp/Project/Infrastructure/obj/Debug/net10.0/ref/Infrastructure.dll
-D:\Program Files\APTECH\project_3\Infrastructure\bin\Debug\net10.0\Infrastructure.deps.json
-D:\Program Files\APTECH\project_3\Infrastructure\bin\Debug\net10.0\Infrastructure.runtimeconfig.json
-D:\Program Files\APTECH\project_3\Infrastructure\bin\Debug\net10.0\Infrastructure.dll
-D:\Program Files\APTECH\project_3\Infrastructure\bin\Debug\net10.0\Infrastructure.pdb
-D:\Program Files\APTECH\project_3\Infrastructure\bin\Debug\net10.0\Application.dll
-D:\Program Files\APTECH\project_3\Infrastructure\bin\Debug\net10.0\Core.dll
-D:\Program Files\APTECH\project_3\Infrastructure\bin\Debug\net10.0\Core.pdb
-D:\Program Files\APTECH\project_3\Infrastructure\bin\Debug\net10.0\Application.pdb
-D:\Program Files\APTECH\project_3\Infrastructure\obj\Debug\net10.0\Infrastructure.csproj.AssemblyReference.cache
-D:\Program Files\APTECH\project_3\Infrastructure\obj\Debug\net10.0\Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
-D:\Program Files\APTECH\project_3\Infrastructure\obj\Debug\net10.0\Infrastructure.AssemblyInfoInputs.cache
-D:\Program Files\APTECH\project_3\Infrastructure\obj\Debug\net10.0\Infrastructure.AssemblyInfo.cs
-D:\Program Files\APTECH\project_3\Infrastructure\obj\Debug\net10.0\Infrastructure.csproj.CoreCompileInputs.cache
-D:\Program Files\APTECH\project_3\Infrastructure\obj\Debug\net10.0\Infrastructure.sourcelink.json
-D:\Program Files\APTECH\project_3\Infrastructure\obj\Debug\net10.0\Infrastr.15EFFBFE.Up2Date
-D:\Program Files\APTECH\project_3\Infrastructure\obj\Debug\net10.0\Infrastructure.dll
-D:\Program Files\APTECH\project_3\Infrastructure\obj\Debug\net10.0\refint\Infrastructure.dll
-D:\Program Files\APTECH\project_3\Infrastructure\obj\Debug\net10.0\Infrastructure.pdb
-D:\Program Files\APTECH\project_3\Infrastructure\obj\Debug\net10.0\Infrastructure.genruntimeconfig.cache
-D:\Program Files\APTECH\project_3\Infrastructure\obj\Debug\net10.0\ref\Infrastructure.dll
+D:/Program Files/APTECH/project_3/Infrastructure/bin/Debug/net10.0/Infrastructure.deps.json
+D:/Program Files/APTECH/project_3/Infrastructure/bin/Debug/net10.0/Infrastructure.runtimeconfig.json
+D:/Program Files/APTECH/project_3/Infrastructure/bin/Debug/net10.0/Infrastructure.dll
+D:/Program Files/APTECH/project_3/Infrastructure/bin/Debug/net10.0/Infrastructure.pdb
+D:/Program Files/APTECH/project_3/Infrastructure/bin/Debug/net10.0/Application.dll
+D:/Program Files/APTECH/project_3/Infrastructure/bin/Debug/net10.0/Core.dll
+D:/Program Files/APTECH/project_3/Infrastructure/bin/Debug/net10.0/Core.pdb
+D:/Program Files/APTECH/project_3/Infrastructure/bin/Debug/net10.0/Application.pdb
+D:/Program Files/APTECH/project_3/Infrastructure/obj/Debug/net10.0/Infrastructure.csproj.AssemblyReference.cache
+D:/Program Files/APTECH/project_3/Infrastructure/obj/Debug/net10.0/Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
+D:/Program Files/APTECH/project_3/Infrastructure/obj/Debug/net10.0/Infrastructure.AssemblyInfoInputs.cache
+D:/Program Files/APTECH/project_3/Infrastructure/obj/Debug/net10.0/Infrastructure.AssemblyInfo.cs
+D:/Program Files/APTECH/project_3/Infrastructure/obj/Debug/net10.0/Infrastructure.csproj.CoreCompileInputs.cache
+D:/Program Files/APTECH/project_3/Infrastructure/obj/Debug/net10.0/Infrastructure.sourcelink.json
+D:/Program Files/APTECH/project_3/Infrastructure/obj/Debug/net10.0/Infrastr.15EFFBFE.Up2Date
+D:/Program Files/APTECH/project_3/Infrastructure/obj/Debug/net10.0/Infrastructure.dll
+D:/Program Files/APTECH/project_3/Infrastructure/obj/Debug/net10.0/refint/Infrastructure.dll
+D:/Program Files/APTECH/project_3/Infrastructure/obj/Debug/net10.0/Infrastructure.pdb
+D:/Program Files/APTECH/project_3/Infrastructure/obj/Debug/net10.0/Infrastructure.genruntimeconfig.cache
+D:/Program Files/APTECH/project_3/Infrastructure/obj/Debug/net10.0/ref/Infrastructure.dll
+/home/dat/EProject/project_3/Infrastructure/bin/Debug/net10.0/Infrastructure.deps.json
+/home/dat/EProject/project_3/Infrastructure/bin/Debug/net10.0/Infrastructure.runtimeconfig.json
+/home/dat/EProject/project_3/Infrastructure/bin/Debug/net10.0/Infrastructure.dll
+/home/dat/EProject/project_3/Infrastructure/bin/Debug/net10.0/Infrastructure.pdb
+/home/dat/EProject/project_3/Infrastructure/bin/Debug/net10.0/Application.dll
+/home/dat/EProject/project_3/Infrastructure/bin/Debug/net10.0/Core.dll
+/home/dat/EProject/project_3/Infrastructure/bin/Debug/net10.0/Core.pdb
+/home/dat/EProject/project_3/Infrastructure/bin/Debug/net10.0/Application.pdb
+/home/dat/EProject/project_3/Infrastructure/obj/Debug/net10.0/Infrastructure.csproj.AssemblyReference.cache
+/home/dat/EProject/project_3/Infrastructure/obj/Debug/net10.0/Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
+/home/dat/EProject/project_3/Infrastructure/obj/Debug/net10.0/Infrastructure.AssemblyInfoInputs.cache
+/home/dat/EProject/project_3/Infrastructure/obj/Debug/net10.0/Infrastructure.AssemblyInfo.cs
+/home/dat/EProject/project_3/Infrastructure/obj/Debug/net10.0/Infrastructure.csproj.CoreCompileInputs.cache
+/home/dat/EProject/project_3/Infrastructure/obj/Debug/net10.0/Infrastructure.sourcelink.json
+/home/dat/EProject/project_3/Infrastructure/obj/Debug/net10.0/Infrastr.15EFFBFE.Up2Date
+/home/dat/EProject/project_3/Infrastructure/obj/Debug/net10.0/Infrastructure.dll
+/home/dat/EProject/project_3/Infrastructure/obj/Debug/net10.0/refint/Infrastructure.dll
+/home/dat/EProject/project_3/Infrastructure/obj/Debug/net10.0/Infrastructure.pdb
+/home/dat/EProject/project_3/Infrastructure/obj/Debug/net10.0/Infrastructure.genruntimeconfig.cache
+/home/dat/EProject/project_3/Infrastructure/obj/Debug/net10.0/ref/Infrastructure.dll

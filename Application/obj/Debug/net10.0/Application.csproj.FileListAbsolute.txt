@@ -29,19 +29,35 @@
 /home/phat/Projects/project_3/Application/obj/Debug/net10.0/refint/Application.dll
 /home/phat/Projects/project_3/Application/obj/Debug/net10.0/Application.pdb
 /home/phat/Projects/project_3/Application/obj/Debug/net10.0/ref/Application.dll
-D:\Program Files\APTECH\project_3\Application\bin\Debug\net10.0\Application.deps.json
-D:\Program Files\APTECH\project_3\Application\bin\Debug\net10.0\Application.dll
-D:\Program Files\APTECH\project_3\Application\bin\Debug\net10.0\Application.pdb
-D:\Program Files\APTECH\project_3\Application\bin\Debug\net10.0\Core.dll
-D:\Program Files\APTECH\project_3\Application\bin\Debug\net10.0\Core.pdb
-D:\Program Files\APTECH\project_3\Application\obj\Debug\net10.0\Application.csproj.AssemblyReference.cache
-D:\Program Files\APTECH\project_3\Application\obj\Debug\net10.0\Application.GeneratedMSBuildEditorConfig.editorconfig
-D:\Program Files\APTECH\project_3\Application\obj\Debug\net10.0\Application.AssemblyInfoInputs.cache
-D:\Program Files\APTECH\project_3\Application\obj\Debug\net10.0\Application.AssemblyInfo.cs
-D:\Program Files\APTECH\project_3\Application\obj\Debug\net10.0\Application.csproj.CoreCompileInputs.cache
-D:\Program Files\APTECH\project_3\Application\obj\Debug\net10.0\Application.sourcelink.json
-D:\Program Files\APTECH\project_3\Application\obj\Debug\net10.0\Applicat.44B5EDA2.Up2Date
-D:\Program Files\APTECH\project_3\Application\obj\Debug\net10.0\Application.dll
-D:\Program Files\APTECH\project_3\Application\obj\Debug\net10.0\refint\Application.dll
-D:\Program Files\APTECH\project_3\Application\obj\Debug\net10.0\Application.pdb
-D:\Program Files\APTECH\project_3\Application\obj\Debug\net10.0\ref\Application.dll
+D:/Program Files/APTECH/project_3/Application/bin/Debug/net10.0/Application.deps.json
+D:/Program Files/APTECH/project_3/Application/bin/Debug/net10.0/Application.dll
+D:/Program Files/APTECH/project_3/Application/bin/Debug/net10.0/Application.pdb
+D:/Program Files/APTECH/project_3/Application/bin/Debug/net10.0/Core.dll
+D:/Program Files/APTECH/project_3/Application/bin/Debug/net10.0/Core.pdb
+D:/Program Files/APTECH/project_3/Application/obj/Debug/net10.0/Application.csproj.AssemblyReference.cache
+D:/Program Files/APTECH/project_3/Application/obj/Debug/net10.0/Application.GeneratedMSBuildEditorConfig.editorconfig
+D:/Program Files/APTECH/project_3/Application/obj/Debug/net10.0/Application.AssemblyInfoInputs.cache
+D:/Program Files/APTECH/project_3/Application/obj/Debug/net10.0/Application.AssemblyInfo.cs
+D:/Program Files/APTECH/project_3/Application/obj/Debug/net10.0/Application.csproj.CoreCompileInputs.cache
+D:/Program Files/APTECH/project_3/Application/obj/Debug/net10.0/Application.sourcelink.json
+D:/Program Files/APTECH/project_3/Application/obj/Debug/net10.0/Applicat.44B5EDA2.Up2Date
+D:/Program Files/APTECH/project_3/Application/obj/Debug/net10.0/Application.dll
+D:/Program Files/APTECH/project_3/Application/obj/Debug/net10.0/refint/Application.dll
+D:/Program Files/APTECH/project_3/Application/obj/Debug/net10.0/Application.pdb
+D:/Program Files/APTECH/project_3/Application/obj/Debug/net10.0/ref/Application.dll
+/home/dat/EProject/project_3/Application/bin/Debug/net10.0/Application.deps.json
+/home/dat/EProject/project_3/Application/bin/Debug/net10.0/Application.dll
+/home/dat/EProject/project_3/Application/bin/Debug/net10.0/Application.pdb
+/home/dat/EProject/project_3/Application/bin/Debug/net10.0/Core.dll
+/home/dat/EProject/project_3/Application/bin/Debug/net10.0/Core.pdb
+/home/dat/EProject/project_3/Application/obj/Debug/net10.0/Application.csproj.AssemblyReference.cache
+/home/dat/EProject/project_3/Application/obj/Debug/net10.0/Application.GeneratedMSBuildEditorConfig.editorconfig
+/home/dat/EProject/project_3/Application/obj/Debug/net10.0/Application.AssemblyInfoInputs.cache
+/home/dat/EProject/project_3/Application/obj/Debug/net10.0/Application.AssemblyInfo.cs
+/home/dat/EProject/project_3/Application/obj/Debug/net10.0/Application.csproj.CoreCompileInputs.cache
+/home/dat/EProject/project_3/Application/obj/Debug/net10.0/Application.sourcelink.json
+/home/dat/EProject/project_3/Application/obj/Debug/net10.0/Applicat.44B5EDA2.Up2Date
+/home/dat/EProject/project_3/Application/obj/Debug/net10.0/Application.dll
+/home/dat/EProject/project_3/Application/obj/Debug/net10.0/refint/Application.dll
+/home/dat/EProject/project_3/Application/obj/Debug/net10.0/Application.pdb
+/home/dat/EProject/project_3/Application/obj/Debug/net10.0/ref/Application.dll

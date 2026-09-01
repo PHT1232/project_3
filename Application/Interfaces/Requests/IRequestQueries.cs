@@ -47,7 +47,8 @@ public interface IRequestQueries
         int requestorEmployeeNumber,
         int page,
         int pageSize,
-        int visibleToEmployeeNumber
+        int visibleToEmployeeNumber,
+        string? statusFilter = null
     );
 
     /// <summary>

@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 3,
   "targets": {
     "net10.0": {
       "Azure.Core/1.47.1": {
@@ -3721,19 +3721,19 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\Administrator\\.nuget\\packages\\": {}
+    "/home/dat/.nuget/packages/": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "D:\\Program Files\\APTECH\\project_3\\WebApi\\WebApi.csproj",
+      "projectUniqueName": "/home/dat/EProject/project_3/WebApi/WebApi.csproj",
       "projectName": "WebApi",
-      "projectPath": "D:\\Program Files\\APTECH\\project_3\\WebApi\\WebApi.csproj",
-      "packagesPath": "C:\\Users\\Administrator\\.nuget\\packages\\",
-      "outputPath": "D:\\Program Files\\APTECH\\project_3\\WebApi\\obj\\",
+      "projectPath": "/home/dat/EProject/project_3/WebApi/WebApi.csproj",
+      "packagesPath": "/home/dat/.nuget/packages/",
+      "outputPath": "/home/dat/EProject/project_3/WebApi/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
-        "C:\\Users\\Administrator\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        "/home/dat/.nuget/NuGet/NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net10.0"
@@ -3743,14 +3743,13 @@
       },
       "frameworks": {
         "net10.0": {
-          "framework": "net10.0",
           "targetAlias": "net10.0",
           "projectReferences": {
-            "D:\\Program Files\\APTECH\\project_3\\Application\\Application.csproj": {
-              "projectPath": "D:\\Program Files\\APTECH\\project_3\\Application\\Application.csproj"
+            "/home/dat/EProject/project_3/Application/Application.csproj": {
+              "projectPath": "/home/dat/EProject/project_3/Application/Application.csproj"
             },
-            "D:\\Program Files\\APTECH\\project_3\\Infrastructure\\Infrastructure.csproj": {
-              "projectPath": "D:\\Program Files\\APTECH\\project_3\\Infrastructure\\Infrastructure.csproj"
+            "/home/dat/EProject/project_3/Infrastructure/Infrastructure.csproj": {
+              "projectPath": "/home/dat/EProject/project_3/Infrastructure/Infrastructure.csproj"
             }
           }
         }
@@ -3765,11 +3764,10 @@
         "auditLevel": "low",
         "auditMode": "all"
       },
-      "SdkAnalysisLevel": "10.0.300"
+      "SdkAnalysisLevel": "10.0.200"
     },
     "frameworks": {
       "net10.0": {
-        "framework": "net10.0",
         "targetAlias": "net10.0",
         "dependencies": {
           "FluentValidation.DependencyInjectionExtensions": {
@@ -3810,7 +3808,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.302/PortableRuntimeIdentifierGraph.json",
+        "runtimeIdentifierGraphPath": "/opt/JetBrains Rider-2026.1.4/lib/ReSharperHost/linux-x64/dotnet/sdk/10.0.201/PortableRuntimeIdentifierGraph.json",
         "packagesToPrune": {
           "Microsoft.AspNetCore": "(,10.0.32767]",
           "Microsoft.AspNetCore.Antiforgery": "(,10.0.32767]",
