@@ -555,3 +555,16 @@ D:/Program Files/APTECH/project_3/WebApi/obj/Debug/net10.0/ref/WebApi.dll
 /home/phat/Projects/project_3/WebApi/obj/Debug/net10.0/WebApi.csproj.Up2Date
 /home/phat/Projects/project_3/WebApi/obj/Debug/net10.0/WebApi.genruntimeconfig.cache
 /home/phat/Projects/project_3/WebApi/obj/Debug/net10.0/ref/WebApi.dll
+/home/phat/Projects/project_3/WebApi/bin/Debug/net10.0/Elasticsearch.Net.dll
+/home/phat/Projects/project_3/WebApi/bin/Debug/net10.0/Serilog.dll
+/home/phat/Projects/project_3/WebApi/bin/Debug/net10.0/Serilog.AspNetCore.dll
+/home/phat/Projects/project_3/WebApi/bin/Debug/net10.0/Serilog.Extensions.Hosting.dll
+/home/phat/Projects/project_3/WebApi/bin/Debug/net10.0/Serilog.Extensions.Logging.dll
+/home/phat/Projects/project_3/WebApi/bin/Debug/net10.0/Serilog.Formatting.Compact.dll
+/home/phat/Projects/project_3/WebApi/bin/Debug/net10.0/Serilog.Formatting.Elasticsearch.dll
+/home/phat/Projects/project_3/WebApi/bin/Debug/net10.0/Serilog.Settings.Configuration.dll
+/home/phat/Projects/project_3/WebApi/bin/Debug/net10.0/Serilog.Sinks.Console.dll
+/home/phat/Projects/project_3/WebApi/bin/Debug/net10.0/Serilog.Sinks.Debug.dll
+/home/phat/Projects/project_3/WebApi/bin/Debug/net10.0/Serilog.Sinks.Elasticsearch.dll
+/home/phat/Projects/project_3/WebApi/bin/Debug/net10.0/Serilog.Sinks.File.dll
+/home/phat/Projects/project_3/WebApi/bin/Debug/net10.0/Serilog.Sinks.PeriodicBatching.dll

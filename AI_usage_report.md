@@ -990,3 +990,31 @@ session. Not committed.
 - Unsubmitted pending requests are detected via absence of a `Pending -> Pending` transition in `StatusHistory`.
 - Status transitions, audit trail history, and ownership checks are enforced server-side.
 
+
+## 2026-09-01 — ELK observability (Serilog → Elasticsearch + Kibana)
+
+**Tool:** Claude Code (Sonnet 5).
+
+**Task:** Add structured logging to the backend via Serilog, shipping directly to Elasticsearch (no Filebeat/Logstash), with Kibana for visualization — per explicit user choice among the ELK options presented.
+
+**What was done, by file:**
+- `WebApi/WebApi.csproj` — added `Serilog.AspNetCore` 8.0.3 and `Serilog.Sinks.Elasticsearch` 10.0.0.
+- `WebApi/Program.cs` — restructured with Serilog's recommended bootstrap-logger + `try`/`catch`/`finally` pattern (`Log.CloseAndFlush()` on shutdown). `builder.Host.UseSerilog(...)` configures Console always, plus an Elasticsearch sink when `Elasticsearch:Uri` is set and the environment isn't `Testing` (so `WebApplicationFactory`-based integration tests never dial out). Added `app.UseSerilogRequestLogging()`. The `catch` clause excludes `HostAbortedException` so `dotnet-ef` tooling and `WebApplicationFactory` (which both abort the host deliberately to inspect it without calling `Run()`) still work.
+  - **Bug found and fixed during verification**: the first version passed `UseSerilog` without `preserveStaticLogger: true`, so it replaced the shared static `Log.Logger` on every host boot. Because `WebApplicationFactory` always throws `HostAbortedException` to stop the host, the `finally` block's `Log.CloseAndFlush()` ran on *every* test-host startup — including inside the same test process where other test classes' hosts were concurrently starting and actively logging through that same static `Log.Logger`. That caused intermittent `ObjectDisposedException`s mid-startup (surfacing to xUnit as "the entry point exited without ever building an IHost"), failing ~9-10 of 44 integration tests only when run together, never in isolation. Fixed by passing `preserveStaticLogger: true`, so each host gets its own DI-scoped logger instead of mutating the shared static one.
+- `WebApi/appsettings.json` — added a `Serilog:MinimumLevel` section and an empty `Elasticsearch:Uri` key.
+- `WebApi/appsettings.Development.json` — set `Elasticsearch:Uri` to `http://localhost:9200`.
+- `docker-compose.yml` — added `elasticsearch` (8.15.0, single-node, security disabled, named volume `es-data`) and `kibana` (8.15.0) services; `backend` now depends on `elasticsearch` and gets `Elasticsearch__Uri`. Also added `Seed__BootstrapAdminPassword` to the `backend` service, which had been missing from this file even though the Jenkinsfile fix for the same env var landed on 2026-08-30 — `docker-compose.yml` was never updated to match at the time.
+- `Jenkinsfile` — new deploy-stage steps run `stationeryms-elasticsearch` and `stationeryms-kibana` containers (same `docker rm -f` + `docker run -d --restart unless-stopped` pattern as backend/frontend), with a named Docker volume (`stationeryms-es-data`) so log history survives container recreation on each build. Backend's `docker run` now also passes `-e Elasticsearch__Uri=http://stationeryms-elasticsearch:9200`. Header comment and success-message echo updated to match.
+
+**Tests actually executed:** `dotnet build Project.slnx` — 0 errors. `dotnet test Project.slnx` — **44/44 passed** (backend only; this task didn't touch frontend code, so frontend tests weren't re-run).
+
+**Jenkins UI action required (per house rule — the team pastes the pipeline script into the Jenkins UI, it isn't synced from this repo's `Jenkinsfile`):**
+- No new Jenkins credential needed — Elasticsearch/Kibana here run without auth (`xpack.security.enabled=false`), matching the docker-compose reference setup, appropriate for this internal eProject deployment.
+- New ports exposed: **9200** (Elasticsearch) and **5601** (Kibana) — must be free on the deploy host.
+- New deploy steps to paste in: two more `docker rm -f` / `docker run -d` blocks (Elasticsearch, Kibana) before the existing backend block, a `docker volume create stationeryms-es-data || true` line, and one more `-e Elasticsearch__Uri=http://stationeryms-elasticsearch:9200 \` line added to the existing backend `docker run` command. Exact text is in the repo's `Jenkinsfile`.
+- Resource note: Elasticsearch needs meaningful RAM (`ES_JAVA_OPTS=-Xms512m -Xmx512m` set here as a conservative default) and on some Linux hosts requires `vm.max_map_count >= 262144` (`sysctl -w vm.max_map_count=262144`) or the container fails to start — not yet verified on the actual deploy host, flag if Elasticsearch crash-loops there.
+
+**Assumptions & exclusions:**
+- Chose direct Serilog → Elasticsearch (no Filebeat/Logstash) per explicit user selection, not because it's architecturally mandated anywhere in the Plan (ELK isn't mentioned in the Plan at all — this is infra/ops tooling, not a Plan `[SPEC]` item).
+- No index lifecycle management (ILM) policy configured — logs will accumulate unbounded in Elasticsearch. Not in scope for this pass; flag for follow-up before a long-lived deployment.
+- Did not add authentication to Elasticsearch/Kibana (`xpack.security.enabled=false`) — acceptable for this internal, team-only eProject deployment, but would need revisiting before any wider exposure.
