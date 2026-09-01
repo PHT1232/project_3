@@ -184,6 +184,7 @@ try
     builder.Services.AddScoped<ISupplierRequestService, SupplierRequestService>();
     builder.Services.AddScoped<IRequestQueries, RequestQueries>();
     builder.Services.AddScoped<IRequestService, RequestService>();
+    builder.Services.AddScoped<IReportQueries, ReportQueries>();
 
     builder.Services.AddValidatorsFromAssemblyContaining<CreateUserRequestValidator>();
     builder.Services.AddControllers();
