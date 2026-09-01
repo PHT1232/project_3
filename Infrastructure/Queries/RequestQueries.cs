@@ -140,34 +140,35 @@ public class RequestQueries(DataContext db) : IRequestQueries
             })
             .ToList();
 
-        var historyDtos = request.StatusHistory
+        // Batched into a single query instead of one Users lookup per history row: the
+        // previous version projected with an async lambda inside .Select(...).ToList(),
+        // which fires all the per-row FirstOrDefaultAsync() calls concurrently against the
+        // same DbContext before any of them are awaited — DbContext isn't safe for concurrent
+        // use, so that threw "A second operation was started on this context instance before
+        // a previous operation completed" under real traffic (seen via the Elasticsearch logs,
+        // GET /api/v1/requests/mine, 2026-09-01).
+        var actorIds = request.StatusHistory
+            .Select(h => h.ActorEmployeeNumber)
+            .Distinct()
+            .ToList();
+        var actorNamesById = await db.Users
+            .Where(u => actorIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u.Name);
+
+        var historyList = request.StatusHistory
             .OrderBy(h => h.CreatedAtUtc)
             .ThenBy(h => h.Id)
-            .Select(async h =>
-            {
-                var actorName = await db.Users
-                    .Where(u => u.Id == h.ActorEmployeeNumber)
-                    .Select(u => u.Name)
-                    .FirstOrDefaultAsync();
-
-                return new RequestStatusHistoryDto(
-                    h.Id,
-                    h.RequestId,
-                    h.FromStatus,
-                    h.ToStatus,
-                    h.ActorEmployeeNumber,
-                    actorName,
-                    h.Comment,
-                    h.CreatedAtUtc
-                );
-            })
+            .Select(h => new RequestStatusHistoryDto(
+                h.Id,
+                h.RequestId,
+                h.FromStatus,
+                h.ToStatus,
+                h.ActorEmployeeNumber,
+                actorNamesById.GetValueOrDefault(h.ActorEmployeeNumber),
+                h.Comment,
+                h.CreatedAtUtc
+            ))
             .ToList();
-
-        var historyList = new List<RequestStatusHistoryDto>();
-        foreach (var historyTask in historyDtos)
-        {
-            historyList.Add(await historyTask);
-        }
 
         return new RequestDto(
             request.Id,
