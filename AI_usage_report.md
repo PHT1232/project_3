@@ -1148,3 +1148,31 @@ resolves to a trailing 90-day window.
 - Chose direct Serilog → Elasticsearch (no Filebeat/Logstash) per explicit user selection, not because it's architecturally mandated anywhere in the Plan (ELK isn't mentioned in the Plan at all — this is infra/ops tooling, not a Plan `[SPEC]` item).
 - No index lifecycle management (ILM) policy configured — logs will accumulate unbounded in Elasticsearch. Not in scope for this pass; flag for follow-up before a long-lived deployment.
 - Did not add authentication to Elasticsearch/Kibana (`xpack.security.enabled=false`) — acceptable for this internal, team-only eProject deployment, but would need revisiting before any wider exposure.
+
+## 2026-09-02 — Notification system (Plan M4/§4.2 [SPEC])
+
+**Tool:** Claude Code (Sonnet 5).
+
+**Task:** Implement the notification feed the Plan calls out as `[SPEC]` and "not deferrable" — 6 trigger events (request submitted/approved/rejected/withdrawn/cancelled, password changed), each firing to exactly two recipients, plus 4 endpoints and a frontend bell. Most of the request-lifecycle workflow this hooks into (`RequestService`, `ApprovalController`) already existed from earlier M3/M4-adjacent work; this pass added the notification layer on top of it, not the workflow itself.
+
+**What was implemented, by file:**
+- **Core:** `Core/Entities/Notification.cs` (Id, RecipientEmployeeNumber, RequestId?, EventType, Title, Message, IsRead, CreatedAtUtc — no nav property to `ApplicationUser`, matching the `StockTransaction`/`RequestStatusHistory` pattern). `Core/Enums/NotificationEventType.cs` (int-backed enum: RequestSubmitted/RequestApproved/RequestRejected/RequestWithdrawn/RequestCancelled/PasswordChanged — matches the existing `StockTransactionType` convention rather than the Plan's illustrative `nvarchar` ERD).
+- **Infrastructure:** `Data/Configurations/NotificationConfiguration.cs` (composite index `(RecipientEmployeeNumber, IsRead)` per Plan §3.3 for the cheap unread-count poll), migration `20260902112636_AddNotifications`, `Services/NotificationService.cs` (write side), `Queries/NotificationQueries.cs` (read side). `DataContext.cs` gets the new `DbSet<Notification>`.
+- **Application:** `DTOs/Notifications/{NotificationDto,UnreadCountDto}.cs`, `Interfaces/Notifications/{INotificationService,INotificationQueries}.cs`.
+- **Hooked into existing transactions** (no new transaction wrapper — each call just stages rows on the already-open `DataContext`, committed by the caller's existing `SaveChangesAsync`): `Infrastructure/Services/RequestService.cs` (`SubmitAsync`, `ApproveAsync`, `WithdrawAsync`, `ApproveCancellationAsync`) and `Application/Services/Auth/AuthService.cs` (`ChangePasswordAsync`).
+- **WebApi:** `Controllers/NotificationsController.cs` — `GET /api/v1/notifications` (paged feed), `GET /api/v1/notifications/unread-count`, `POST /api/v1/notifications/{id}/read`, `POST /api/v1/notifications/read-all`, matching the Plan's "Notifications — Member 4" endpoint table exactly. DI registration in `Program.cs`.
+- **Frontend:** `api/notifications.js`, `hooks/useNotifications.js` (30s poll of the unread-count endpoint only, paused on `document.hidden`, resumed on `visibilitychange`; full feed fetched on demand when the dropdown opens), `components/layout/NotificationBell.jsx` (badge, dropdown with loading/error/empty states, mark-read on click, mark-all-read). Wired into `Header.jsx`, replacing the disabled placeholder that was already there (that placeholder's own comment named this exact feature and endpoint as the thing that would eventually replace it).
+
+**Two design decisions made explicit rather than guessed silently** (documented in code comments at the point of use):
+1. **Recipient pairing.** The Plan says notifications go to "the actor and their superior," but read literally that breaks for approve/reject — the actor there is the approver, and the approver's own superior has nothing to do with the request. Recipients for all 5 request-related triggers are `{RequestorEmployeeNumber, ApproverEmployeeNumber}` regardless of who performed the action, matching the source spec's original wording ("popped up to the person and his superior" — person = requestor, his superior = approver, the same relationship in this app's hierarchy model). Password-changed has no request, so it uses the literal `{actor, actor's superior}`.
+2. **Two-step cancellation.** Only the final `Cancelled` outcome fires a notification — not the initial `request-cancellation` step (→ `CancellationPending`) or a denial (→ back to `Approved`). The Plan names exactly 6 triggers and "cancelled" is the only cancellation-related one on that list.
+
+**Tests actually executed:**
+- Backend: `dotnet test Project.slnx` — **61/61 passed** (50 pre-existing + 11 new: a 6-case `[Theory]` against `NotificationService` directly, matching the Plan's own explicit acceptance criteria wording ("notification service emits 2 rows for each of the 6 event types"), plus 4 endpoint-level integration tests exercising the real submit/change-password HTTP flows end to end, plus 1 edge-case test for an actor with no superior).
+- Frontend: `npx vitest run --pool=threads` — **90/90 passed** (15 new: 8 for the polling hook, 7 for the bell component — covering badge count/cap, dropdown open/loading/error/empty, mark-read, mark-all-read, and poll-pause-on-hidden-tab behavior with fake timers).
+- Both backend and frontend builds run cleanly.
+
+**Assumptions & exclusions:**
+- No frontend UI for the `MyActivity`/report-style breakdown of notification history beyond the dropdown feed — out of scope, Plan only specifies the bell + feed + mark-read.
+- No toast-on-action UI (Plan's T4.8 also mentions "toast on action") — the bell/badge/dropdown covers the persisted-feed half of the notification UX; a toast for the *acting* user's own screen at the moment of the action (e.g. "Request submitted" right after clicking Submit) was not added in this pass, since it's a separate, smaller UI concern from the feed itself and every action already gets its own success/error handling in the calling page.
+- Notification rows are never deleted — matches the Plan's "persisted notification feed" framing; no retention/cleanup policy was requested or added.
