@@ -2,16 +2,15 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, Bell, User, Menu, LogOut } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext.jsx'
+import { useNotifications } from '../../hooks/useNotifications.js'
+import NotificationDropdown from './NotificationDropdown.jsx'
 
 /**
  * Top bar. SHARED COMPONENT.
  *
- * The global search box and the notification bell are rendered because they appear on every
- * approved wireframe, but neither is wired:
- *  - global search across inventory/requests/suppliers has no endpoint in the Plan's catalogue (§4.2);
- *  - the unread badge belongs to the notifications feature (Plan M4, `GET /api/v1/notifications/unread-count`,
- *    polled every 30s) and is owned by M4.
- * Both are left inert rather than faked. Do not add a mock count here.
+ * The global search box remains inert until global search is implemented.
+ * The notification bell is wired up to the notification polling service and dropdown
+ * (Plan M4, `GET /api/v1/notifications/unread-count`, polled every 30s).
  *
  * The account menu is wired: it shows the signed-in user and logs out (Plan §5 — local
  * session destruction, then navigate to /login with history replacement).
@@ -20,11 +19,44 @@ export default function Header({ onMenuClick }) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [notifOpen, setNotifOpen] = useState(false)
+
+  const {
+    unreadCount,
+    notifications,
+    loading: notifLoading,
+    error: notifError,
+    loadNotifications,
+    markOneRead,
+    markAllRead,
+  } = useNotifications()
 
   function handleLogout() {
     setMenuOpen(false)
+    setNotifOpen(false)
     logout()
     navigate('/login', { replace: true })
+  }
+
+  function handleToggleNotifications() {
+    setNotifOpen((prev) => {
+      const next = !prev
+      if (next) {
+        setMenuOpen(false)
+        loadNotifications()
+      }
+      return next
+    })
+  }
+
+  function handleToggleMenu() {
+    setMenuOpen((prev) => {
+      const next = !prev
+      if (next) {
+        setNotifOpen(false)
+      }
+      return next
+    })
   }
 
   return (
@@ -54,20 +86,46 @@ export default function Header({ onMenuClick }) {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <button
-          type="button"
-          disabled
-          title="Notifications are not implemented yet"
-          aria-label="Notifications (not yet available)"
-          className="rounded-md p-2 text-ink-muted disabled:cursor-not-allowed"
-        >
-          <Bell className="h-5 w-5" />
-        </button>
-
+        {/* Notifications Popover */}
         <div className="relative">
           <button
             type="button"
-            onClick={() => setMenuOpen((open) => !open)}
+            onClick={handleToggleNotifications}
+            aria-haspopup="true"
+            aria-expanded={notifOpen}
+            aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
+            className={`relative rounded-md p-2 text-ink-muted hover:bg-surface-muted hover:text-ink transition-colors ${
+              notifOpen ? 'bg-surface-muted text-ink' : ''
+            }`}
+          >
+            <Bell className="h-5 w-5" />
+            {unreadCount > 0 && (
+              <span
+                className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-status-danger px-1 text-[10px] font-bold text-white leading-none"
+                aria-hidden="true"
+              >
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </button>
+
+          <NotificationDropdown
+            open={notifOpen}
+            onClose={() => setNotifOpen(false)}
+            notifications={notifications}
+            unreadCount={unreadCount}
+            loading={notifLoading}
+            error={notifError}
+            onMarkRead={markOneRead}
+            onMarkAllRead={markAllRead}
+          />
+        </div>
+
+        {/* Account Menu */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={handleToggleMenu}
             aria-haspopup="true"
             aria-expanded={menuOpen}
             aria-label="Account menu"

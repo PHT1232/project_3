@@ -28,3 +28,23 @@ export function formatDate(value) {
   if (!value) return '—'
   return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(new Date(value))
 }
+
+/** Formats a timestamp into a friendly relative description like "5m ago", "2h ago", "Yesterday". */
+export function formatRelativeTime(value) {
+  if (!value) return '—'
+  const date = new Date(value)
+  const now = new Date()
+  const diffMs = now - date
+  const diffSeconds = Math.max(0, Math.floor(diffMs / 1000))
+  const diffMinutes = Math.floor(diffSeconds / 60)
+  const diffHours = Math.floor(diffMinutes / 60)
+  const diffDays = Math.floor(diffHours / 24)
+
+  if (diffSeconds < 60) return 'Just now'
+  if (diffMinutes < 60) return `${diffMinutes}m ago`
+  if (diffHours < 24) return `${diffHours}h ago`
+  if (diffDays === 1) return 'Yesterday'
+  if (diffDays < 7) return `${diffDays}d ago`
+  return formatDate(value)
+}
+
