@@ -3,6 +3,7 @@ using System.Text;
 using Application.Interfaces.Auth;
 using Application.Interfaces.Catalogue;
 using Application.Interfaces.Inventory;
+using Application.Interfaces.Notifications;
 using Application.Interfaces.Reports;
 using Application.Interfaces.Requests;
 using Application.Interfaces.SupplierRequests;
@@ -185,6 +186,8 @@ try
     builder.Services.AddScoped<IRequestQueries, RequestQueries>();
     builder.Services.AddScoped<IRequestService, RequestService>();
     builder.Services.AddScoped<IReportQueries, ReportQueries>();
+    builder.Services.AddScoped<INotificationQueries, NotificationQueries>();
+    builder.Services.AddScoped<INotificationService, NotificationService>();
 
     builder.Services.AddValidatorsFromAssemblyContaining<CreateUserRequestValidator>();
     builder.Services.AddControllers();

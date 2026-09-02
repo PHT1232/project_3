@@ -1,5 +1,6 @@
 using Application.DTOs.Auth;
 using Application.Interfaces.Auth;
+using Application.Interfaces.Notifications;
 using FluentValidation;
 using FluentValidation.Results;
 
@@ -9,6 +10,7 @@ public class AuthService(
     IAccountStore accountStore,
     ITokenService tokenService,
     IPasswordService passwordService,
+    INotificationService notificationService,
     IValidator<ChangePasswordRequest> changePasswordValidator) : IAuthService
 {
     public async Task<LoginResponse?> LoginAsync(LoginRequest request)
@@ -30,10 +32,10 @@ public class AuthService(
     }
 
     /// <summary>
-    /// TC-14 is NOT fully satisfied by this method alone: the Plan requires notifying both
-    /// the user and their superior in the same transaction, and notification infrastructure
-    /// does not exist yet (see docs/development/identity-and-user-management-implementation-plan.md
-    /// §9). This only performs the password change and security-stamp rotation.
+    /// Performs the password change and security-stamp rotation, then fires the 6th
+    /// notification trigger (Plan §4.2 [SPEC]) to the user and their superior. The
+    /// notification write happens after — and separately from — the password change itself;
+    /// see INotificationService.NotifyPasswordChangedAsync's doc comment for why.
     /// </summary>
     public async Task ChangePasswordAsync(int employeeNumber, ChangePasswordRequest request)
     {
@@ -46,6 +48,8 @@ public class AuthService(
         {
             throw new ValidationException(errors.Select(e => new ValidationFailure(string.Empty, e)));
         }
+
+        await notificationService.NotifyPasswordChangedAsync(employeeNumber);
     }
 
     private static CurrentUserDto ToCurrentUserDto(AccountProjection account) => new(

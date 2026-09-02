@@ -1,5 +1,6 @@
 using Application.DTOs.Auth;
 using Application.Interfaces.Auth;
+using Application.Interfaces.Notifications;
 using Application.Services.Auth;
 using Application.Validators.Auth;
 using FluentAssertions;
@@ -22,14 +23,17 @@ public class AuthServiceTests
     private static AuthService CreateSut(
         Mock<IAccountStore> accountStore,
         Mock<ITokenService>? tokenService = null,
-        Mock<IPasswordService>? passwordService = null)
+        Mock<IPasswordService>? passwordService = null,
+        Mock<INotificationService>? notificationService = null)
     {
         tokenService ??= new Mock<ITokenService>();
         passwordService ??= new Mock<IPasswordService>();
+        notificationService ??= new Mock<INotificationService>();
         return new AuthService(
             accountStore.Object,
             tokenService.Object,
             passwordService.Object,
+            notificationService.Object,
             new ChangePasswordRequestValidator());
     }
 
