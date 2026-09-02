@@ -1176,3 +1176,72 @@ resolves to a trailing 90-day window.
 - No frontend UI for the `MyActivity`/report-style breakdown of notification history beyond the dropdown feed — out of scope, Plan only specifies the bell + feed + mark-read.
 - No toast-on-action UI (Plan's T4.8 also mentions "toast on action") — the bell/badge/dropdown covers the persisted-feed half of the notification UX; a toast for the *acting* user's own screen at the moment of the action (e.g. "Request submitted" right after clicking Submit) was not added in this pass, since it's a separate, smaller UI concern from the feed itself and every action already gets its own success/error handling in the calling page.
 - Notification rows are never deleted — matches the Plan's "persisted notification feed" framing; no retention/cleanup policy was requested or added.
+
+## 2026-09-03 — Inventory: stock ledger history UI + toolbar selection fix
+
+**Tool:** Claude Code (Opus 5).
+
+**Task:** Close two catalogue/inventory gaps found in a "built but not connected end-to-end"
+audit: the stock ledger had no UI anywhere in the app, and the Inventory toolbar's Adjust
+Stock / Receive Goods buttons acted on the wrong item. **Frontend only — no backend, DTO,
+entity, endpoint or migration change.** `GET /api/v1/inventory/{itemId}/transactions` shipped
+with M2 and was already integration-tested; it simply had no caller.
+
+**What was implemented, by file:**
+- **`frontend/src/pages/inventory/stockHistory.js` (new)** — `withRunningBalance(transactions,
+  currentBalance)` derives a per-row closing balance by walking the newest-first ledger back
+  from the item's cached `QuantityAvailable`, and returns the implied opening balance alongside
+  it; `formatChange(qty)` renders `+12` / `−12`. Pure, no React, unit-tested in isolation.
+- **`frontend/src/pages/inventory/components/StockHistoryModal.jsx` (new)** — the read view over
+  `StockTransactions`. Fetch-on-open follows the existing `SubordinatesModal` precedent, so
+  nothing is requested until opened. Full loading / error / empty states.
+- **`frontend/src/pages/inventory/components/InventoryTable.jsx`** — "View stock history" entry
+  in the existing row menu, plus the `onViewHistory` prop.
+- **`frontend/src/pages/inventory/InventoryPage.jsx`** — toolbar Adjust/Receive now target the
+  *selected* row instead of `visibleRows[0]`, and require exactly one selection; new
+  `historyItem` state renders the modal.
+- **`frontend/src/components/ui/Modal.jsx` (SHARED)** — additive `size` prop, default `md`.
+
+**The bug that was fixed:** both toolbar buttons passed `visibleRows[0]` — whatever happened to
+sort first — so re-sorting or filtering silently changed which item the button would modify, and
+the ticked checkbox was ignored entirely. Both buttons write to the append-only stock ledger, so
+this produced genuinely wrong rows, not a cosmetic slip. Row-level actions in the kebab menu
+were already correct and were left alone.
+
+**Three decisions made explicit rather than guessed:**
+1. **The running balance is derived, not fetched.** No per-row balance is stored anywhere, and
+   the endpoint returns every row for the item (no paging in `StockQueries.GetHistoryAsync`), so
+   walking back from the cached balance is complete and trivially checkable.
+2. **Drift is surfaced, not hidden.** The balance comes from the cache while the rows come from
+   the ledger, so walking all the way back must land on 0. When it does not, the modal says the
+   ledger does not reconcile instead of rendering a wrong number silently.
+3. **`Modal` gained a `size` prop.** At the default `max-w-md` the Balance column sat behind a
+   horizontal scrollbar. `size` defaults to `md`, so all six existing dialogs are unaffected;
+   only this modal opts into `lg`. The alternative was dropping the unit-cost sub-line to fit
+   408px, which traded real ledger information for not touching a shared file.
+
+**Tests actually executed:**
+- `npx vitest run --pool=threads` — **107/107 passed** (18 files; 90 pre-existing + 17 new:
+  8 for the pure helpers, 9 for the modal and the toolbar fix). Re-run *after* the `Modal.jsx`
+  change, not only before it.
+- `npm run build` — clean, 1707 modules.
+- Backend untouched, so `dotnet test` was not re-run for this change.
+- **Live end-to-end** against SQL Server Express (`StationeryManagementSystem.Dev`, 40 seeded
+  items): "Adjustable Laptop Stand" rendered 25 movements, newest `Aug 28 Issue −4 → 10`, oldest
+  `May 30 Receipt OPENING +16 → 16`. The first-ever row's derived balance equals its own
+  quantity, so the implied opening balance is exactly 0 and no drift warning fired —
+  independently confirming both the arithmetic and the ledger-vs-cache invariant on real rows.
+  Toolbar regression confirmed fixed: with the third row selected, Adjust Stock opened for that
+  row rather than the first visible one.
+
+**Assumptions & exclusions:**
+- No pagination on the history view — the running-balance walk requires the complete row set, and
+  paging it would need a stored per-row balance, i.e. a backend change.
+- Did not add UI for `GET /supplier-requests` (still uncalled) — that module is a flagged scope
+  breach pending a keep/revert decision, so extending it was deliberately avoided.
+- Did not wire `GET /inventory/low-stock` (still uncalled) — separate, smaller gap.
+- This does **not** make approval move stock; `IStockService.IssueAsync` still has zero callers.
+  That gap needs design answers first (partial-approval semantics, whether `Approved` implies
+  `Fulfilled`, whether cancellation restores stock) and was not guessed at here.
+
+Full detail: [docs/development/inventory-ledger-history-handoff.md](docs/development/inventory-ledger-history-handoff.md).

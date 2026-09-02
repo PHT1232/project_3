@@ -5,7 +5,7 @@ import { formatNumber } from '../../../lib/format.js'
 import SortableHeader from '../../../components/ui/SortableHeader.jsx'
 import StockStatusBadge from './StockStatusBadge.jsx'
 
-function RowMenu({ row, onAdjust, onReceive }) {
+function RowMenu({ row, onAdjust, onReceive, onViewHistory }) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -44,6 +44,16 @@ function RowMenu({ row, onAdjust, onReceive }) {
             >
               Receive goods
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false)
+                onViewHistory(row)
+              }}
+              className="block w-full border-t border-surface-border px-3 py-2 text-left text-sm text-ink hover:bg-surface-muted"
+            >
+              View stock history
+            </button>
           </div>
         </>
       )}
@@ -55,9 +65,8 @@ function RowMenu({ row, onAdjust, onReceive }) {
  * Inventory table. Column order matches the approved wireframe:
  * select · Item Name · SKU · Current Stock · Reorder Level · Status · row actions.
  *
- * Row selection is tracked because the wireframe shows checkboxes, but no bulk action is
- * offered — the Plan specifies none (K5 in CLAUDE.md §6). The selection count is surfaced so
- * the control is not inert, and a bulk action can be added once one is specified.
+ * Row selection drives the supplier-request cart, and the toolbar's single-item actions read
+ * it too (see `InventoryPage`). The wireframe's checkbox column is therefore no longer inert.
  */
 export default function InventoryTable({
   rows,
@@ -66,6 +75,7 @@ export default function InventoryTable({
   onToggleAll,
   onAdjust,
   onReceive,
+  onViewHistory,
   headerProps,
 }) {
   const allSelected = rows.length > 0 && rows.every((row) => selectedIds.includes(row.itemId))
@@ -140,7 +150,12 @@ export default function InventoryTable({
                   <StockStatusBadge status={row.status} />
                 </td>
                 <td className="px-4 py-3">
-                  <RowMenu row={row} onAdjust={onAdjust} onReceive={onReceive} />
+                  <RowMenu
+                    row={row}
+                    onAdjust={onAdjust}
+                    onReceive={onReceive}
+                    onViewHistory={onViewHistory}
+                  />
                 </td>
               </tr>
             )

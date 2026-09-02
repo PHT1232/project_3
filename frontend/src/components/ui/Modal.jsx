@@ -4,8 +4,18 @@ import { X } from 'lucide-react'
 /**
  * Shared modal dialog. Closes on Escape and on scrim click.
  * Kept deliberately small — no focus-trap library, no portal, no animation.
+ *
+ * SHARED FILE. `size` is additive and defaults to the original width, so every existing
+ * dialog renders exactly as before. Use `lg` only for genuinely tabular content that would
+ * otherwise hide a meaningful column behind a horizontal scrollbar (the stock ledger's
+ * running-balance column was the case that prompted it).
  */
-export default function Modal({ open, onClose, title, children, footer }) {
+const SIZES = {
+  md: 'max-w-md',
+  lg: 'max-w-2xl',
+}
+
+export default function Modal({ open, onClose, title, children, footer, size = 'md' }) {
   useEffect(() => {
     if (!open) return undefined
     function onKeyDown(e) {
@@ -24,7 +34,7 @@ export default function Modal({ open, onClose, title, children, footer }) {
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="relative z-10 w-full max-w-md rounded-card border border-surface-border bg-surface-card shadow-xl"
+        className={`relative z-10 w-full ${SIZES[size] ?? SIZES.md} rounded-card border border-surface-border bg-surface-card shadow-xl`}
       >
         <div className="flex items-center justify-between border-b border-surface-border px-5 py-4">
           <h2 className="text-base font-bold tracking-tight text-ink">{title}</h2>

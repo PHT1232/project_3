@@ -14,6 +14,7 @@ import { formatCurrency, formatNumber } from '../../lib/format.js'
 import InventoryToolbar from './components/InventoryToolbar.jsx'
 import InventoryTable from './components/InventoryTable.jsx'
 import StockActionModal from './components/StockActionModal.jsx'
+import StockHistoryModal from './components/StockHistoryModal.jsx'
 import SupplierRequestModal from './components/SupplierRequestModal.jsx'
 
 /**
@@ -36,6 +37,9 @@ export default function InventoryPage() {
   const [status, setStatus] = useState('ALL')
   const [selectedIds, setSelectedIds] = useState([])
   const [action, setAction] = useState({ mode: null, item: null })
+  // The item whose stock ledger is open. Separate from `action` because viewing history is a
+  // read, not a mutation — it shares no state with the Adjust/Receive dialog.
+  const [historyItem, setHistoryItem] = useState(null)
   // The inventory cart: selectedIds is the membership, cartQuantities the per-item amount.
   // Both live above the filter/sort logic, so searching or re-sorting never drops the cart
   // (local useState only — the project deliberately has no Redux, Plan §2.4).
@@ -103,6 +107,23 @@ export default function InventoryPage() {
 
   const hasFilters = searchTerm.trim() !== '' || status !== 'ALL'
 
+  // The toolbar's Adjust / Receive act on the SELECTED row. They previously acted on
+  // `visibleRows[0]` — whatever happened to sort first — so re-sorting or filtering silently
+  // changed which item the button would modify, and the checkbox the user had ticked was
+  // ignored. Both write to the stock ledger, so hitting the wrong item is a real correction to
+  // make afterwards, not a cosmetic slip.
+  //
+  // Exactly one selection is required: the same `selectedIds` also feeds the multi-item supplier
+  // cart, so with two or more ticked there is no single unambiguous target. The button is
+  // disabled in that case and says why, rather than guessing.
+  const singleSelectedRow = cartRows.length === 1 ? cartRows[0] : null
+  const singleSelectionHint =
+    cartRows.length === 0
+      ? 'Select one item to adjust or receive stock'
+      : cartRows.length > 1
+        ? 'Select exactly one item — several are selected'
+        : undefined
+
   return (
     <>
       <PageHeader
@@ -112,16 +133,18 @@ export default function InventoryPage() {
           <>
             <Button
               variant="secondary"
-              onClick={() => setAction({ mode: 'adjust', item: visibleRows[0] ?? null })}
-              disabled={visibleRows.length === 0}
+              onClick={() => setAction({ mode: 'adjust', item: singleSelectedRow })}
+              disabled={!singleSelectedRow}
+              title={singleSelectionHint}
             >
               <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
               Adjust Stock
             </Button>
             <Button
               variant="secondary"
-              onClick={() => setAction({ mode: 'receive', item: visibleRows[0] ?? null })}
-              disabled={visibleRows.length === 0}
+              onClick={() => setAction({ mode: 'receive', item: singleSelectedRow })}
+              disabled={!singleSelectedRow}
+              title={singleSelectionHint}
             >
               <PackagePlus className="h-4 w-4" aria-hidden="true" />
               Receive Goods
@@ -198,6 +221,7 @@ export default function InventoryPage() {
             onToggleAll={toggleAll}
             onAdjust={(item) => setAction({ mode: 'adjust', item })}
             onReceive={(item) => setAction({ mode: 'receive', item })}
+            onViewHistory={setHistoryItem}
             headerProps={headerProps}
           />
         )}
@@ -221,6 +245,12 @@ export default function InventoryPage() {
         item={action.item}
         onClose={() => setAction({ mode: null, item: null })}
         onSuccess={reload}
+      />
+
+      <StockHistoryModal
+        open={Boolean(historyItem)}
+        item={historyItem}
+        onClose={() => setHistoryItem(null)}
       />
 
       <SupplierRequestModal
