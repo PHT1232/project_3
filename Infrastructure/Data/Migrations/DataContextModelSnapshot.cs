@@ -43,6 +43,50 @@ namespace Infrastructure.Data.Migrations
                     b.ToTable("Categories");
                 });
 
+            modelBuilder.Entity("Core.Entities.Notification", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<int>("EventType")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("RecipientEmployeeNumber")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("RequestId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RequestId");
+
+                    b.HasIndex("RecipientEmployeeNumber", "IsRead");
+
+                    b.ToTable("Notifications", (string)null);
+                });
+
             modelBuilder.Entity("Core.Entities.Request", b =>
                 {
                     b.Property<int>("Id")
@@ -613,6 +657,22 @@ namespace Infrastructure.Data.Migrations
                     b.HasKey("UserId", "LoginProvider", "Name");
 
                     b.ToTable("AspNetUserTokens", (string)null);
+                });
+
+            modelBuilder.Entity("Core.Entities.Notification", b =>
+                {
+                    b.HasOne("Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("RecipientEmployeeNumber")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Core.Entities.Request", "Request")
+                        .WithMany()
+                        .HasForeignKey("RequestId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("Request");
                 });
 
             modelBuilder.Entity("Core.Entities.RequestItem", b =>

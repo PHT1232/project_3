@@ -1,17 +1,18 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, Bell, User, Menu, LogOut } from 'lucide-react'
+import { Search, User, Menu, LogOut } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext.jsx'
+import NotificationBell from './NotificationBell.jsx'
 
 /**
  * Top bar. SHARED COMPONENT.
  *
- * The global search box and the notification bell are rendered because they appear on every
- * approved wireframe, but neither is wired:
- *  - global search across inventory/requests/suppliers has no endpoint in the Plan's catalogue (§4.2);
- *  - the unread badge belongs to the notifications feature (Plan M4, `GET /api/v1/notifications/unread-count`,
- *    polled every 30s) and is owned by M4.
- * Both are left inert rather than faked. Do not add a mock count here.
+ * The global search box is rendered because it appears on every approved wireframe, but isn't
+ * wired — global search across inventory/requests/suppliers has no endpoint in the Plan's
+ * catalogue (§4.2). Left inert rather than faked.
+ *
+ * The notification bell (Plan M4, `GET /api/v1/notifications/unread-count`, polled every 30s)
+ * is wired — see NotificationBell.jsx.
  *
  * The account menu is wired: it shows the signed-in user and logs out (Plan §5 — local
  * session destruction, then navigate to /login with history replacement).
@@ -54,15 +55,7 @@ export default function Header({ onMenuClick }) {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <button
-          type="button"
-          disabled
-          title="Notifications are not implemented yet"
-          aria-label="Notifications (not yet available)"
-          className="rounded-md p-2 text-ink-muted disabled:cursor-not-allowed"
-        >
-          <Bell className="h-5 w-5" />
-        </button>
+        <NotificationBell />
 
         <div className="relative">
           <button

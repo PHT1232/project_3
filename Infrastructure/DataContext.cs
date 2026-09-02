@@ -26,6 +26,8 @@ public class DataContext(DbContextOptions<DataContext> options)
 
     public DbSet<RequestStatusHistory> RequestStatusHistories => Set<RequestStatusHistory>();
 
+    public DbSet<Notification> Notifications => Set<Notification>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);

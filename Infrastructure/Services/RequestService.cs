@@ -1,8 +1,10 @@
 using Application.DTOs.Common;
 using Application.DTOs.Requests;
 using Application.Exceptions;
+using Application.Interfaces.Notifications;
 using Application.Interfaces.Requests;
 using Core.Entities;
+using Core.Enums;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,17 +12,22 @@ namespace Infrastructure.Services;
 
 /// <summary>
 /// Request lifecycle service: create, approve/reject, withdraw, cancel, and list.
-/// 
+///
 /// All mutations are transactional and include concurrency control (RowVersion compare-then-set).
 /// Status changes write StatusHistory rows, trigger notifications, and run eligibility checks.
 /// Stock movements are deferred to fulfillment (M4+).
-/// 
+///
 /// Lives in Infrastructure (not Application) because it needs DataContext for atomic
 /// multi-entity commits (status + history + notifications, all or nothing).
+///
+/// Every notificationService.NotifyRequestEventAsync(...) call below only stages rows —
+/// it commits atomically with the rest of the method's changes on the same
+/// db.SaveChangesAsync() call, per INotificationService's contract.
 /// </summary>
 public class RequestService(
     DataContext db,
     IRequestQueries queries,
+    INotificationService notificationService,
     IValidator<CreateRequestCommand> createValidator,
     IValidator<ApproveRequestCommand> approveValidator,
     IValidator<WithdrawRequestCommand> withdrawValidator,
@@ -170,6 +177,7 @@ public class RequestService(
         });
 
         request.RowVersion = Guid.NewGuid();
+        await notificationService.NotifyRequestEventAsync(NotificationEventType.RequestSubmitted, request, submitterEmployeeNumber);
         await db.SaveChangesAsync();
 
         return await queries.GetByIdAsync(requestId, submitterEmployeeNumber)
@@ -232,6 +240,10 @@ public class RequestService(
             CreatedAtUtc = DateTime.UtcNow
         });
 
+        var approvalEventType = newStatus == "Rejected"
+            ? NotificationEventType.RequestRejected
+            : NotificationEventType.RequestApproved;
+        await notificationService.NotifyRequestEventAsync(approvalEventType, request, approverEmployeeNumber);
         await db.SaveChangesAsync();
 
         return await queries.GetByIdAsync(command.RequestId, approverEmployeeNumber)
@@ -278,6 +290,7 @@ public class RequestService(
             CreatedAtUtc = DateTime.UtcNow
         });
 
+        await notificationService.NotifyRequestEventAsync(NotificationEventType.RequestWithdrawn, request, requestorEmployeeNumber);
         await db.SaveChangesAsync();
 
         return await queries.GetByIdAsync(requestId, requestorEmployeeNumber)
@@ -327,6 +340,9 @@ public class RequestService(
             CreatedAtUtc = DateTime.UtcNow
         });
 
+        // No notification here by design — Plan §4.2 names exactly 6 triggers, and "cancelled"
+        // is one of them, not "cancellation requested". The notification fires from
+        // ApproveCancellationAsync below, only on the final Cancelled outcome.
         await db.SaveChangesAsync();
 
         return await queries.GetByIdAsync(requestId, requestorEmployeeNumber)
@@ -376,6 +392,12 @@ public class RequestService(
             CreatedAtUtc = DateTime.UtcNow
         });
 
+        // Only the final "Cancelled" outcome is one of the Plan's 6 named triggers — a denial
+        // (reverting to Approved/PartiallyApproved) doesn't fire a notification.
+        if (approved)
+        {
+            await notificationService.NotifyRequestEventAsync(NotificationEventType.RequestCancelled, request, approverEmployeeNumber);
+        }
         await db.SaveChangesAsync();
 
         return await queries.GetByIdAsync(requestId, approverEmployeeNumber)
