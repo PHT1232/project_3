@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { X, SlidersHorizontal } from 'lucide-react'
 
 import PageHeader from '../../components/layout/PageHeader.jsx'
@@ -10,6 +11,7 @@ import { getItems, getCategories } from '../../api/catalogue.js'
 
 import CatalogueFilters from './components/CatalogueFilters.jsx'
 import ItemCard from './components/ItemCard.jsx'
+import CatalogueSelectionBar from './components/CatalogueSelectionBar.jsx'
 import {
   DEFAULT_FILTERS,
   isDefaultFilters,
@@ -20,10 +22,14 @@ import {
 const PAGE_SIZE = 15
 
 export default function CataloguePage() {
+  const navigate = useNavigate()
   const [searchTerm, setSearchTerm] = useState('')
   const [filters, setFilters] = useState(DEFAULT_FILTERS)
   const [panelOpen, setPanelOpen] = useState(true)
   const [page, setPage] = useState(1)
+  // Items picked from the grid, held here until the user proceeds. Plain useState — the selection
+  // is scoped to this page and handed off on navigation, so it needs no global store (Plan §2.4).
+  const [selectedItems, setSelectedItems] = useState([])
 
   const { data, error, loading, reload } = useAsync(
     () =>
@@ -62,6 +68,22 @@ export default function CataloguePage() {
     () => visibleItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
     [visibleItems, page],
   )
+
+  const selectedIds = useMemo(
+    () => new Set(selectedItems.map((item) => item.itemId)),
+    [selectedItems],
+  )
+
+  function addItem(item) {
+    setSelectedItems((current) =>
+      current.some((selected) => selected.itemId === item.itemId) ? current : [...current, item],
+    )
+  }
+
+  /** Hands the selection to the New Request page, which owns quantities and submission. */
+  function proceedToRequest() {
+    navigate('/new-request', { state: { items: selectedItems } })
+  }
 
   function clearAll() {
     setFilters(DEFAULT_FILTERS)
@@ -158,7 +180,12 @@ export default function CataloguePage() {
             <>
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
                 {pagedItems.map((item) => (
-                  <ItemCard key={item.itemId} item={item} />
+                  <ItemCard
+                    key={item.itemId}
+                    item={item}
+                    onAdd={addItem}
+                    added={selectedIds.has(item.itemId)}
+                  />
                 ))}
               </div>
 
@@ -188,6 +215,13 @@ export default function CataloguePage() {
               </div>
             </>
           )}
+
+          {/* Outside the results conditional: a selection must survive filters that hide it. */}
+          <CatalogueSelectionBar
+            items={selectedItems}
+            onClear={() => setSelectedItems([])}
+            onProceed={proceedToRequest}
+          />
         </div>
       </div>
     </>

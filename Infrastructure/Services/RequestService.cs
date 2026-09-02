@@ -77,17 +77,28 @@ public class RequestService(
             throw new ConflictException($"Items {string.Join(", ", missingIds)} not found or inactive.");
         }
 
+        // Rank comes from the requestor's ROLE (AspNetRoles.RankLevel), which is the authoritative
+        // source used by IdentityAccountAdapter, the JWT rankLevel claim, and the catalogue's
+        // role filter in ItemQueries. ApplicationUser.RankLevel is a separate, unmaintained column
+        // that is 1 for every seeded user — reading it here meant a Manager could SEE a rank-2 item
+        // in the catalogue but got "requires rank level 2, but your rank is 1" when requesting it.
+        var requestorRankLevel = await (
+            from userRole in db.UserRoles
+            join role in db.Roles on userRole.RoleId equals role.Id
+            where userRole.UserId == requestorEmployeeNumber
+            select role.RankLevel).FirstOrDefaultAsync();
+
         // Check requestor's rank eligibility for each item
         foreach (var lineItem in command.Items)
         {
             var item = items.FirstOrDefault(i => i.Id == lineItem.ItemId)
                 ?? throw new NotFoundException($"Item {lineItem.ItemId} not found.");
 
-            if (item.MinRankLevelToRequest > requestor.RankLevel)
+            if (item.MinRankLevelToRequest > requestorRankLevel)
             {
                 throw new ConflictException(
                     $"Item {item.ItemName} requires rank level {item.MinRankLevelToRequest}, " +
-                    $"but your rank is {requestor.RankLevel}.");
+                    $"but your rank is {requestorRankLevel}.");
             }
         }
 

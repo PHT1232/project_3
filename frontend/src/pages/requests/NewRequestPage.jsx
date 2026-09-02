@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Plus, Trash2, Send, Save, AlertCircle, ShoppingCart, Calendar, CheckCircle2, Search } from 'lucide-react'
 
 import PageHeader from '../../components/layout/PageHeader.jsx'
@@ -12,8 +12,25 @@ import { getItems } from '../../api/catalogue.js'
 import { createRequest, submitRequest } from '../../api/requests.js'
 import { formatCurrency } from '../../lib/format.js'
 
+/**
+ * Maps a catalogue item onto a requisition line. Shared by the item picker below and by items
+ * handed over from the Catalogue page, so both routes produce identical line objects.
+ */
+function toRequisitionLine(item) {
+  return {
+    itemId: item.itemId,
+    itemName: item.itemName,
+    categoryName: item.categoryName,
+    supplierName: item.supplierName,
+    unitCost: item.unitCost,
+    quantity: 1,
+    maxStock: item.quantityAvailable,
+  }
+}
+
 export default function NewRequestPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { user } = useAuth()
 
   // Catalogue items for picker
@@ -27,7 +44,11 @@ export default function NewRequestPage() {
 
   // Form state
   const [requiredByDate, setRequiredByDate] = useState('')
-  const [selectedItems, setSelectedItems] = useState([]) // [{ itemId, itemName, categoryName, supplierName, unitCost, quantity, maxStock }]
+  // Seeded once from whatever the Catalogue's "Proceed" handed over (router state); empty when
+  // the page is opened directly, so the picker below stays the other way in.
+  const [selectedItems, setSelectedItems] = useState(() =>
+    (location.state?.items ?? []).map(toRequisitionLine),
+  )
   const [selectedItemId, setSelectedItemId] = useState('')
   const [itemSearch, setItemSearch] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -52,6 +73,12 @@ export default function NewRequestPage() {
     )
   }, [availableItems, itemSearch])
 
+  // A requestor at the top of the hierarchy has no superior, so there is nobody who could approve
+  // the request and the server rejects it (Plan §14 [ASK] #11 — "Can the MD (no superior) raise a
+  // request at all?", default: no). Surfaced up front rather than letting the user fill in the
+  // whole form and only then hit a validation error on submit.
+  const canRaiseRequest = user?.superiorEmployeeNumber != null
+
   // Computed summary
   const totalEstimatedCost = useMemo(() => {
     return selectedItems.reduce((sum, item) => sum + (item.quantity || 0) * (item.unitCost || 0), 0)
@@ -66,18 +93,7 @@ export default function NewRequestPage() {
     const itemToAdd = catalogueItems.find((i) => i.itemId === Number(selectedItemId))
     if (!itemToAdd) return
 
-    setSelectedItems((prev) => [
-      ...prev,
-      {
-        itemId: itemToAdd.itemId,
-        itemName: itemToAdd.itemName,
-        categoryName: itemToAdd.categoryName,
-        supplierName: itemToAdd.supplierName,
-        unitCost: itemToAdd.unitCost,
-        quantity: 1,
-        maxStock: itemToAdd.quantityAvailable,
-      },
-    ])
+    setSelectedItems((prev) => [...prev, toRequisitionLine(itemToAdd)])
     setSelectedItemId('')
     setItemSearch('')
   }
@@ -146,11 +162,15 @@ export default function NewRequestPage() {
       }, 1200)
     } catch (err) {
       const problem = err.response?.data
+      // `errors` first: on a validation failure the API also sends `detail`, but that is
+      // FluentValidation's raw dump ("Validation failed: \r\n -- requestorEmployeeNumber: …
+      // Severity: Error"), which leaked internal field names and severity text into the UI.
+      // `errors` holds the same messages already formatted for a human.
       const message =
+        (problem?.errors ? Object.values(problem.errors).flat().join(', ') : null) ||
         problem?.detail ||
         problem?.title ||
         problem?.error ||
-        (problem?.errors ? Object.values(problem.errors).flat().join(', ') : null) ||
         err.message ||
         'Failed to save stationery request.'
       setErrorMessage(message)
@@ -166,6 +186,20 @@ export default function NewRequestPage() {
         title="New Stationery Request"
         description="Select items from the stationery catalogue and submit for approval."
       />
+
+      {!canRaiseRequest && (
+        <div className="flex items-start gap-3 rounded-lg border border-surface-border bg-surface-muted p-4 text-sm text-ink">
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-ink-muted" aria-hidden="true" />
+          <div className="flex-1">
+            <p className="font-medium">You cannot raise a stationery request</p>
+            <p className="mt-1 text-ink-muted">
+              Requests are approved by your superior, and your account is at the top of the
+              reporting hierarchy, so there is nobody to approve one. Ask an employee who reports
+              to you to raise it instead.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Messages */}
       {errorMessage && (
@@ -380,7 +414,7 @@ export default function NewRequestPage() {
                 type="button"
                 variant="primary"
                 className="w-full justify-center"
-                disabled={selectedItems.length === 0 || submitting}
+                disabled={!canRaiseRequest || selectedItems.length === 0 || submitting}
                 onClick={() => handleSubmit(false)}
               >
                 <Send className="h-4 w-4" aria-hidden="true" />
@@ -391,7 +425,7 @@ export default function NewRequestPage() {
                 type="button"
                 variant="secondary"
                 className="w-full justify-center"
-                disabled={selectedItems.length === 0 || submitting}
+                disabled={!canRaiseRequest || selectedItems.length === 0 || submitting}
                 onClick={() => handleSubmit(true)}
               >
                 <Save className="h-4 w-4" aria-hidden="true" />

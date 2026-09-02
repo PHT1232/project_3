@@ -15,6 +15,9 @@ vi.mock('../../contexts/AuthContext.jsx', () => ({
       name: 'Arthur Dent',
       role: 'Engineer',
       rankLevel: 1,
+      // CurrentUserDto always carries this, and an Engineer necessarily reports to someone.
+      // Omitting it made the mock claim a state the API cannot produce for a rank-1 user.
+      superiorEmployeeNumber: 7,
     },
     token: 'mock-token',
     login: vi.fn(),
