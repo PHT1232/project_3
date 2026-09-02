@@ -8,11 +8,25 @@ import Badge from '../../components/ui/Badge.jsx'
 import Modal from '../../components/ui/Modal.jsx'
 import { LoadingState, ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
 import useAsync from '../../hooks/useAsync.js'
+import useSortableTable from '../../hooks/useSortableTable.js'
+import SortableHeader from '../../components/ui/SortableHeader.jsx'
 import { formatCurrency } from '../../lib/format.js'
 import { getCategories, getItems, createItem, updateItem, deactivateItem } from '../../api/catalogue.js'
 import { getSuppliers } from '../../api/suppliers.js'
 
 const RANK_LABELS = { 1: 'Engineer', 2: 'Manager', 3: 'Business Manager', 4: 'Managing Director' }
+
+/**
+ * Min. rank sorts by the numeric level, not the displayed label — alphabetically "Business
+ * Manager" would come before "Engineer". Status sorts active first.
+ */
+const ITEM_SORT_COLUMNS = {
+  itemName: { type: 'string' },
+  categoryName: { type: 'string' },
+  unitCost: { type: 'number' },
+  minRankLevelToRequest: { type: 'number' },
+  isActive: { type: 'boolean' },
+}
 
 function emptyForm(categories) {
   return {
@@ -219,6 +233,10 @@ export default function ItemManagement() {
   )
 
   const items = data?.items ?? []
+  const { sortedRows: sortedItems, headerProps } = useSortableTable(items, ITEM_SORT_COLUMNS, {
+    key: 'itemName',
+    dir: 'asc',
+  })
   const categories = data?.categories ?? []
   const suppliers = data?.suppliers ?? []
 
@@ -301,16 +319,29 @@ export default function ItemManagement() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-surface-border text-xs uppercase tracking-wide text-ink-muted">
-                  <th className="px-4 py-3 font-semibold">Item</th>
-                  <th className="px-4 py-3 font-semibold">Category</th>
-                  <th className="px-4 py-3 font-semibold">Unit cost</th>
-                  <th className="px-4 py-3 font-semibold">Min. rank</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
+                  <SortableHeader {...headerProps('itemName')} className="font-semibold">
+                    Item
+                  </SortableHeader>
+                  <SortableHeader {...headerProps('categoryName')} className="font-semibold">
+                    Category
+                  </SortableHeader>
+                  <SortableHeader {...headerProps('unitCost')} className="font-semibold">
+                    Unit cost
+                  </SortableHeader>
+                  <SortableHeader
+                    {...headerProps('minRankLevelToRequest')}
+                    className="font-semibold"
+                  >
+                    Min. rank
+                  </SortableHeader>
+                  <SortableHeader {...headerProps('isActive')} className="font-semibold">
+                    Status
+                  </SortableHeader>
                   <th className="px-4 py-3 font-semibold text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-border">
-                {items.map((item) => (
+                {sortedItems.map((item) => (
                   <tr key={item.itemId}>
                     <td className="px-4 py-3 font-medium text-ink">{item.itemName}</td>
                     <td className="px-4 py-3 text-ink-muted">{item.categoryName}</td>

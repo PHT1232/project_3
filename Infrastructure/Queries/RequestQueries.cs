@@ -140,33 +140,35 @@ public class RequestQueries(DataContext db) : IRequestQueries
             })
             .ToList();
 
-        var historyDtos = request.StatusHistory
+        // Awaited one at a time. The previous version was `.Select(async h => ... await ...)`
+        // followed by `.ToList()`, which starts every actor-name query at once against the same
+        // DbContext and throws "A second operation was started on this context instance" as soon
+        // as a request has more than one history row — i.e. on every request after its first
+        // status change, which broke approve/reject/withdraw entirely. DbContext is not
+        // thread-safe, so these must not overlap.
+        var orderedHistory = request.StatusHistory
             .OrderBy(h => h.CreatedAtUtc)
             .ThenBy(h => h.Id)
-            .Select(async h =>
-            {
-                var actorName = await db.Users
-                    .Where(u => u.Id == h.ActorEmployeeNumber)
-                    .Select(u => u.Name)
-                    .FirstOrDefaultAsync();
-
-                return new RequestStatusHistoryDto(
-                    h.Id,
-                    h.RequestId,
-                    h.FromStatus,
-                    h.ToStatus,
-                    h.ActorEmployeeNumber,
-                    actorName,
-                    h.Comment,
-                    h.CreatedAtUtc
-                );
-            })
             .ToList();
 
-        var historyList = new List<RequestStatusHistoryDto>();
-        foreach (var historyTask in historyDtos)
+        var historyList = new List<RequestStatusHistoryDto>(orderedHistory.Count);
+        foreach (var h in orderedHistory)
         {
-            historyList.Add(await historyTask);
+            var actorName = await db.Users
+                .Where(u => u.Id == h.ActorEmployeeNumber)
+                .Select(u => u.Name)
+                .FirstOrDefaultAsync();
+
+            historyList.Add(new RequestStatusHistoryDto(
+                h.Id,
+                h.RequestId,
+                h.FromStatus,
+                h.ToStatus,
+                h.ActorEmployeeNumber,
+                actorName,
+                h.Comment,
+                h.CreatedAtUtc
+            ));
         }
 
         return new RequestDto(

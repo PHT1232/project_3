@@ -155,7 +155,7 @@ export default function MyRequestsPage() {
 
       <Card>
         {/* Filters Toolbar */}
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 px-4 pt-4">
           <div className="flex items-center gap-2">
             <SlidersHorizontal className="h-4 w-4 text-ink-muted" aria-hidden="true" />
             <label htmlFor="status-filter" className="text-xs font-semibold uppercase tracking-wider text-ink-muted">

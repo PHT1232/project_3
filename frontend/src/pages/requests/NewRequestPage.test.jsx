@@ -56,7 +56,10 @@ function renderNewRequestPage() {
 describe('NewRequestPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    catalogueApi.getItems.mockResolvedValue({ items: SAMPLE_ITEMS, totalCount: 2 })
+    // getItems() unwraps the paged envelope and resolves to the item array itself
+    // (api/catalogue.js). Mocking it as { items: [...] } encoded a contract the real client
+    // never had, which is how the "0 available" picker bug reached the running app.
+    catalogueApi.getItems.mockResolvedValue(SAMPLE_ITEMS)
   })
 
   it('renders request header, requestor info, and item selector', async () => {
