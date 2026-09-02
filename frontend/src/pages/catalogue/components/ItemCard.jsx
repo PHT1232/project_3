@@ -1,5 +1,4 @@
-import { Link } from 'react-router-dom'
-import { ShoppingCart, BellRing, Laptop, FileText, PenLine, Archive, Package } from 'lucide-react'
+import { ShoppingCart, Check, BellRing, Laptop, FileText, PenLine, Archive, Package } from 'lucide-react'
 
 import Card from '../../../components/ui/Card.jsx'
 import Badge from '../../../components/ui/Badge.jsx'
@@ -24,7 +23,7 @@ const AVAILABILITY_BADGE = {
   [AVAILABILITY.OUT_OF_STOCK]: { tone: 'plain', dot: 'subtle' },
 }
 
-export default function ItemCard({ item }) {
+export default function ItemCard({ item, onAdd, added = false }) {
   const availability = getAvailability(item)
   const outOfStock = availability === AVAILABILITY.OUT_OF_STOCK
   const Icon = CATEGORY_ICONS[item.categoryName] ?? Package
@@ -78,12 +77,22 @@ export default function ItemCard({ item }) {
             </Button>
           ) : (
             /*
-              Adding a line to a draft request is the New Request page's job (M4, Plan M3/T3.3).
-              This navigates there rather than implementing draft state in the Catalogue.
+              Adds the item to the page's selection (Plan T2.4 completes this in M3). Quantities
+              are edited on the New Request page, which already owns that input, so a second click
+              is a no-op rather than a duplicate line — the API rejects duplicate item lines.
             */
-            <Button as={Link} to="/new-request" aria-label={`Add ${item.itemName} to a request`}>
-              <ShoppingCart className="h-4 w-4" aria-hidden="true" />
-              {item.requiresManagerApproval ? 'Request' : 'Add Request'}
+            <Button
+              variant={added ? 'secondary' : 'primary'}
+              disabled={added}
+              onClick={() => onAdd(item)}
+              aria-label={`Add ${item.itemName} to a request`}
+            >
+              {added ? (
+                <Check className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <ShoppingCart className="h-4 w-4" aria-hidden="true" />
+              )}
+              {added ? 'Added' : item.requiresManagerApproval ? 'Request' : 'Add Request'}
             </Button>
           )}
         </div>
