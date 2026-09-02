@@ -1176,3 +1176,58 @@ resolves to a trailing 90-day window.
 - No frontend UI for the `MyActivity`/report-style breakdown of notification history beyond the dropdown feed — out of scope, Plan only specifies the bell + feed + mark-read.
 - No toast-on-action UI (Plan's T4.8 also mentions "toast on action") — the bell/badge/dropdown covers the persisted-feed half of the notification UX; a toast for the *acting* user's own screen at the moment of the action (e.g. "Request submitted" right after clicking Submit) was not added in this pass, since it's a separate, smaller UI concern from the feed itself and every action already gets its own success/error handling in the calling page.
 - Notification rows are never deleted — matches the Plan's "persisted notification feed" framing; no retention/cleanup policy was requested or added.
+
+## 2026-09-02 — Dashboard page (home `/`)
+
+**Tool:** Claude Code (claude-sonnet-5).
+
+**Task:** Build the Dashboard page (was a placeholder) to the approved wireframe
+(`docs/Wireframe/Dashboard.png`), composing existing endpoints only — no new backend.
+
+**Spec status flagged before building:** `__ai_agents/Requirements/` does not exist. The
+Dashboard is **NOT SPECIFIED in the Plan** — page-map §3 says "no dashboard endpoint, no
+milestone owns it… confirm ownership and whether it is in scope before building it." Built on
+the user's explicit request; ownership still unconfirmed.
+
+**What changed, by file:**
+- `frontend/src/pages/dashboard/DashboardPage.jsx` (new) — one `useAsync` that `Promise.all`s
+  `getPendingApprovals` (count), `getRequests` (5 most recent visible), and — Manager+ only —
+  `getLowStock`. Loading / error states via the shared `StateBlock`.
+- `frontend/src/pages/dashboard/components/DashboardKpis.jsx` (new) — the 3 wireframe KPI
+  cards (Pending Approvals, Low Stock Alerts, Remaining Budget), lucide icons, red emphasis
+  when low-stock > 0.
+- `frontend/src/pages/dashboard/components/RecentRequestsCard.jsx` (new) — table (ID /
+  Requester / Date / Status / Total), reuses `RequestStatusBadge`, "View All" → `/my-requests`.
+- `frontend/src/pages/dashboard/components/LowStockPanel.jsx` (new) — per-item cards with a
+  qty-vs-reorder-level bar, "Reorder" → `/inventory`.
+- `frontend/src/App.jsx` (shared) — `Dashboard` import/route swapped to `DashboardPage`.
+- Deleted `frontend/src/pages/Dashboard.jsx`.
+- Reused: `PageHeader`, `Card`, `Button`, `StateBlock`, `RequestStatusBadge`, `useAsync`,
+  `useAuth`, `lib/format`. No new npm packages. No backend / DB changes. No `.cs` touched.
+
+**Assumptions & deviations (flagged, not silently decided):**
+- **Remaining Budget** has no data source (`/users/me/eligibility` was never built — page-map
+  §14). Rendered as a muted "Not available yet" placeholder — no fabricated budget figure.
+- **Low Stock** is Manager+ (its endpoint is `RequireManager`). For a Requestor the KPI shows
+  "—" / "Manager view only" and the side panel is hidden, so Recent Requests spans full width.
+  The page never calls `/inventory/low-stock` for a non-manager (so no 403 surfaces).
+- **"Reorder"** links to `/inventory` (real Adjust / Receive actions live there) — page-map §3
+  notes reorder has no endpoint.
+- **No SKU** in the low-stock cards — not in `InventoryRowDto`; page-map §3 says SKU is a Plan
+  future improvement, don't build it.
+- Request IDs shown as `#{requestId}` — `RequestDto.requestId` is a bare int, not the
+  wireframe's "REQ-2039" mock-up format.
+- Recent Requests uses `GET /requests` (visibility-scoped: own / +subordinates / all),
+  matching the wireframe showing multiple requesters.
+
+**Validation actually run:**
+- `npm run build` — pass (Vite, 1707 modules, no errors).
+- `npm test` — **90 passed** (16 files); no regressions.
+- Live smoke test: Manager `#22` → all 3 endpoints 200; Engineer `#26` → approvals/requests
+  200, `/inventory/low-stock` 403 (page correctly does not call it for non-managers);
+  `DashboardPage.jsx` module resolves.
+
+**Left out of scope:** the eligibility/budget backend (M1); a real reorder flow from the
+dashboard; the wireframe's global search bar in the top nav (that's a shared-layout concern,
+not this page); per-page render tests (matches the other composed pages, none of which have
+one). Not committed to `main` / not pushed.
