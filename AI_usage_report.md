@@ -1313,3 +1313,59 @@ dashboard (PR #17), on the user's explicit request.
   rather than a fabricated number, per systemprompt.md.
 - No tests added — the dashboard shipped without any and none touch these files.
 - Manual browser click-through not done by the developer (build + 91 unit tests + HMR clean).
+
+## 2026-09-03 — Role spending eligibility ("Remaining Budget"), Phase 1
+
+**Tool:** Claude Code (claude-sonnet-5).
+
+**Task:** Implement the per-role monthly budget limit the user specified (Engineer 500 /
+Manager 2 000 / Business Manager 5 000 / MD 20 000) and wire the dashboard's "Remaining
+Budget" tile to it. This is Phase 1 of the scope agreed earlier — the eligibility read model
++ dashboard tile. Submit-time enforcement (Phase 2) deliberately left out (edits the
+M4-owned request lifecycle — needs a coordination call).
+
+**Spec status:** `__ai_agents/Requirements/` still does not exist. The endpoint IS in the
+Plan (§4.2 `GET /users/me/eligibility`, T1.6 "eligibility engine", `[SPEC]`); the thresholds
+are Plan §3.3 "Amount-Employee-role threshold mapping table" `[SPEC]`; magnitudes from
+page-map §14.
+
+**What changed, by file:**
+- Backend new: `Application/DTOs/Users/EligibilityDto.cs`,
+  `Application/Interfaces/Users/IEligibilityQueries.cs`,
+  `Infrastructure/Queries/EligibilityQueries.cs`, migration
+  `20260903044750_AddRoleBudgetThresholds`, `Tests/WebApi.IntegrationTests/EligibilityTests.cs`
+  (4 tests), `docs/development/eligibility-budget.md` (handoff).
+- Backend modified (shared, additive): `Infrastructure/Identity/ApplicationRole.cs` (+2
+  decimal columns), `ApplicationRoleConfiguration.cs` (precision 18,2),
+  `Infrastructure/Data/DbSeeder.cs` (`Roles` tuple gains the two limits; `SeedRolesAsync` is
+  now create-**or-update** so pre-existing DBs get the allowances backfilled),
+  `DataContextModelSnapshot.cs`, `WebApi/Program.cs` (DI),
+  `WebApi/Controllers/UsersController.cs` (`GET me/eligibility`).
+- Frontend: `api/users.js` (`getMyEligibility()`), `DashboardPage.jsx` (added to the
+  dashboard `Promise.all`, caught individually so it can't blank the page),
+  `DashboardKpis.jsx` (Remaining Budget tile → real currency + "% of monthly allowance",
+  red under 10%, placeholder on failure).
+
+**Assumptions made (all flagged in the handoff, all reversible):**
+- **Thresholds as columns on `AspNetRoles`**, not the schema-of-record's separate
+  `RoleThresholds` table — consistent with the Identity fold that already put `RankLevel`
+  there (CLAUDE.md K8). Needs an ERD/SQL reconciliation note.
+- **`MaxAmountPerRequest == MaxAmountPerMonth`** — schema has the column, no documented value.
+- **Month-to-date spend** = `Requests` by this employee, `CreatedAtUtc` in the current UTC
+  month, status not in {Rejected, Withdrawn, Cancelled}. Amount = `TotalEstimatedCost`
+  (no per-line approved figure exists for PartiallyApproved).
+- Currency is magnitudes only (`[ASK] #10`).
+
+**Left out of scope:**
+- **Phase 2** — 422 on over-limit submission (`RequestService.SubmitAsync`, `Block|Warn`
+  config flag, TC-05). Crosses into M4's request-lifecycle service; needs coordination.
+- The "My Eligibility" page (page-map §14) and New Request's "running total vs remaining"
+  (Plan T3.7) — both would reuse `GET /users/me/eligibility` as-is.
+- No browser click-through of the tile by the developer (build + 91 backend + 91 frontend
+  tests only).
+
+**Branch note:** `feat/role-budget-eligibility` is **stacked on `feat/dashboard-recent-requests-filter`**
+(both touch `DashboardPage.jsx`). Merge the filter branch first, or rebase after.
+
+**Validation:** `dotnet build Project.slnx` 0 errors; `dotnet test Project.slnx` 91 passed
+(incl. 4 new EligibilityTests); `npm run build` + `npm test` 91 passed.

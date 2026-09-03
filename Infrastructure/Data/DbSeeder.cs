@@ -6,33 +6,61 @@ using Microsoft.EntityFrameworkCore;
 namespace Infrastructure.Data;
 
 /// <summary>
-/// Seeds the 4 roles from Plan §1.3/line 433 (Engineer 1 / Manager 2 / Business Manager 3 / MD 4)
-/// and one bootstrap admin account. No catalogue/supplier/stock template data is seeded — that's
-/// generated externally via scripts/generate_seed_sql.py against real employee numbers instead.
+/// Seeds the 4 roles from Plan §1.3/line 433 (Engineer 1 / Manager 2 / Business Manager 3 / MD 4),
+/// each with its monthly spending allowance (Plan §3.3 "Amount-Employee-role threshold mapping
+/// table", <c>[SPEC]</c>; magnitudes from page-map §14), and one bootstrap admin account. No
+/// catalogue/supplier/stock template data is seeded — that's generated externally via
+/// scripts/generate_seed_sql.py against real employee numbers instead.
 /// </summary>
 public static class DbSeeder
 {
-    public static readonly (string Name, int RankLevel)[] Roles =
+    // MaxAmountPerRequest is set equal to MaxAmountPerMonth for now: one request may use the
+    // whole month's allowance. The schema has a distinct per-request column but no documented
+    // value — tighten here if the team wants a stricter single-request cap. Currency is
+    // unresolved (Plan [ASK] #10, VND vs $); these are magnitudes.
+    public static readonly (string Name, int RankLevel, decimal MaxPerRequest, decimal MaxPerMonth)[] Roles =
     [
-        ("Engineer", 1),
-        ("Manager", 2),
-        ("Business Manager", 3),
-        ("Managing Director", 4),
+        ("Engineer", 1, 500m, 500m),
+        ("Manager", 2, 2000m, 2000m),
+        ("Business Manager", 3, 5000m, 5000m),
+        ("Managing Director", 4, 20000m, 20000m),
     ];
 
     /// <summary>Employee number of the one bootstrap account — see SeedBootstrapAdminAsync.</summary>
     public const int BootstrapAdminEmployeeNumber = 1;
 
+    /// <summary>
+    /// Create-or-update: also refreshes rank/threshold values on roles that already exist, so
+    /// databases created before the budget columns existed get the allowances backfilled.
+    /// </summary>
     public static async Task SeedRolesAsync(RoleManager<ApplicationRole> roleManager)
     {
-        foreach (var (name, rankLevel) in Roles)
+        foreach (var (name, rankLevel, maxPerRequest, maxPerMonth) in Roles)
         {
-            if (await roleManager.RoleExistsAsync(name))
+            var role = await roleManager.FindByNameAsync(name);
+            if (role is null)
+            {
+                await roleManager.CreateAsync(new ApplicationRole
+                {
+                    Name = name,
+                    RankLevel = rankLevel,
+                    MaxAmountPerRequest = maxPerRequest,
+                    MaxAmountPerMonth = maxPerMonth,
+                });
+                continue;
+            }
+
+            if (role.RankLevel == rankLevel
+                && role.MaxAmountPerRequest == maxPerRequest
+                && role.MaxAmountPerMonth == maxPerMonth)
             {
                 continue;
             }
 
-            await roleManager.CreateAsync(new ApplicationRole { Name = name, RankLevel = rankLevel });
+            role.RankLevel = rankLevel;
+            role.MaxAmountPerRequest = maxPerRequest;
+            role.MaxAmountPerMonth = maxPerMonth;
+            await roleManager.UpdateAsync(role);
         }
     }
 

@@ -193,6 +193,7 @@ try
     builder.Services.AddScoped<IRequestQueries, RequestQueries>();
     builder.Services.AddScoped<IRequestService, RequestService>();
     builder.Services.AddScoped<IReportQueries, ReportQueries>();
+    builder.Services.AddScoped<IEligibilityQueries, EligibilityQueries>();
     builder.Services.AddScoped<INotificationQueries, NotificationQueries>();
     builder.Services.AddScoped<INotificationService, NotificationService>();
 
