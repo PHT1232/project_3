@@ -1282,3 +1282,32 @@ one). Not committed to `main` / not pushed.
 **Validation:** `npx vitest run src/pages/requests/NewRequestPage.test.jsx --pool=threads` — 8/8 passed. `npm run build` in `frontend/` — passed.
 
 **Out of scope:** server-side catalogue pagination/query parameters, select-all controls, and changes to stock thresholds or request lifecycle.
+
+## 2026-09-03 — Preserve accessible stock-filter name
+
+**Task:** Keep the compact New Request stock filter after its visible label was removed.
+
+**What changed, by file:**
+- `frontend/src/pages/requests/NewRequestPage.jsx` — added `aria-label="Stock status"` to the existing `#stock-filter` select, preserving its accessible name without restoring a visual label.
+- `docs/development/request-pages-implementation-handoff.md` — recorded the compact-layout accessibility treatment.
+
+**No API, backend, database, migration, authorization, or request-state changes.**
+
+**Validation:** `npx vitest run src/pages/requests/NewRequestPage.test.jsx --pool=threads` — 8/8 passed.
+
+**Out of scope:** filter behavior, pagination behavior, and visual layout changes.
+
+## 2026-09-03 — Show five New Request picker rows per page
+
+**Task:** Limit the New Request catalogue picker to five visible items per page.
+
+**What changed, by file:**
+- `frontend/src/pages/requests/NewRequestPage.jsx` — changed `PICKER_PAGE_SIZE` from 10 to 5.
+- `frontend/src/pages/requests/NewRequestPage.test.jsx` — updated pagination regression coverage for the five-row boundary.
+- `docs/development/request-pages-implementation-handoff.md` — updated the documented page size.
+
+**No API, backend, database, migration, authorization, stock-filter, or request-state changes.**
+
+**Validation:** `npx vitest run src/pages/requests/NewRequestPage.test.jsx --pool=threads` — 8/8 passed. `npm run build` in `frontend/` — passed.
+
+**Out of scope:** server-side pagination, select-all, and layout changes.
