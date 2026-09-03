@@ -304,11 +304,9 @@ export default function NewRequestPage() {
                     label="Search catalogue items"
                   />
                   <div>
-                    <label htmlFor="stock-filter" className="block text-xs font-semibold uppercase tracking-wider text-ink-muted">
-                      Stock status
-                    </label>
                     <select
                       id="stock-filter"
+                      aria-label="Stock status"
                       value={stockFilter}
                       onChange={(event) => setStockFilter(event.target.value)}
                       className="mt-1 h-10 w-full rounded-md border border-surface-border bg-surface-card px-3 text-sm text-ink focus:border-brand-500 focus:outline-none"
