@@ -113,9 +113,10 @@ describe('NewRequestPage', () => {
     renderNewRequestPage()
 
     expect(await screen.findByText('Stationery Item 1')).toBeInTheDocument()
-    expect(screen.queryByText('Stationery Item 11')).not.toBeInTheDocument()
+    expect(screen.getByText('Stationery Item 5')).toBeInTheDocument()
+    expect(screen.queryByText('Stationery Item 6')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /next/i }))
-    expect(screen.getByText('Stationery Item 11')).toBeInTheDocument()
+    expect(screen.getByText('Stationery Item 6')).toBeInTheDocument()
     expect(screen.queryByText('Stationery Item 1')).not.toBeInTheDocument()
   })
 

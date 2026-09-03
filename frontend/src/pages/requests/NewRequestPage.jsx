@@ -17,7 +17,7 @@ import { formatCurrency } from '../../lib/format.js'
  * Maps a catalogue item onto a requisition line. Shared by the item picker below and by items
  * handed over from the Catalogue page, so both routes produce identical line objects.
  */
-const PICKER_PAGE_SIZE = 10
+const PICKER_PAGE_SIZE = 5
 
 function toRequisitionLine(item) {
   return {
