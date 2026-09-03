@@ -12,8 +12,22 @@ namespace WebApi.Controllers;
 [Authorize]
 public class UsersController(
     IUserManagementService userManagementService,
+    IEligibilityQueries eligibilityQueries,
     ICurrentUserService currentUserService) : ControllerBase
 {
+    /// <summary>
+    /// The caller's own spending eligibility — role limits, month-to-date committed spend and
+    /// what's left (Plan §4.2, <c>[SPEC]</c>). Any authenticated user; every role has a limit.
+    /// </summary>
+    [HttpGet("me/eligibility")]
+    public async Task<ActionResult<EligibilityDto>> GetMyEligibility()
+    {
+        var actor = currentUserService.EmployeeNumber
+            ?? throw new InvalidOperationException("Authenticated request missing employee number claim.");
+
+        return Ok(await eligibilityQueries.GetForEmployeeAsync(actor));
+    }
+
     [HttpGet]
     [Authorize(Policy = "RequireManager")]
     public async Task<ActionResult<PagedResult<UserDto>>> GetUsers(

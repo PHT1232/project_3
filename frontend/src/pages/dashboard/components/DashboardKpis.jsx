@@ -1,15 +1,15 @@
 import { ClipboardCheck, AlertTriangle, Wallet } from 'lucide-react'
 
 import Card from '../../../components/ui/Card.jsx'
-import { formatNumber } from '../../../lib/format.js'
+import { formatCurrency, formatNumber } from '../../../lib/format.js'
 
 /**
  * The three KPI cards from the approved Dashboard wireframe. Each is label + big figure +
  * a supporting line, with an icon tile on the right.
  *
- * `danger` tints the figure red (used for Low Stock when there are alerts). `muted` renders
- * a placeholder instead of a figure — used when the data is gated (Low Stock is Manager+)
- * or has no backend yet (Remaining Budget; there is no eligibility endpoint — page-map §3/§14).
+ * `danger` tints the figure red (Low Stock with alerts; Remaining Budget when nearly spent).
+ * `muted` renders a placeholder instead of a figure — used when the data is gated (Low Stock
+ * is Manager+) or unavailable (the eligibility call failed).
  */
 function KpiCard({ icon: Icon, label, value, hint, danger = false, muted = false }) {
   return (
@@ -37,7 +37,12 @@ function KpiCard({ icon: Icon, label, value, hint, danger = false, muted = false
   )
 }
 
-export default function DashboardKpis({ pendingApprovals, lowStockCount, isManager }) {
+export default function DashboardKpis({ pendingApprovals, lowStockCount, isManager, eligibility }) {
+  const monthly = eligibility?.maxAmountPerMonth ?? 0
+  const budgetPct = eligibility && monthly > 0
+    ? Math.round((eligibility.remainingThisMonth / monthly) * 100)
+    : null
+
   return (
     <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
       <KpiCard
@@ -57,9 +62,14 @@ export default function DashboardKpis({ pendingApprovals, lowStockCount, isManag
       <KpiCard
         icon={Wallet}
         label="Remaining Budget"
-        value="—"
-        hint="Not available yet — needs the eligibility service"
-        muted
+        value={eligibility ? formatCurrency(eligibility.remainingThisMonth) : '—'}
+        hint={
+          eligibility
+            ? `${budgetPct}% of your ${formatCurrency(monthly)} monthly allowance`
+            : 'Not available'
+        }
+        danger={budgetPct != null && budgetPct < 10}
+        muted={!eligibility}
       />
     </div>
   )
