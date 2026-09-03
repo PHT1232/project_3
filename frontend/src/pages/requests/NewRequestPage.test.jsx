@@ -73,6 +73,7 @@ describe('NewRequestPage', () => {
     expect(screen.getByRole('heading', { name: /new stationery request/i })).toBeInTheDocument()
     expect(screen.getByText(/Arthur Dent/)).toBeInTheDocument()
     expect(await screen.findByRole('checkbox', { name: /select ballpoint pen blue/i })).toBeInTheDocument()
+    expect(screen.getByText('100 available')).toBeInTheDocument()
   })
 
   it('searches available catalogue items by name or category before adding', async () => {

@@ -1311,3 +1311,18 @@ one). Not committed to `main` / not pushed.
 **Validation:** `npx vitest run src/pages/requests/NewRequestPage.test.jsx --pool=threads` — 8/8 passed. `npm run build` in `frontend/` — passed.
 
 **Out of scope:** server-side pagination, select-all, and layout changes.
+
+## 2026-09-03 — Display stock in New Request picker
+
+**Task:** Remove the stock-select top margin and display item stock in the New Request catalogue table.
+
+**What changed, by file:**
+- `frontend/src/pages/requests/NewRequestPage.jsx` — removed the `mt-1` class from `#stock-filter`; added a Stock column showing `quantityAvailable` followed by `available` for each picker row.
+- `frontend/src/pages/requests/NewRequestPage.test.jsx` — asserts available-stock text for the picker item.
+- `docs/development/request-pages-implementation-handoff.md` — documented compact select spacing and the quantity-available table column.
+
+**No API, backend, database, migration, authorization, stock-filter behavior, or request-state changes.** The displayed value is already supplied by `GET /api/v1/items`.
+
+**Validation:** `npx vitest run src/pages/requests/NewRequestPage.test.jsx --pool=threads` — 8/8 passed. `npm run build` in `frontend/` — passed.
+
+**Out of scope:** stock reservations, quantity validation against live stock, and stock-threshold changes.
