@@ -1,5 +1,6 @@
 import Modal from '../../../components/ui/Modal.jsx'
-import { LoadingState, ErrorState, EmptyState } from '../../../components/ui/StateBlock.jsx'
+import { ErrorState, EmptyState } from '../../../components/ui/StateBlock.jsx'
+import { SkeletonList } from '../../../components/ui/Skeleton.jsx'
 import useAsync from '../../../hooks/useAsync.js'
 import { getSubordinates } from '../../../api/users.js'
 
@@ -13,7 +14,14 @@ export default function SubordinatesModal({ open, onClose, user }) {
 
   return (
     <Modal open={open} onClose={onClose} title={`Direct reports — ${user.name}`}>
-      {loading && <LoadingState label="Loading direct reports…" />}
+      {loading && (
+        <SkeletonList
+          label="Loading direct reports…"
+          rows={3}
+          trailing={false}
+          rowClassName="py-2"
+        />
+      )}
       {!loading && error && <ErrorState error={error} onRetry={reload} />}
       {!loading && !error && data?.length === 0 && (
         <EmptyState title="No direct reports" description="This user has nobody reporting to them." />

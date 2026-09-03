@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Bell } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { useNotifications } from '../../hooks/useNotifications.js'
+import { SkeletonList } from '../ui/Skeleton.jsx'
 
 function relativeTime(isoString) {
   const seconds = Math.max(0, Math.floor((Date.now() - new Date(isoString).getTime()) / 1000))
@@ -83,7 +84,13 @@ export default function NotificationBell() {
 
           <div className="max-h-96 overflow-y-auto">
             {feedLoading && (
-              <p className="px-3 py-6 text-center text-sm text-ink-muted">Loading…</p>
+              <SkeletonList
+                label="Loading notifications…"
+                rows={3}
+                lines={3}
+                trailing={false}
+                rowClassName="px-3 py-2.5"
+              />
             )}
 
             {!feedLoading && feedError && (
