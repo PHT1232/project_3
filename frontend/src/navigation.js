@@ -1,7 +1,7 @@
 import {
   LayoutGrid,
   BookOpen,
-  PlusCircle,
+
   History,
   ClipboardCheck,
   BarChart3,
@@ -26,7 +26,7 @@ import {
 export const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutGrid, end: true },
   { to: '/catalogue', label: 'Catalogue', icon: BookOpen },
-  { to: '/new-request', label: 'New Request', icon: PlusCircle },
+
   { to: '/my-requests', label: 'My Requests', icon: History },
   { to: '/approvals', label: 'Approvals', icon: ClipboardCheck },
   { to: '/reports', label: 'Reports', icon: BarChart3 },

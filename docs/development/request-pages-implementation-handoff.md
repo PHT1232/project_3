@@ -8,6 +8,13 @@
 
 ## 1. Summary of What Was Built
 
+### Entry flow update — 2026-09-03
+
+- Removed **New Request** from the primary sidebar in `frontend/src/navigation.js`. The request route remains registered at `/new-request`; it is entered from the Catalogue selection bar's **Proceed** action, which passes selected items through React Router state.
+- `frontend/src/pages/requests/NewRequestPage.jsx` remains usable when opened directly, so a requestor can still add items without returning to Catalogue. The picker now exposes a search box for item name and category, filters the unadded eligible catalogue items, and gives a clear no-results state.
+- No request API, server-side authorization, request lifecycle, database entity, or migration changed. `GET /api/v1/items` remains the source of role-filtered active catalogue items.
+- `frontend/src/pages/requests/NewRequestPage.test.jsx` now covers name and category search before adding an item.
+
 ### Backend (`WebApi`, `Application`, `Infrastructure`)
 1. **`WebApi/Controllers/RequestsController.cs`**:
    - `GET /api/v1/requests` — Paginated list of visible requests (with optional `status` filter).

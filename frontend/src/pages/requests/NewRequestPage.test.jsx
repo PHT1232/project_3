@@ -73,6 +73,22 @@ describe('NewRequestPage', () => {
     expect(await screen.findByText(/-- Select an item/i)).toBeInTheDocument()
   })
 
+  it('searches available catalogue items by name or category before adding', async () => {
+    const user = userEvent.setup()
+    renderNewRequestPage()
+
+    const search = await screen.findByRole('searchbox', { name: /search catalogue items/i })
+    await user.type(search, 'notebook')
+
+    expect(screen.getByRole('option', { name: /A4 Notebook Grid/i })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /Ballpoint Pen Blue/i })).not.toBeInTheDocument()
+
+    await user.clear(search)
+    await user.type(search, 'writing instruments')
+
+    expect(screen.getByRole('option', { name: /Ballpoint Pen Blue/i })).toBeInTheDocument()
+  })
+
   it('allows adding items to the request and calculates estimated total', async () => {
     renderNewRequestPage()
 

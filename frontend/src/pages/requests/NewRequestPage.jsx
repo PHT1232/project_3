@@ -1,10 +1,11 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Plus, Trash2, Send, Save, AlertCircle, ShoppingCart, Calendar, CheckCircle2, Search } from 'lucide-react'
+import { Plus, Trash2, Send, Save, AlertCircle, ShoppingCart, Calendar, CheckCircle2 } from 'lucide-react'
 
 import PageHeader from '../../components/layout/PageHeader.jsx'
 import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
+import SearchInput from '../../components/ui/SearchInput.jsx'
 import { LoadingState, ErrorState } from '../../components/ui/StateBlock.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import useAsync from '../../hooks/useAsync.js'
@@ -267,6 +268,16 @@ export default function NewRequestPage() {
               </div>
             ) : (
               <div className="mt-4 space-y-3">
+                <SearchInput
+                  value={itemSearch}
+                  onChange={(value) => {
+                    setItemSearch(value)
+                    setSelectedItemId('')
+                  }}
+                  placeholder="Search by item or category..."
+                  label="Search catalogue items"
+                />
+
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                   <div className="relative flex-1">
                     <select
@@ -274,9 +285,14 @@ export default function NewRequestPage() {
                       aria-label="Select an item"
                       value={selectedItemId}
                       onChange={(e) => setSelectedItemId(e.target.value)}
-                      className="h-10 w-full rounded-md border border-surface-border bg-surface-card px-3 text-sm text-ink focus:border-brand-500 focus:outline-none"
+                      disabled={filteredItems.length === 0}
+                      className="h-10 w-full rounded-md border border-surface-border bg-surface-card px-3 text-sm text-ink focus:border-brand-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      <option value="">-- Select an item ({filteredItems.length} available) --</option>
+                      <option value="">
+                        {filteredItems.length === 0
+                          ? 'No available items match your search'
+                          : `-- Select an item (${filteredItems.length} available) --`}
+                      </option>
                       {filteredItems.map((item) => (
                         <option key={item.itemId} value={item.itemId}>
                           {item.itemName} {item.categoryName ? `(${item.categoryName})` : ''} — {formatCurrency(item.unitCost)}
@@ -295,6 +311,12 @@ export default function NewRequestPage() {
                     Add to Request
                   </Button>
                 </div>
+
+                {itemSearch.trim() && filteredItems.length === 0 && (
+                  <p className="text-sm text-ink-muted">
+                    No catalogue items match “{itemSearch}”. Try a different item or category.
+                  </p>
+                )}
               </div>
             )}
           </Card>
