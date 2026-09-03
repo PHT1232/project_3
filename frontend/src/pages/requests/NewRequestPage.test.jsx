@@ -34,6 +34,7 @@ const SAMPLE_ITEMS = [
     supplierName: 'Office Depot',
     unitCost: 1.5,
     quantityAvailable: 100,
+    reorderLevel: 20,
     isActive: true,
   },
   {
@@ -44,6 +45,7 @@ const SAMPLE_ITEMS = [
     supplierName: 'Office Depot',
     unitCost: 3.0,
     quantityAvailable: 50,
+    reorderLevel: 50,
     isActive: true,
   },
 ]
@@ -87,6 +89,34 @@ describe('NewRequestPage', () => {
     await user.type(search, 'writing instruments')
 
     expect(screen.getByText('Ballpoint Pen Blue')).toBeInTheDocument()
+  })
+
+  it('filters catalogue items to low stock only', async () => {
+    const user = userEvent.setup()
+    renderNewRequestPage()
+
+    await user.selectOptions(await screen.findByLabelText(/stock status/i), 'low-stock')
+
+    expect(screen.getByText('A4 Notebook Grid')).toBeInTheDocument()
+    expect(screen.queryByText('Ballpoint Pen Blue')).not.toBeInTheDocument()
+  })
+
+  it('paginates the catalogue picker table', async () => {
+    const user = userEvent.setup()
+    catalogueApi.getItems.mockResolvedValue(
+      Array.from({ length: 11 }, (_, index) => ({
+        ...SAMPLE_ITEMS[0],
+        itemId: index + 1,
+        itemName: `Stationery Item ${index + 1}`,
+      })),
+    )
+    renderNewRequestPage()
+
+    expect(await screen.findByText('Stationery Item 1')).toBeInTheDocument()
+    expect(screen.queryByText('Stationery Item 11')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /next/i }))
+    expect(screen.getByText('Stationery Item 11')).toBeInTheDocument()
+    expect(screen.queryByText('Stationery Item 1')).not.toBeInTheDocument()
   })
 
   it('allows selecting and adding multiple items to the request', async () => {

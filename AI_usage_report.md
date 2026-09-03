@@ -1265,3 +1265,20 @@ one). Not committed to `main` / not pushed.
 **Validation:** `npx vitest run src/pages/requests/NewRequestPage.test.jsx --pool=threads` — 6/6 passed. `npm run build` in `frontend/` — passed.
 
 **Out of scope:** select-all controls, page-size changes, and request lifecycle changes.
+
+## 2026-09-03 — New Request picker pagination and low-stock filter
+
+**Task:** Add pagination and a low-stock select filter to the New Request catalogue picker.
+
+**What changed, by file:**
+- `frontend/src/pages/requests/NewRequestPage.jsx` — added local 10-item pagination with Previous/Next controls and result range, plus an all-stock/low-stock select. Low stock is `quantityAvailable <= reorderLevel`; item data already comes from the role-filtered catalogue endpoint. Search and stock-filter changes reset to the first page, while selected checkbox IDs persist across pages.
+- `frontend/src/pages/requests/NewRequestPage.test.jsx` — added `reorderLevel` mock data plus regression coverage for low-stock-only filtering and an 11-item pagination boundary.
+- `docs/development/request-pages-implementation-handoff.md` — documented the filter definition, pagination behavior, and unchanged API boundary.
+
+**Assumption:** The request's “low stock product” means the same reorder threshold used by the existing Inventory UI: `quantityAvailable <= reorderLevel`.
+
+**No API, backend, database, migration, authorization, or request-state changes.** Pagination is local because `frontend/src/api/catalogue.js:getItems()` currently requests the complete eligible item list with `pageSize: 500`.
+
+**Validation:** `npx vitest run src/pages/requests/NewRequestPage.test.jsx --pool=threads` — 8/8 passed. `npm run build` in `frontend/` — passed.
+
+**Out of scope:** server-side catalogue pagination/query parameters, select-all controls, and changes to stock thresholds or request lifecycle.

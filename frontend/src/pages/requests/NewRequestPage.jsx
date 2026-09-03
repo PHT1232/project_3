@@ -17,6 +17,8 @@ import { formatCurrency } from '../../lib/format.js'
  * Maps a catalogue item onto a requisition line. Shared by the item picker below and by items
  * handed over from the Catalogue page, so both routes produce identical line objects.
  */
+const PICKER_PAGE_SIZE = 10
+
 function toRequisitionLine(item) {
   return {
     itemId: item.itemId,
@@ -52,6 +54,8 @@ export default function NewRequestPage() {
   )
   const [pickerItemIds, setPickerItemIds] = useState([])
   const [itemSearch, setItemSearch] = useState('')
+  const [stockFilter, setStockFilter] = useState('all')
+  const [pickerPage, setPickerPage] = useState(1)
   const [submitting, setSubmitting] = useState(false)
   const [submitMode, setSubmitMode] = useState(null) // 'draft' | 'submit'
   const [errorMessage, setErrorMessage] = useState(null)
@@ -65,14 +69,29 @@ export default function NewRequestPage() {
   }, [catalogueItems, selectedItems])
 
   const filteredItems = useMemo(() => {
-    if (!itemSearch.trim()) return availableItems
-    const search = itemSearch.toLowerCase()
+    const search = itemSearch.trim().toLowerCase()
     return availableItems.filter(
       (item) =>
-        item.itemName.toLowerCase().includes(search) ||
-        (item.categoryName && item.categoryName.toLowerCase().includes(search)),
+        (stockFilter !== 'low-stock' || item.quantityAvailable <= item.reorderLevel) &&
+        (!search ||
+          item.itemName.toLowerCase().includes(search) ||
+          (item.categoryName && item.categoryName.toLowerCase().includes(search))),
     )
-  }, [availableItems, itemSearch])
+  }, [availableItems, itemSearch, stockFilter])
+
+  const pickerPageCount = Math.max(1, Math.ceil(filteredItems.length / PICKER_PAGE_SIZE))
+  const pagedPickerItems = useMemo(
+    () => filteredItems.slice((pickerPage - 1) * PICKER_PAGE_SIZE, pickerPage * PICKER_PAGE_SIZE),
+    [filteredItems, pickerPage],
+  )
+
+  useEffect(() => {
+    setPickerPage(1)
+  }, [itemSearch, stockFilter])
+
+  useEffect(() => {
+    if (pickerPage > pickerPageCount) setPickerPage(pickerPageCount)
+  }, [pickerPage, pickerPageCount])
 
   // A requestor at the top of the hierarchy has no superior, so there is nobody who could approve
   // the request and the server rejects it (Plan §14 [ASK] #11 — "Can the MD (no superior) raise a
@@ -277,12 +296,28 @@ export default function NewRequestPage() {
               </div>
             ) : (
               <div className="mt-4 space-y-3">
-                <SearchInput
-                  value={itemSearch}
-                  onChange={setItemSearch}
-                  placeholder="Search by item or category..."
-                  label="Search catalogue items"
-                />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <SearchInput
+                    value={itemSearch}
+                    onChange={setItemSearch}
+                    placeholder="Search by item or category..."
+                    label="Search catalogue items"
+                  />
+                  <div>
+                    <label htmlFor="stock-filter" className="block text-xs font-semibold uppercase tracking-wider text-ink-muted">
+                      Stock status
+                    </label>
+                    <select
+                      id="stock-filter"
+                      value={stockFilter}
+                      onChange={(event) => setStockFilter(event.target.value)}
+                      className="mt-1 h-10 w-full rounded-md border border-surface-border bg-surface-card px-3 text-sm text-ink focus:border-brand-500 focus:outline-none"
+                    >
+                      <option value="all">All stock levels</option>
+                      <option value="low-stock">Low stock only</option>
+                    </select>
+                  </div>
+                </div>
 
                 {filteredItems.length === 0 ? (
                   <p className="text-sm text-ink-muted">
@@ -304,7 +339,7 @@ export default function NewRequestPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-surface-border">
-                        {filteredItems.map((item) => (
+                        {pagedPickerItems.map((item) => (
                           <tr key={item.itemId}>
                             <td className="px-3 py-3 text-center">
                               <input
@@ -324,6 +359,34 @@ export default function NewRequestPage() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                )}
+
+                {filteredItems.length > 0 && (
+                  <div className="flex items-center justify-between gap-3 text-sm text-ink-muted">
+                    <span>
+                      Showing {(pickerPage - 1) * PICKER_PAGE_SIZE + 1}–{Math.min(pickerPage * PICKER_PAGE_SIZE, filteredItems.length)} of {filteredItems.length}
+                    </span>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={pickerPage === 1}
+                        onClick={() => setPickerPage((page) => page - 1)}
+                      >
+                        Previous
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={pickerPage === pickerPageCount}
+                        onClick={() => setPickerPage((page) => page + 1)}
+                      >
+                        Next
+                      </Button>
+                    </div>
                   </div>
                 )}
 
