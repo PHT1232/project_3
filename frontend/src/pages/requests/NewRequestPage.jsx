@@ -12,6 +12,7 @@ import useAsync from '../../hooks/useAsync.js'
 import { getItems } from '../../api/catalogue.js'
 import { createRequest, submitRequest } from '../../api/requests.js'
 import { formatCurrency } from '../../lib/format.js'
+import AiAssistantBox from './components/AiAssistantBox.jsx'
 
 /**
  * Maps a catalogue item onto a requisition line. Shared by the item picker below and by items
@@ -149,6 +150,26 @@ export default function NewRequestPage() {
     setErrorMessage(null)
   }
 
+  // AI draft → requisition lines (Plan §5.2). The draft's line shape matches ItemDto closely
+  // enough to reuse toRequisitionLine; lines already in the list take the draft's quantity
+  // instead of being duplicated. The date is only filled in when the user hasn't set one.
+  function handleApplyDraft(draft) {
+    setSelectedItems((previousItems) => {
+      const byId = new Map(previousItems.map((line) => [line.itemId, line]))
+      for (const item of draft.items) {
+        const existing = byId.get(item.itemId)
+        byId.set(item.itemId, existing
+          ? { ...existing, quantity: item.quantity }
+          : { ...toRequisitionLine(item), quantity: item.quantity })
+      }
+      return [...byId.values()]
+    })
+    if (!requiredByDate && draft.requiredByDate) {
+      setRequiredByDate(draft.requiredByDate.slice(0, 10))
+    }
+    setErrorMessage(null)
+  }
+
   async function handleSubmit(asDraft = false) {
     if (selectedItems.length === 0) {
       setErrorMessage('Please add at least one item to your request.')
@@ -278,6 +299,9 @@ export default function NewRequestPage() {
               </div>
             </div>
           </Card>
+
+          {/* AI Request Assistant (Plan §5.2 A1) */}
+          <AiAssistantBox disabled={!canRaiseRequest} onApplyDraft={handleApplyDraft} />
 
           {/* Item Selector Card */}
           <Card className="p-5">
