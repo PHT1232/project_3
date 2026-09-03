@@ -1,5 +1,22 @@
 # AI Usage Report
 
+## 2026-09-03 — Catalogue-only New Stationery Request entry and in-page item search
+
+**Task:** Remove the separate New Request navigation item. Requestors enter the request page through Catalogue item selection and **Proceed**, while retaining the ability to find and add further items on the request page.
+
+**What changed, by file:**
+- `frontend/src/navigation.js` — removed the `New Request` sidebar entry and unused `PlusCircle` import.
+- `frontend/src/pages/requests/NewRequestPage.jsx` — added visible item/category search through the shared `SearchInput`; clears stale selection when the term changes; disables the picker and explains the empty result when no unadded eligible item matches.
+- `frontend/src/pages/requests/NewRequestPage.test.jsx` — added name and category search coverage.
+- `docs/development/request-pages-implementation-handoff.md` — documented the entry flow, retained direct-route behavior, data source, and scope boundary.
+
+**API and DB changes:** None. `/new-request` remains a protected route so Catalogue's existing `navigate('/new-request', { state: { items } })` flow remains valid. `GET /api/v1/items` is still role-filtered server-side before the UI search runs.
+
+**Assumptions:** The user asked to remove the menu item, not the route. Keeping the route preserves the Catalogue **Proceed** flow and direct-link compatibility without inventing a replacement route.
+
+**Left out of scope:** No request lifecycle, backend endpoint, authorization policy, database schema, migration, or global search was changed.
+
+
 ## 2026-08-17 — Stationery Request Management schema (SQL)
 
 **Prompt:** User supplied a Mermaid `erDiagram` (Roles, RoleThresholds, Users, Suppliers,
@@ -1177,6 +1194,123 @@ resolves to a trailing 90-day window.
 - No toast-on-action UI (Plan's T4.8 also mentions "toast on action") — the bell/badge/dropdown covers the persisted-feed half of the notification UX; a toast for the *acting* user's own screen at the moment of the action (e.g. "Request submitted" right after clicking Submit) was not added in this pass, since it's a separate, smaller UI concern from the feed itself and every action already gets its own success/error handling in the calling page.
 - Notification rows are never deleted — matches the Plan's "persisted notification feed" framing; no retention/cleanup policy was requested or added.
 
+## 2026-09-02 — Dashboard page (home `/`)
+
+**Tool:** Claude Code (claude-sonnet-5).
+
+**Task:** Build the Dashboard page (was a placeholder) to the approved wireframe
+(`docs/Wireframe/Dashboard.png`), composing existing endpoints only — no new backend.
+
+**Spec status flagged before building:** `__ai_agents/Requirements/` does not exist. The
+Dashboard is **NOT SPECIFIED in the Plan** — page-map §3 says "no dashboard endpoint, no
+milestone owns it… confirm ownership and whether it is in scope before building it." Built on
+the user's explicit request; ownership still unconfirmed.
+
+**What changed, by file:**
+- `frontend/src/pages/dashboard/DashboardPage.jsx` (new) — one `useAsync` that `Promise.all`s
+  `getPendingApprovals` (count), `getRequests` (5 most recent visible), and — Manager+ only —
+  `getLowStock`. Loading / error states via the shared `StateBlock`.
+- `frontend/src/pages/dashboard/components/DashboardKpis.jsx` (new) — the 3 wireframe KPI
+  cards (Pending Approvals, Low Stock Alerts, Remaining Budget), lucide icons, red emphasis
+  when low-stock > 0.
+- `frontend/src/pages/dashboard/components/RecentRequestsCard.jsx` (new) — table (ID /
+  Requester / Date / Status / Total), reuses `RequestStatusBadge`, "View All" → `/my-requests`.
+- `frontend/src/pages/dashboard/components/LowStockPanel.jsx` (new) — per-item cards with a
+  qty-vs-reorder-level bar, "Reorder" → `/inventory`.
+- `frontend/src/App.jsx` (shared) — `Dashboard` import/route swapped to `DashboardPage`.
+- Deleted `frontend/src/pages/Dashboard.jsx`.
+- Reused: `PageHeader`, `Card`, `Button`, `StateBlock`, `RequestStatusBadge`, `useAsync`,
+  `useAuth`, `lib/format`. No new npm packages. No backend / DB changes. No `.cs` touched.
+
+**Assumptions & deviations (flagged, not silently decided):**
+- **Remaining Budget** has no data source (`/users/me/eligibility` was never built — page-map
+  §14). Rendered as a muted "Not available yet" placeholder — no fabricated budget figure.
+- **Low Stock** is Manager+ (its endpoint is `RequireManager`). For a Requestor the KPI shows
+  "—" / "Manager view only" and the side panel is hidden, so Recent Requests spans full width.
+  The page never calls `/inventory/low-stock` for a non-manager (so no 403 surfaces).
+- **"Reorder"** links to `/inventory` (real Adjust / Receive actions live there) — page-map §3
+  notes reorder has no endpoint.
+- **No SKU** in the low-stock cards — not in `InventoryRowDto`; page-map §3 says SKU is a Plan
+  future improvement, don't build it.
+- Request IDs shown as `#{requestId}` — `RequestDto.requestId` is a bare int, not the
+  wireframe's "REQ-2039" mock-up format.
+- Recent Requests uses `GET /requests` (visibility-scoped: own / +subordinates / all),
+  matching the wireframe showing multiple requesters.
+
+**Validation actually run:**
+- `npm run build` — pass (Vite, 1707 modules, no errors).
+- `npm test` — **90 passed** (16 files); no regressions.
+- Live smoke test: Manager `#22` → all 3 endpoints 200; Engineer `#26` → approvals/requests
+  200, `/inventory/low-stock` 403 (page correctly does not call it for non-managers);
+  `DashboardPage.jsx` module resolves.
+
+**Left out of scope:** the eligibility/budget backend (M1); a real reorder flow from the
+dashboard; the wireframe's global search bar in the top nav (that's a shared-layout concern,
+not this page); per-page render tests (matches the other composed pages, none of which have
+one). Not committed to `main` / not pushed.
+
+## 2026-09-03 — Multi-select New Request catalogue picker
+
+**Task:** Replace the New Request single-item dropdown with a compact table that supports adding multiple catalogue items in one action.
+
+**What changed, by file:**
+- `frontend/src/pages/requests/NewRequestPage.jsx` — replaced `selectedItemId` and the `<select>` picker with checkbox selection state, an item/category/price table, and an `Add selected items` action. Existing client-side search remains; items already in the requisition are excluded and removed items reappear as selectable.
+- `frontend/src/pages/requests/NewRequestPage.test.jsx` — changed dropdown tests to accessible checkbox interactions and added multi-item selection coverage.
+- `docs/development/request-pages-implementation-handoff.md` — documented the picker flow and its unchanged API/authorization boundary.
+
+**Assumptions:** “small table” means the existing compact bordered-table style and one checkbox per result. Selection is intentionally preserved while filtering so users can search and select across multiple queries before adding.
+
+**No API, backend, database, migration, authorization, or request-state changes.** `GET /api/v1/items` remains the server-authorized source of eligible items.
+
+**Validation:** `npx vitest run src/pages/requests/NewRequestPage.test.jsx --pool=threads` — 6/6 passed. `npm run build` in `frontend/` — passed.
+
+**Out of scope:** select-all controls, page-size changes, and request lifecycle changes.
+
+## 2026-09-03 — New Request picker pagination and low-stock filter
+
+**Task:** Add pagination and a low-stock select filter to the New Request catalogue picker.
+
+**What changed, by file:**
+- `frontend/src/pages/requests/NewRequestPage.jsx` — added local 10-item pagination with Previous/Next controls and result range, plus an all-stock/low-stock select. Low stock is `quantityAvailable <= reorderLevel`; item data already comes from the role-filtered catalogue endpoint. Search and stock-filter changes reset to the first page, while selected checkbox IDs persist across pages.
+- `frontend/src/pages/requests/NewRequestPage.test.jsx` — added `reorderLevel` mock data plus regression coverage for low-stock-only filtering and an 11-item pagination boundary.
+- `docs/development/request-pages-implementation-handoff.md` — documented the filter definition, pagination behavior, and unchanged API boundary.
+
+**Assumption:** The request's “low stock product” means the same reorder threshold used by the existing Inventory UI: `quantityAvailable <= reorderLevel`.
+
+**No API, backend, database, migration, authorization, or request-state changes.** Pagination is local because `frontend/src/api/catalogue.js:getItems()` currently requests the complete eligible item list with `pageSize: 500`.
+
+**Validation:** `npx vitest run src/pages/requests/NewRequestPage.test.jsx --pool=threads` — 8/8 passed. `npm run build` in `frontend/` — passed.
+
+**Out of scope:** server-side catalogue pagination/query parameters, select-all controls, and changes to stock thresholds or request lifecycle.
+
+## 2026-09-03 — Preserve accessible stock-filter name
+
+**Task:** Keep the compact New Request stock filter after its visible label was removed.
+
+**What changed, by file:**
+- `frontend/src/pages/requests/NewRequestPage.jsx` — added `aria-label="Stock status"` to the existing `#stock-filter` select, preserving its accessible name without restoring a visual label.
+- `docs/development/request-pages-implementation-handoff.md` — recorded the compact-layout accessibility treatment.
+
+**No API, backend, database, migration, authorization, or request-state changes.**
+
+**Validation:** `npx vitest run src/pages/requests/NewRequestPage.test.jsx --pool=threads` — 8/8 passed.
+
+**Out of scope:** filter behavior, pagination behavior, and visual layout changes.
+
+## 2026-09-03 — Show five New Request picker rows per page
+
+**Task:** Limit the New Request catalogue picker to five visible items per page.
+
+**What changed, by file:**
+- `frontend/src/pages/requests/NewRequestPage.jsx` — changed `PICKER_PAGE_SIZE` from 10 to 5.
+- `frontend/src/pages/requests/NewRequestPage.test.jsx` — updated pagination regression coverage for the five-row boundary.
+- `docs/development/request-pages-implementation-handoff.md` — updated the documented page size.
+
+**No API, backend, database, migration, authorization, stock-filter, or request-state changes.**
+
+**Validation:** `npx vitest run src/pages/requests/NewRequestPage.test.jsx --pool=threads` — 8/8 passed. `npm run build` in `frontend/` — passed.
+
+**Out of scope:** server-side pagination, select-all, and layout changes.
 ## 2026-09-03 — Inventory: stock ledger history UI + toolbar selection fix
 
 **Tool:** Claude Code (Opus 5).

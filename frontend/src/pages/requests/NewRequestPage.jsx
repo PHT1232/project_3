@@ -1,10 +1,11 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Plus, Trash2, Send, Save, AlertCircle, ShoppingCart, Calendar, CheckCircle2, Search } from 'lucide-react'
+import { Plus, Trash2, Send, Save, AlertCircle, ShoppingCart, Calendar, CheckCircle2 } from 'lucide-react'
 
 import PageHeader from '../../components/layout/PageHeader.jsx'
 import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
+import SearchInput from '../../components/ui/SearchInput.jsx'
 import { LoadingState, ErrorState } from '../../components/ui/StateBlock.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import useAsync from '../../hooks/useAsync.js'
@@ -16,6 +17,8 @@ import { formatCurrency } from '../../lib/format.js'
  * Maps a catalogue item onto a requisition line. Shared by the item picker below and by items
  * handed over from the Catalogue page, so both routes produce identical line objects.
  */
+const PICKER_PAGE_SIZE = 5
+
 function toRequisitionLine(item) {
   return {
     itemId: item.itemId,
@@ -49,8 +52,10 @@ export default function NewRequestPage() {
   const [selectedItems, setSelectedItems] = useState(() =>
     (location.state?.items ?? []).map(toRequisitionLine),
   )
-  const [selectedItemId, setSelectedItemId] = useState('')
+  const [pickerItemIds, setPickerItemIds] = useState([])
   const [itemSearch, setItemSearch] = useState('')
+  const [stockFilter, setStockFilter] = useState('all')
+  const [pickerPage, setPickerPage] = useState(1)
   const [submitting, setSubmitting] = useState(false)
   const [submitMode, setSubmitMode] = useState(null) // 'draft' | 'submit'
   const [errorMessage, setErrorMessage] = useState(null)
@@ -64,14 +69,29 @@ export default function NewRequestPage() {
   }, [catalogueItems, selectedItems])
 
   const filteredItems = useMemo(() => {
-    if (!itemSearch.trim()) return availableItems
-    const search = itemSearch.toLowerCase()
+    const search = itemSearch.trim().toLowerCase()
     return availableItems.filter(
       (item) =>
-        item.itemName.toLowerCase().includes(search) ||
-        (item.categoryName && item.categoryName.toLowerCase().includes(search)),
+        (stockFilter !== 'low-stock' || item.quantityAvailable <= item.reorderLevel) &&
+        (!search ||
+          item.itemName.toLowerCase().includes(search) ||
+          (item.categoryName && item.categoryName.toLowerCase().includes(search))),
     )
-  }, [availableItems, itemSearch])
+  }, [availableItems, itemSearch, stockFilter])
+
+  const pickerPageCount = Math.max(1, Math.ceil(filteredItems.length / PICKER_PAGE_SIZE))
+  const pagedPickerItems = useMemo(
+    () => filteredItems.slice((pickerPage - 1) * PICKER_PAGE_SIZE, pickerPage * PICKER_PAGE_SIZE),
+    [filteredItems, pickerPage],
+  )
+
+  useEffect(() => {
+    setPickerPage(1)
+  }, [itemSearch, stockFilter])
+
+  useEffect(() => {
+    if (pickerPage > pickerPageCount) setPickerPage(pickerPageCount)
+  }, [pickerPage, pickerPageCount])
 
   // A requestor at the top of the hierarchy has no superior, so there is nobody who could approve
   // the request and the server rejects it (Plan §14 [ASK] #11 — "Can the MD (no superior) raise a
@@ -88,14 +108,23 @@ export default function NewRequestPage() {
     return selectedItems.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)
   }, [selectedItems])
 
-  function handleAddItem() {
-    if (!selectedItemId) return
-    const itemToAdd = catalogueItems.find((i) => i.itemId === Number(selectedItemId))
-    if (!itemToAdd) return
+  function handlePickerItemToggle(itemId) {
+    setPickerItemIds((previousIds) =>
+      previousIds.includes(itemId)
+        ? previousIds.filter((id) => id !== itemId)
+        : [...previousIds, itemId],
+    )
+  }
 
-    setSelectedItems((prev) => [...prev, toRequisitionLine(itemToAdd)])
-    setSelectedItemId('')
-    setItemSearch('')
+  function handleAddItems() {
+    if (pickerItemIds.length === 0) return
+
+    const itemsToAdd = catalogueItems.filter((item) => pickerItemIds.includes(item.itemId))
+    setSelectedItems((previousItems) => [
+      ...previousItems,
+      ...itemsToAdd.map(toRequisitionLine),
+    ])
+    setPickerItemIds([])
   }
 
   function handleQuantityChange(itemId, qtyStr) {
@@ -267,34 +296,107 @@ export default function NewRequestPage() {
               </div>
             ) : (
               <div className="mt-4 space-y-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <div className="relative flex-1">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <SearchInput
+                    value={itemSearch}
+                    onChange={setItemSearch}
+                    placeholder="Search by item or category..."
+                    label="Search catalogue items"
+                  />
+                  <div>
                     <select
-                      id="item-select"
-                      aria-label="Select an item"
-                      value={selectedItemId}
-                      onChange={(e) => setSelectedItemId(e.target.value)}
-                      className="h-10 w-full rounded-md border border-surface-border bg-surface-card px-3 text-sm text-ink focus:border-brand-500 focus:outline-none"
+                      id="stock-filter"
+                      aria-label="Stock status"
+                      value={stockFilter}
+                      onChange={(event) => setStockFilter(event.target.value)}
+                      className="mt-1 h-10 w-full rounded-md border border-surface-border bg-surface-card px-3 text-sm text-ink focus:border-brand-500 focus:outline-none"
                     >
-                      <option value="">-- Select an item ({filteredItems.length} available) --</option>
-                      {filteredItems.map((item) => (
-                        <option key={item.itemId} value={item.itemId}>
-                          {item.itemName} {item.categoryName ? `(${item.categoryName})` : ''} — {formatCurrency(item.unitCost)}
-                        </option>
-                      ))}
+                      <option value="all">All stock levels</option>
+                      <option value="low-stock">Low stock only</option>
                     </select>
                   </div>
-
-                  <Button
-                    type="button"
-                    variant="primary"
-                    disabled={!selectedItemId}
-                    onClick={handleAddItem}
-                  >
-                    <Plus className="h-4 w-4" aria-hidden="true" />
-                    Add to Request
-                  </Button>
                 </div>
+
+                {filteredItems.length === 0 ? (
+                  <p className="text-sm text-ink-muted">
+                    {itemSearch.trim()
+                      ? `No catalogue items match “${itemSearch}”. Try a different item or category.`
+                      : 'All available catalogue items have been added to this request.'}
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto rounded-md border border-surface-border">
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-surface-border bg-surface-muted text-xs uppercase tracking-wider text-ink-muted">
+                          <th className="w-12 px-3 py-2.5 text-center">
+                            <span className="sr-only">Select</span>
+                          </th>
+                          <th className="px-3 py-2.5 font-semibold">Item</th>
+                          <th className="px-3 py-2.5 font-semibold">Category</th>
+                          <th className="px-3 py-2.5 text-right font-semibold">Unit Price</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-surface-border">
+                        {pagedPickerItems.map((item) => (
+                          <tr key={item.itemId}>
+                            <td className="px-3 py-3 text-center">
+                              <input
+                                type="checkbox"
+                                aria-label={`Select ${item.itemName}`}
+                                checked={pickerItemIds.includes(item.itemId)}
+                                onChange={() => handlePickerItemToggle(item.itemId)}
+                                className="h-4 w-4 rounded border-surface-border text-brand-600 focus:ring-brand-500"
+                              />
+                            </td>
+                            <td className="px-3 py-3 font-medium text-ink">{item.itemName}</td>
+                            <td className="px-3 py-3 text-ink-muted">{item.categoryName ?? 'General'}</td>
+                            <td className="px-3 py-3 text-right font-mono text-ink-muted">
+                              {formatCurrency(item.unitCost)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {filteredItems.length > 0 && (
+                  <div className="flex items-center justify-between gap-3 text-sm text-ink-muted">
+                    <span>
+                      Showing {(pickerPage - 1) * PICKER_PAGE_SIZE + 1}–{Math.min(pickerPage * PICKER_PAGE_SIZE, filteredItems.length)} of {filteredItems.length}
+                    </span>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={pickerPage === 1}
+                        onClick={() => setPickerPage((page) => page - 1)}
+                      >
+                        Previous
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={pickerPage === pickerPageCount}
+                        onClick={() => setPickerPage((page) => page + 1)}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <Button
+                  type="button"
+                  variant="primary"
+                  disabled={pickerItemIds.length === 0}
+                  onClick={handleAddItems}
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  Add selected items{pickerItemIds.length > 0 ? ` (${pickerItemIds.length})` : ''}
+                </Button>
               </div>
             )}
           </Card>
@@ -321,7 +423,7 @@ export default function NewRequestPage() {
                 <ShoppingCart className="mx-auto h-8 w-8 text-ink-muted" aria-hidden="true" />
                 <p className="mt-2 text-sm font-medium text-ink">No items in your request</p>
                 <p className="mt-1 text-xs text-ink-muted">
-                  Use the catalogue dropdown above to select stationery items.
+                  Select one or more stationery items from the catalogue table above.
                 </p>
               </div>
             ) : (

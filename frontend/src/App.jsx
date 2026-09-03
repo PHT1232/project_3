@@ -14,7 +14,7 @@ import UserManagementPage from './pages/users/UserManagementPage.jsx'
 import ReportsPage from './pages/reports/ReportsPage.jsx'
 import ApprovalsPage from './pages/requests/ApprovalsPage.jsx'
 
-import Dashboard from './pages/Dashboard.jsx'
+import DashboardPage from './pages/dashboard/DashboardPage.jsx'
 import NewRequestPage from './pages/requests/NewRequestPage.jsx'
 import MyRequestsPage from './pages/requests/MyRequestsPage.jsx'
 import Help from './pages/Help.jsx'
@@ -37,7 +37,7 @@ export default function App() {
 
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<DashboardPage />} />
           <Route path="/catalogue" element={<CataloguePage />} />
           <Route path="/new-request" element={<NewRequestPage />} />
           <Route path="/my-requests" element={<MyRequestsPage />} />
