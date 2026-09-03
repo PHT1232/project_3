@@ -70,7 +70,7 @@ describe('NewRequestPage', () => {
 
     expect(screen.getByRole('heading', { name: /new stationery request/i })).toBeInTheDocument()
     expect(screen.getByText(/Arthur Dent/)).toBeInTheDocument()
-    expect(await screen.findByText(/-- Select an item/i)).toBeInTheDocument()
+    expect(await screen.findByRole('checkbox', { name: /select ballpoint pen blue/i })).toBeInTheDocument()
   })
 
   it('searches available catalogue items by name or category before adding', async () => {
@@ -80,43 +80,33 @@ describe('NewRequestPage', () => {
     const search = await screen.findByRole('searchbox', { name: /search catalogue items/i })
     await user.type(search, 'notebook')
 
-    expect(screen.getByRole('option', { name: /A4 Notebook Grid/i })).toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: /Ballpoint Pen Blue/i })).not.toBeInTheDocument()
+    expect(screen.getByText('A4 Notebook Grid')).toBeInTheDocument()
+    expect(screen.queryByText('Ballpoint Pen Blue')).not.toBeInTheDocument()
 
     await user.clear(search)
     await user.type(search, 'writing instruments')
 
-    expect(screen.getByRole('option', { name: /Ballpoint Pen Blue/i })).toBeInTheDocument()
+    expect(screen.getByText('Ballpoint Pen Blue')).toBeInTheDocument()
   })
 
-  it('allows adding items to the request and calculates estimated total', async () => {
+  it('allows selecting and adding multiple items to the request', async () => {
+    const user = userEvent.setup()
     renderNewRequestPage()
 
-    // Select the first item
-    const select = await screen.findByRole('combobox')
-    await userEvent.selectOptions(select, '101')
+    await user.click(await screen.findByRole('checkbox', { name: /select ballpoint pen blue/i }))
+    await user.click(screen.getByRole('checkbox', { name: /select a4 notebook grid/i }))
+    await user.click(screen.getByRole('button', { name: /add selected items \(2\)/i }))
 
-    // Click Add to Request
-    const addBtn = screen.getByRole('button', { name: /add to request/i })
-    await userEvent.click(addBtn)
-
-    // Verify item appears in table
     expect(screen.getByText('Ballpoint Pen Blue')).toBeInTheDocument()
-    expect(screen.getByText(/Total distinct items/i)).toBeInTheDocument()
-
-    // Add second item
-    await userEvent.selectOptions(select, '102')
-    await userEvent.click(addBtn)
-
     expect(screen.getByText('A4 Notebook Grid')).toBeInTheDocument()
+    expect(screen.getByText(/Total distinct items/i)).toBeInTheDocument()
   })
 
   it('allows modifying quantity and removing an item', async () => {
     renderNewRequestPage()
 
-    const select = await screen.findByRole('combobox')
-    await userEvent.selectOptions(select, '101')
-    await userEvent.click(screen.getByRole('button', { name: /add to request/i }))
+    await userEvent.click(await screen.findByRole('checkbox', { name: /select ballpoint pen blue/i }))
+    await userEvent.click(screen.getByRole('button', { name: /add selected items \(1\)/i }))
 
     expect(screen.getByText('Ballpoint Pen Blue')).toBeInTheDocument()
 
@@ -129,8 +119,9 @@ describe('NewRequestPage', () => {
     const removeBtn = screen.getByRole('button', { name: /remove ballpoint pen blue/i })
     await userEvent.click(removeBtn)
 
-    expect(screen.queryByText('Ballpoint Pen Blue')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /remove ballpoint pen blue/i })).not.toBeInTheDocument()
     expect(screen.getByText(/no items in your request/i)).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: /select ballpoint pen blue/i })).toBeInTheDocument()
   })
 
   it('saves request as draft (createRequest only)', async () => {
@@ -142,9 +133,8 @@ describe('NewRequestPage', () => {
 
     renderNewRequestPage()
 
-    const select = await screen.findByRole('combobox')
-    await userEvent.selectOptions(select, '101')
-    await userEvent.click(screen.getByRole('button', { name: /add to request/i }))
+    await userEvent.click(await screen.findByRole('checkbox', { name: /select ballpoint pen blue/i }))
+    await userEvent.click(screen.getByRole('button', { name: /add selected items \(1\)/i }))
 
     const draftBtn = screen.getByRole('button', { name: /save as draft/i })
     await userEvent.click(draftBtn)
@@ -171,9 +161,8 @@ describe('NewRequestPage', () => {
 
     renderNewRequestPage()
 
-    const select = await screen.findByRole('combobox')
-    await userEvent.selectOptions(select, '101')
-    await userEvent.click(screen.getByRole('button', { name: /add to request/i }))
+    await userEvent.click(await screen.findByRole('checkbox', { name: /select ballpoint pen blue/i }))
+    await userEvent.click(screen.getByRole('button', { name: /add selected items \(1\)/i }))
 
     const submitBtn = screen.getByRole('button', { name: /submit request/i })
     await userEvent.click(submitBtn)

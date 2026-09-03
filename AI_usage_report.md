@@ -1248,3 +1248,20 @@ the user's explicit request; ownership still unconfirmed.
 dashboard; the wireframe's global search bar in the top nav (that's a shared-layout concern,
 not this page); per-page render tests (matches the other composed pages, none of which have
 one). Not committed to `main` / not pushed.
+
+## 2026-09-03 — Multi-select New Request catalogue picker
+
+**Task:** Replace the New Request single-item dropdown with a compact table that supports adding multiple catalogue items in one action.
+
+**What changed, by file:**
+- `frontend/src/pages/requests/NewRequestPage.jsx` — replaced `selectedItemId` and the `<select>` picker with checkbox selection state, an item/category/price table, and an `Add selected items` action. Existing client-side search remains; items already in the requisition are excluded and removed items reappear as selectable.
+- `frontend/src/pages/requests/NewRequestPage.test.jsx` — changed dropdown tests to accessible checkbox interactions and added multi-item selection coverage.
+- `docs/development/request-pages-implementation-handoff.md` — documented the picker flow and its unchanged API/authorization boundary.
+
+**Assumptions:** “small table” means the existing compact bordered-table style and one checkbox per result. Selection is intentionally preserved while filtering so users can search and select across multiple queries before adding.
+
+**No API, backend, database, migration, authorization, or request-state changes.** `GET /api/v1/items` remains the server-authorized source of eligible items.
+
+**Validation:** `npx vitest run src/pages/requests/NewRequestPage.test.jsx --pool=threads` — 6/6 passed. `npm run build` in `frontend/` — passed.
+
+**Out of scope:** select-all controls, page-size changes, and request lifecycle changes.
