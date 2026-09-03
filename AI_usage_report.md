@@ -1369,3 +1369,61 @@ page-map §14.
 
 **Validation:** `dotnet build Project.slnx` 0 errors; `dotnet test Project.slnx` 91 passed
 (incl. 4 new EligibilityTests); `npm run build` + `npm test` 91 passed.
+
+## 2026-09-03 — Request visibility scoped to the reporting sub-tree (TC-15)
+
+**Task:** Fix over-broad request visibility on the dashboard — every Manager+ could see
+*every* request in the system, including peers' and superiors'. Scope it to the reporting line.
+
+**Problem:** `RequestQueries` used a two-tier rule: `ApplicationUser.RankLevel < 2` → own +
+approver; `>= 2` → **no filter at all**. So a Manager saw a Business Manager's requests, a
+Manager saw a peer Manager's requests, etc. Not spec'd anywhere; the Plan says the opposite
+(TC-15 "cross-approver isolation", §558 "approver acts on someone else's subordinate → 403").
+It also relied on `ApplicationUser.RankLevel`, which is the vestigial field (CLAUDE.md K8) and
+is always 0 for users created through `UserManager` — so the "Manager sees more" path never
+actually fired in the integration tests.
+
+**New rule (Plan §6, TC-15):** everyone sees their own requests + any pending their approval;
+Manager / Business Manager additionally see every request raised by anyone in their reporting
+sub-tree (reports, and their reports, to any depth); Managing Director sees all.
+
+**What changed, by file:**
+- **New** `Application/Interfaces/Users/IHierarchyQueries.cs` —
+  `GetVisibleRequestorScopeAsync(actor, maxDepth = 10)` → set of requestor employee numbers
+  the actor may see, or `null` for the Managing Director (unrestricted).
+- **New** `Infrastructure/Queries/HierarchyQueries.cs` — rank from the assigned Identity role
+  (`AspNetUserRoles → AspNetRoles.RankLevel`, same as `ReportQueries`/`EligibilityQueries`);
+  sub-tree by pulling the `Id → SuperiorEmployeeNumber` adjacency once and expanding it
+  in memory, depth-capped and de-duplicated (cycle-safe).
+- `Infrastructure/Queries/RequestQueries.cs` — `GetVisibleAsync`, `GetByIdAsync`,
+  `GetByRequestorAsync`, `GetStatusSummaryForDashboardAsync` now filter by the scope set
+  instead of `RankLevel`. `GetPendingApprovalsAsync` unchanged (already keyed on
+  `ApproverEmployeeNumber`). Ctor gains `IHierarchyQueries`.
+- `Application/Interfaces/Requests/IRequestQueries.cs` — doc comments corrected.
+- `WebApi/Program.cs` — `AddScoped<IHierarchyQueries, HierarchyQueries>()`.
+- `Tests/WebApi.IntegrationTests/RequestsTests.cs` — a 615→610→{611→613, 612→614} line plus
+  4 tests: Manager sees a report's request but not a peer's / a peer's report's / a
+  superior's; Business Manager sees two levels down; `GetById` 404s a peer Manager's request;
+  Managing Director sees an unrelated request.
+- `frontend/src/api/requests.js`, `frontend/src/pages/dashboard/components/RecentRequestsCard.jsx`
+  — stale "or all if Manager+" doc comments corrected. No frontend logic change.
+
+**Assumptions made (flagged for review):**
+- **Sub-tree, not just direct reports.** The user asked for "managers see lower-ranked
+  engineers… then further on"; the Plan's literal GET model is narrower ("owner or approver").
+  Deviation is deliberate and documented in the handoff.
+- **A Manager sees requests a subordinate *raised*, not ones they *approve*.** The sub-tree is
+  about people; approver == superior anyway.
+- **Managing Director keeps an unfiltered fast path** (`null` scope), mirroring
+  `ReportScope.Org`.
+- The direct approver still sees a request via the retained `ApproverEmployeeNumber == actor`
+  OR-clause, even if hierarchy data is momentarily inconsistent.
+
+**Left out of scope:**
+- No change to `ApprovalController` / `pending-approval` (already correctly scoped).
+- `ApplicationUser.RankLevel` is now unused by request visibility but left in place (K8
+  cleanup is a separate concern).
+- No browser click-through (build + 125 backend + 98 frontend tests only).
+
+**Validation:** `dotnet build Project.slnx` 0 errors; `dotnet test Project.slnx` **125 passed**
+(49 unit + 76 integration, incl. 4 new); `npx vitest run --pool=threads` **98 passed**.
