@@ -309,7 +309,7 @@ export default function NewRequestPage() {
                       aria-label="Stock status"
                       value={stockFilter}
                       onChange={(event) => setStockFilter(event.target.value)}
-                      className="mt-1 h-10 w-full rounded-md border border-surface-border bg-surface-card px-3 text-sm text-ink focus:border-brand-500 focus:outline-none"
+                      className="h-10 w-full rounded-md border border-surface-border bg-surface-card px-3 text-sm text-ink focus:border-brand-500 focus:outline-none"
                     >
                       <option value="all">All stock levels</option>
                       <option value="low-stock">Low stock only</option>
@@ -333,6 +333,7 @@ export default function NewRequestPage() {
                           </th>
                           <th className="px-3 py-2.5 font-semibold">Item</th>
                           <th className="px-3 py-2.5 font-semibold">Category</th>
+                          <th className="px-3 py-2.5 text-right font-semibold">Stock</th>
                           <th className="px-3 py-2.5 text-right font-semibold">Unit Price</th>
                         </tr>
                       </thead>
@@ -350,6 +351,9 @@ export default function NewRequestPage() {
                             </td>
                             <td className="px-3 py-3 font-medium text-ink">{item.itemName}</td>
                             <td className="px-3 py-3 text-ink-muted">{item.categoryName ?? 'General'}</td>
+                            <td className="px-3 py-3 text-right font-mono text-ink-muted">
+                              {item.quantityAvailable} available
+                            </td>
                             <td className="px-3 py-3 text-right font-mono text-ink-muted">
                               {formatCurrency(item.unitCost)}
                             </td>
