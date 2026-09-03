@@ -4,7 +4,8 @@ import PageHeader from '../../components/layout/PageHeader.jsx'
 import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
 import Badge from '../../components/ui/Badge.jsx'
-import { LoadingState, ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
+import { ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
+import { Skeleton, SkeletonText } from '../../components/ui/Skeleton.jsx'
 import useAsync from '../../hooks/useAsync.js'
 import { formatDate } from '../../lib/format.js'
 import { getSupportMessages, setSupportMessageResolved } from '../../api/support.js'
@@ -61,7 +62,7 @@ export default function SupportInboxPage() {
         ))}
       </div>
 
-      {loading && <LoadingState label="Loading messages…" />}
+      {loading && <SupportInboxSkeleton />}
       {!loading && error && <ErrorState error={error} onRetry={reload} />}
       {!loading && !error && messages.length === 0 && (
         <Card className="p-0">
@@ -86,6 +87,31 @@ export default function SupportInboxPage() {
         </ul>
       )}
     </>
+  )
+}
+
+/**
+ * Loading placeholder for the message list — same card footprint as {@link MessageCard}
+ * (header line + trailing button, then a two-line body) so the page doesn't jump when the
+ * data arrives. Matches the skeleton treatment on the other list pages.
+ */
+function SupportInboxSkeleton({ rows = 4 }) {
+  return (
+    <div role="status" aria-busy="true" className="space-y-3">
+      <span className="sr-only">Loading messages…</span>
+      {Array.from({ length: rows }, (_, i) => (
+        <Card key={i} className="p-4" aria-hidden="true">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <Skeleton className="h-5 w-2/5" />
+              <Skeleton className="mt-1.5 h-4 w-1/4" />
+            </div>
+            <Skeleton className="h-8 w-28 shrink-0 rounded-md" />
+          </div>
+          <SkeletonText lines={2} className="mt-3" />
+        </Card>
+      ))}
+    </div>
   )
 }
 

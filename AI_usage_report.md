@@ -1473,3 +1473,14 @@ when resolved; a dashboard badge count (endpoint exists — `GET /support/messag
 79 integration, 7 new); `npx vitest run --pool=threads` **110 passed** (frontend, incl. new
 help + support-inbox suites); `npm run build` clean. Migration applied to the local dev DB;
 sent two messages as Engineer #26 and triaged them as Business Manager #20 in the browser.
+
+### 2026-09-04 (follow-up) — Support Inbox loading skeleton
+
+Per review feedback, `SupportInboxPage` now shows a skeleton while the list loads instead of
+the centred spinner (`LoadingState`), matching the other list pages. Added a page-local
+`SupportInboxSkeleton` (4 cards mirroring `MessageCard`'s footprint) and a test asserting the
+`role="status"` placeholder shows while pending and clears on load. vitest 111 passed.
+
+The **Help page fetches nothing** (static FAQ + auth-context reads), so it has no loading
+state to replace — a skeleton there would never render. It would only gain one if the FAQ
+moves to `GET /api/v1/help/faq` (deferred).

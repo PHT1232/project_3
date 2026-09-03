@@ -33,6 +33,17 @@ describe('SupportInboxPage', () => {
     supportApi.setSupportMessageResolved.mockResolvedValue({ ...OPEN_MSG, status: 'Resolved' })
   })
 
+  it('shows a skeleton while the list loads', async () => {
+    let resolve
+    supportApi.getSupportMessages.mockReturnValue(new Promise((r) => { resolve = r }))
+    render(<SupportInboxPage />)
+
+    expect(screen.getByRole('status')).toHaveTextContent(/loading messages/i)
+
+    resolve({ items: [], page: 1, pageSize: 100, totalCount: 0 })
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument())
+  })
+
   it('lists messages and defaults to the open filter', async () => {
     render(<SupportInboxPage />)
 
