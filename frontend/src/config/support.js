@@ -1,13 +1,14 @@
 /**
- * Where "contact the team" on the Help page sends people. One shared inbox for now
- * (team members aren't individually named in the repo — CLAUDE.md K6).
+ * Support-contact config for the Help page.
  *
- * Email is a `mailto:` hand-off to the user's own mail client — the app never sends mail
- * itself (SMTP is on the Plan's [CUT] list).
+ * The primary channel is an in-app message stored in the support inbox (a Manager+ triages
+ * it) — the app never sends email (SMTP is on the Plan's [CUT] list). `SUPPORT_EMAIL` is
+ * kept only as a manual fallback shown on the card. Team members aren't named individually in
+ * the repo (CLAUDE.md K6), so it's one shared address.
  */
 export const SUPPORT_EMAIL = 'antsconst84@gmail.com'
 
-/** The §4.2 feature areas, offered as the "Area" line in a bug report. */
+/** Offered as the "Area" of a message; mirrors the §4.2 feature list. */
 export const SUPPORT_AREAS = [
   'Login / account',
   'Catalogue',
@@ -22,35 +23,7 @@ export const SUPPORT_AREAS = [
   'Something else',
 ]
 
-/**
- * Build a `mailto:` URL with a pre-filled subject and a body scaffold the reporter can
- * fill in. `diagnostics` is a plain string block appended verbatim so support can see the
- * reporter's context without asking.
- */
-export function buildSupportMailto({ subject, area, diagnostics }) {
-  const body = [
-    'What happened:',
-    '',
-    '',
-    'What I expected instead:',
-    '',
-    '',
-    'Steps to reproduce:',
-    '1. ',
-    '2. ',
-    '',
-    area ? `Area: ${area}` : null,
-    '',
-    '--- diagnostics (please keep) ---',
-    diagnostics,
-  ]
-    .filter((line) => line !== null)
-    .join('\n')
-
-  return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
-}
-
-/** The context block shared by the mailto body and the "copy diagnostics" button. */
+/** Session context attached to every message and offered by "Copy diagnostics". */
 export function buildDiagnostics(user) {
   return [
     `App version: ${__APP_VERSION__}`,

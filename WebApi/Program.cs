@@ -11,6 +11,7 @@ using Application.Interfaces.Reports;
 using Application.Interfaces.Requests;
 using Application.Interfaces.SupplierRequests;
 using Application.Interfaces.Suppliers;
+using Application.Interfaces.Support;
 using Application.Interfaces.Users;
 using Application.Services.Ai;
 using Application.Services.Auth;
@@ -196,6 +197,8 @@ try
     builder.Services.AddScoped<IEligibilityQueries, EligibilityQueries>();
     builder.Services.AddScoped<INotificationQueries, NotificationQueries>();
     builder.Services.AddScoped<INotificationService, NotificationService>();
+    builder.Services.AddScoped<ISupportMessageQueries, SupportMessageQueries>();
+    builder.Services.AddScoped<ISupportMessageService, SupportMessageService>();
 
     // AI Request Assistant (Plan §5.2, A1). The provider key is read from configuration only —
     // in every non-development environment that means the Gemini__ApiKey environment variable
