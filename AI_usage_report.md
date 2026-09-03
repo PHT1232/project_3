@@ -1265,3 +1265,51 @@ one). Not committed to `main` / not pushed.
 **Validation:** `npx vitest run src/pages/requests/NewRequestPage.test.jsx --pool=threads` — 6/6 passed. `npm run build` in `frontend/` — passed.
 
 **Out of scope:** select-all controls, page-size changes, and request lifecycle changes.
+
+## 2026-09-03 — Dashboard: time-frame filter on Recent Requests, scroll areas, budget-tile note
+
+**Tool:** Claude Code (claude-sonnet-5).
+
+**Task:** Three dashboard tweaks: (1) cap the Recent Requests and Low Stock Alerts sections
+with a vertical scroller instead of unbounded growth; (2) add a time-frame control to Recent
+Requests — This Week / This Month / Custom From→To — for every user; (3) explain the
+"Remaining Budget" tile's "not available yet" state.
+
+**Spec status:** `__ai_agents/Requirements/` still does not exist. The Dashboard itself is
+NOT SPECIFIED in the Plan (page-map §3) — this is incremental polish on the already-merged
+dashboard (PR #17), on the user's explicit request.
+
+**What changed, by file (all frontend, dashboard-scoped, no backend/DB/.cs):**
+- `frontend/src/pages/dashboard/components/RequestTimeframe.jsx` (new) — segmented
+  Week/Month/Custom control; exports `resolveTimeframeWindow(value)` → inclusive `[fromMs,
+  toMs]` epoch window and `DEFAULT_TIMEFRAME`. Style mirrors
+  `reports/components/DateRangeControl.jsx` + `ReportTabs.jsx` (active state).
+- `frontend/src/pages/dashboard/components/RecentRequestsCard.jsx` — renders the control in
+  the header; `useMemo`-filters the incoming list by `createdAtUtc` within the window; wraps
+  the table in `max-h-96 overflow-y-auto` with a `sticky top-0` header; distinct empty state
+  for "no requests in this period".
+- `frontend/src/pages/dashboard/components/LowStockPanel.jsx` — items list gains
+  `max-h-96 overflow-y-auto`.
+- `frontend/src/pages/dashboard/DashboardPage.jsx` — Recent Requests fetch `pageSize` 5 → 100
+  (`RECENT_FETCH`) so the client-side filter has rows to work with.
+
+**Assumptions (flagged):**
+- `GET /requests` has **no date parameter** (verified: `RequestsController.GetVisible` /
+  `api/requests.js` take only page/pageSize/status), so the time-frame filter runs
+  **client-side over the 100 most-recent visible requests**. If a user has >100 requests
+  newer than the selected window's start, older matches beyond 100 won't appear. Acceptable
+  at eProject scale; the real fix is `fromDate`/`toDate` on that (shared, M4-owned) endpoint —
+  deliberately out of scope here.
+- "This week" = from Monday 00:00 of the current week; "This month" = from the 1st of the
+  calendar month; both run to end of today. Default is **This Month**.
+- Scroller cap: `max-h-96` (~24rem).
+
+**Left out of scope:**
+- **"Remaining Budget" tile** — still a placeholder. It is NOT a higher-ups-only feature and
+  is NOT yet coded (neither backend nor frontend). It maps to the Plan's unbuilt
+  `GET /api/v1/users/me/eligibility` (page-map §14: role limit − month-to-date approved
+  spend, from `RoleThresholds.MaxAmountPerMonth`). No such route/controller exists
+  (`grep`-confirmed). The tile renders "Not available yet — needs the eligibility service"
+  rather than a fabricated number, per systemprompt.md.
+- No tests added — the dashboard shipped without any and none touch these files.
+- Manual browser click-through not done by the developer (build + 91 unit tests + HMR clean).

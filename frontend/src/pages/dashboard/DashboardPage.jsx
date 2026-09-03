@@ -9,7 +9,9 @@ import DashboardKpis from './components/DashboardKpis.jsx'
 import RecentRequestsCard from './components/RecentRequestsCard.jsx'
 import LowStockPanel from './components/LowStockPanel.jsx'
 
-const RECENT_LIMIT = 5
+// GET /requests has no date filter, so fetch a generous page of the newest requests and let
+// RecentRequestsCard's time-frame control narrow it client-side.
+const RECENT_FETCH = 100
 
 /**
  * Home dashboard (`/`). NOT in the Plan's endpoint catalogue — composed entirely from
@@ -25,7 +27,7 @@ export default function DashboardPage() {
     () =>
       Promise.all([
         getPendingApprovals({ page: 1, pageSize: 1 }),
-        getRequests({ page: 1, pageSize: RECENT_LIMIT }),
+        getRequests({ page: 1, pageSize: RECENT_FETCH }),
         isManager ? getLowStock() : Promise.resolve([]),
       ]).then(([pending, recent, lowStock]) => ({
         pendingApprovals: pending.totalCount ?? 0,

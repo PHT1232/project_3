@@ -56,7 +56,7 @@ export default function LowStockPanel({ items }) {
           Nothing below its reorder level right now.
         </p>
       ) : (
-        <div className="space-y-3 p-4">
+        <div className="max-h-96 space-y-3 overflow-y-auto p-4">
           {items.map((item) => (
             <LowStockItem key={item.itemId} item={item} />
           ))}
