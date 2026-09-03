@@ -1369,3 +1369,27 @@ page-map §14.
 
 **Validation:** `dotnet build Project.slnx` 0 errors; `dotnet test Project.slnx` 91 passed
 (incl. 4 new EligibilityTests); `npm run build` + `npm test` 91 passed.
+
+## 2026-09-04 — Dashboard: quick link from Pending Approvals to the approvals page
+
+**Task:** Let users jump straight to the approvals queue from the dashboard.
+
+**What changed, by file:**
+- `frontend/src/pages/dashboard/components/DashboardKpis.jsx` — `KpiCard` gains an optional
+  `action` slot rendered under the hint; the "Pending Approvals" card now carries a
+  "Review approvals →" secondary button linking to `/approvals`.
+- `frontend/src/pages/dashboard/components/DashboardKpis.test.jsx` (new) — asserts the link
+  target and that it shows even at zero pending.
+
+**Assumptions / decisions:**
+- Button is always shown, not gated on rank or on `pendingApprovals > 0`. `/approvals` is
+  already an ungated sidebar item (`navigation.js`); a pure requestor who lands there just
+  sees the empty state. Gating it would need an "am I an approver" signal the dashboard
+  doesn't currently fetch.
+- Placed on the existing KPI card rather than adding a new dashboard section, to match the
+  approved wireframe layout.
+
+**Left out of scope:** no backend change; no new "approver?" flag; the Low Stock and
+Remaining Budget cards were left without quick links (only approvals was requested).
+
+**Validation:** `npx vitest run --pool=threads` 100 passed (2 new); `npm run build` clean.
