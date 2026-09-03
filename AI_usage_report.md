@@ -1,5 +1,22 @@
 # AI Usage Report
 
+## 2026-09-03 — Catalogue-only New Stationery Request entry and in-page item search
+
+**Task:** Remove the separate New Request navigation item. Requestors enter the request page through Catalogue item selection and **Proceed**, while retaining the ability to find and add further items on the request page.
+
+**What changed, by file:**
+- `frontend/src/navigation.js` — removed the `New Request` sidebar entry and unused `PlusCircle` import.
+- `frontend/src/pages/requests/NewRequestPage.jsx` — added visible item/category search through the shared `SearchInput`; clears stale selection when the term changes; disables the picker and explains the empty result when no unadded eligible item matches.
+- `frontend/src/pages/requests/NewRequestPage.test.jsx` — added name and category search coverage.
+- `docs/development/request-pages-implementation-handoff.md` — documented the entry flow, retained direct-route behavior, data source, and scope boundary.
+
+**API and DB changes:** None. `/new-request` remains a protected route so Catalogue's existing `navigate('/new-request', { state: { items } })` flow remains valid. `GET /api/v1/items` is still role-filtered server-side before the UI search runs.
+
+**Assumptions:** The user asked to remove the menu item, not the route. Keeping the route preserves the Catalogue **Proceed** flow and direct-link compatibility without inventing a replacement route.
+
+**Left out of scope:** No request lifecycle, backend endpoint, authorization policy, database schema, migration, or global search was changed.
+
+
 ## 2026-08-17 — Stationery Request Management schema (SQL)
 
 **Prompt:** User supplied a Mermaid `erDiagram` (Roles, RoleThresholds, Users, Suppliers,
