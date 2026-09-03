@@ -28,6 +28,8 @@ public class DataContext(DbContextOptions<DataContext> options)
 
     public DbSet<Notification> Notifications => Set<Notification>();
 
+    public DbSet<AiInteractionLog> AiInteractionLogs => Set<AiInteractionLog>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
