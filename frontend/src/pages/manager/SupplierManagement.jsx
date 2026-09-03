@@ -6,7 +6,8 @@ import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
 import Badge from '../../components/ui/Badge.jsx'
 import Modal from '../../components/ui/Modal.jsx'
-import { LoadingState, ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
+import { ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
+import { SkeletonTable } from '../../components/ui/Skeleton.jsx'
 import useAsync from '../../hooks/useAsync.js'
 import useSortableTable from '../../hooks/useSortableTable.js'
 import SortableHeader from '../../components/ui/SortableHeader.jsx'
@@ -154,7 +155,13 @@ export default function SupplierManagement() {
       />
 
       <Card>
-        {loading && <LoadingState label="Loading suppliers…" />}
+        {loading && (
+          <SkeletonTable
+            label="Loading suppliers…"
+            rows={6}
+            columns={[6, 2, { width: 2, height: 'h-6' }, { width: 3, align: 'right', height: 'h-8' }]}
+          />
+        )}
         {!loading && error && <ErrorState error={error} onRetry={reload} />}
         {!loading && !error && suppliers.length === 0 && (
           <EmptyState title="No suppliers yet" description="Create the first supplier to get started." />

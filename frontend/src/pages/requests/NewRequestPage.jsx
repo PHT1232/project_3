@@ -6,7 +6,8 @@ import PageHeader from '../../components/layout/PageHeader.jsx'
 import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
 import SearchInput from '../../components/ui/SearchInput.jsx'
-import { LoadingState, ErrorState } from '../../components/ui/StateBlock.jsx'
+import { ErrorState } from '../../components/ui/StateBlock.jsx'
+import { Skeleton, SkeletonTable } from '../../components/ui/Skeleton.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import useAsync from '../../hooks/useAsync.js'
 import { getItems } from '../../api/catalogue.js'
@@ -311,8 +312,26 @@ export default function NewRequestPage() {
             </p>
 
             {itemsLoading ? (
-              <div className="py-4">
-                <LoadingState label="Loading catalogue items…" />
+              <div className="mt-4 space-y-3">
+                {/* Matches the search + stock-filter row and the picker rows below it. */}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+                <div className="overflow-hidden rounded-md border border-surface-border">
+                  <SkeletonTable
+                    label="Loading catalogue items…"
+                    rows={5}
+                    cellClassName="px-3 py-3"
+                    columns={[
+                      { width: 1, bar: 'w-4' },
+                      4,
+                      3,
+                      { width: 2, align: 'right' },
+                      { width: 2, align: 'right' },
+                    ]}
+                  />
+                </div>
               </div>
             ) : loadError ? (
               <div className="py-4">

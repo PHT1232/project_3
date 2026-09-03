@@ -1426,3 +1426,49 @@ budget. Measurements below were taken with the app's exact request shape (`syste
 - `GET /api/v1/ai/usage-report` as admin shows the full sequence in order: `not-configured` → `provider-4xx` → `timeout` (20 058 ms) → two `gemini-3.5-flash-lite` rows (`inputTokens` 1108, `outputTokens` 102–108, 1.2–3.2 s). `403` for the Engineer.
 
 **Not done / notes for the reviewer:** the two 10 s timeouts + one retry mean a worst case of ~20 s before the fallback appears — that is the Plan's own rule (10 s timeout, one retry), kept as specified; if the team prefers a snappier failure, set `Gemini:MaxRetries` to `0`. Test users created in the dev DB for this: `901` (Engineer, superior `100`). No secrets were written anywhere in the repo.
+
+## 2026-09-03 — Project-wide skeleton loading (frontend)
+
+**Task:** Replace the centred spinner with layout-shaped skeleton placeholders across the SPA, so
+a loading view reserves the space its content will occupy. No API, DB, design or business-logic
+change. Full detail: [docs/development/skeleton-loading-handoff.md](docs/development/skeleton-loading-handoff.md).
+
+**What changed, by file:**
+- `frontend/src/components/ui/Skeleton.jsx` — **new, shared.** `Skeleton`, `SkeletonText`,
+  `SkeletonTable`, `SkeletonStatCards`, `SkeletonCardGrid`, `SkeletonList`. `SkeletonTable` is
+  `table-fixed` + `<colgroup>` with per-column width shares, optional `align`/`bar`/`height`, and
+  a `cellClassName` for the tables that aren't `px-4`. Every composite carries a `sr-only`
+  `role="status"` label reusing the spinner's wording.
+- `frontend/src/pages/dashboard/components/DashboardSkeleton.jsx`,
+  `frontend/src/pages/reports/components/ReportSkeleton.jsx` — **new**, page-specific
+  compositions of the above.
+- Swapped `LoadingState` → skeleton on: Dashboard, Catalogue (+ placeholder rows in
+  `CatalogueFilters`, which gained a `loading` prop), Inventory (summary tiles and toolbar now
+  render while loading instead of appearing from nothing), Reports, My Requests, Approvals, New
+  Request picker, User Management, Item Management, Suppliers, `SubordinatesModal`, and the
+  `NotificationBell` feed.
+- `LoadingState` kept in `routes/ProtectedRoute.jsx` (session restore — a whole-app gate with no
+  known shape). `StateBlock.jsx` itself is unchanged.
+- **Temporary, since removed:** a `frontend/src/lib/demoDelay.js` module plus a marked response
+  interceptor in `frontend/src/api/client.js` — a single 1s delay used to demonstrate the
+  skeletons against a fast local API. Both were deleted before committing; `client.js` is
+  byte-identical to its previous state and `grep -rn "demoDelay" frontend/src` returns nothing.
+
+**Assumptions / interpretation:** column width shares are per-table approximations; the User
+Management and Dashboard tables' shares were measured against the real tables, the rest are
+reasoned from header label + typical content. Bar heights follow the line box of the text they
+replace (`text-sm → h-5`, badge → `h-6`, `size="sm"` button row → `h-8`), which is what makes a
+placeholder row the same height as a real one.
+
+**Validation actually run:** `npx vitest run --pool=threads` — **98/98 passed** (17 files; five of
+them assert the skeleton is what renders while loading). `npx vite build` — clean. Geometry
+measured in-browser against the real components via a throwaway Vite entry, since deleted:
+`StatCard` 94px vs 94px, Catalogue card 312px vs 311px, user-table row 57px vs 57px, dashboard row
+49px vs 49–51px, column shares within ~1.6 percentage points. The signed-in page-by-page visual
+pass was done by the developer, not the assistant (no password entry).
+
+**Not done / notes for the reviewer:** exact column alignment cannot be guaranteed — the real
+tables are auto-layout, so their widths depend on the data on screen; if a page looks off, adjust
+that page's `columns` array only. `ReportSkeleton` uses one `h-48` chart band (exact for
+`LineChart`, close for `DonutChart`, approximate for `BarChart`). The Reports insight sentence
+still shifts by one line. No new test file was added.
