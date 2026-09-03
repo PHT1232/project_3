@@ -1,5 +1,5 @@
 import PageHeader from '../../components/layout/PageHeader.jsx'
-import { LoadingState, ErrorState } from '../../components/ui/StateBlock.jsx'
+import { ErrorState } from '../../components/ui/StateBlock.jsx'
 import useAsync from '../../hooks/useAsync.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { getPendingApprovals, getRequests } from '../../api/requests.js'
@@ -8,6 +8,7 @@ import { getLowStock } from '../../api/inventory.js'
 import DashboardKpis from './components/DashboardKpis.jsx'
 import RecentRequestsCard from './components/RecentRequestsCard.jsx'
 import LowStockPanel from './components/LowStockPanel.jsx'
+import DashboardSkeleton from './components/DashboardSkeleton.jsx'
 
 // GET /requests has no date filter, so fetch a generous page of the newest requests and let
 // RecentRequestsCard's time-frame control narrow it client-side.
@@ -44,7 +45,7 @@ export default function DashboardPage() {
         description="Your approvals, recent request activity and stock alerts at a glance."
       />
 
-      {loading && <LoadingState label="Loading your dashboard…" />}
+      {loading && <DashboardSkeleton isManager={isManager} />}
 
       {!loading && error && <ErrorState error={error} onRetry={reload} />}
 

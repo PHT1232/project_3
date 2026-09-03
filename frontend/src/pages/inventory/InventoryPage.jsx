@@ -5,7 +5,8 @@ import PageHeader from '../../components/layout/PageHeader.jsx'
 import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
 import StatCard from '../../components/ui/StatCard.jsx'
-import { LoadingState, ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
+import { ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
+import { Skeleton, SkeletonStatCards, SkeletonTable } from '../../components/ui/Skeleton.jsx'
 import useAsync from '../../hooks/useAsync.js'
 import useSortableTable from '../../hooks/useSortableTable.js'
 import { getInventory, INVENTORY_STATUS } from '../../api/inventory.js'
@@ -143,6 +144,22 @@ export default function InventoryPage() {
         }
       />
 
+      {loading && (
+        <>
+          <SkeletonStatCards
+            label="Loading inventory summary…"
+            count={3}
+            grid="grid-cols-1 sm:grid-cols-3"
+            className="mb-6"
+          />
+          {/* Toolbar placeholder — mirrors InventoryToolbar's search + status filter row. */}
+          <Card className="mb-4 flex flex-col gap-3 p-3 lg:flex-row lg:items-center">
+            <Skeleton className="h-10 w-full lg:max-w-sm lg:flex-1" />
+            <Skeleton className="h-10 w-44 lg:ml-auto" />
+          </Card>
+        </>
+      )}
+
       {!loading && !error && summary && (
         <div className="mb-6 grid grid-cols-1 gap-5 sm:grid-cols-3">
           <StatCard label="Total Items" value={formatNumber(summary.totalItems)} />
@@ -161,7 +178,21 @@ export default function InventoryPage() {
       )}
 
       <Card className="overflow-hidden">
-        {loading && <LoadingState label="Loading inventory…" />}
+        {loading && (
+          <SkeletonTable
+            label="Loading inventory…"
+            rows={8}
+            columns={[
+              { width: 1, bar: 'w-4' },
+              5,
+              2,
+              { width: 2, align: 'right' },
+              { width: 2, align: 'right' },
+              { width: 2, height: 'h-6' },
+              { width: 1, bar: 'w-8', height: 'h-8' },
+            ]}
+          />
+        )}
 
         {!loading && error && <ErrorState error={error} onRetry={reload} />}
 

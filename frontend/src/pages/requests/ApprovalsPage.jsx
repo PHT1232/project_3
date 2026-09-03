@@ -4,7 +4,8 @@ import { ClipboardCheck } from 'lucide-react'
 import PageHeader from '../../components/layout/PageHeader.jsx'
 import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
-import { LoadingState, ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
+import { ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
+import { SkeletonTable } from '../../components/ui/Skeleton.jsx'
 import useAsync from '../../hooks/useAsync.js'
 import { formatCurrency, formatDate } from '../../lib/format.js'
 import { getPendingApprovals } from '../../api/requests.js'
@@ -47,7 +48,13 @@ export default function ApprovalsPage() {
       />
 
       <Card>
-        {loading && <LoadingState label="Loading pending approvals…" />}
+        {loading && (
+          <SkeletonTable
+            label="Loading pending approvals…"
+            rows={6}
+            columns={[4, 5, 2, 3, { width: 3, height: 'h-6' }, { width: 4, align: 'right', height: 'h-8' }]}
+          />
+        )}
         {!loading && error && <ErrorState error={error} onRetry={reload} />}
         {!loading && !error && requests.length === 0 && (
           <EmptyState

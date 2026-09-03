@@ -6,17 +6,21 @@ import PageHeader from '../../components/layout/PageHeader.jsx'
 import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
 import SearchInput from '../../components/ui/SearchInput.jsx'
-import { LoadingState, ErrorState } from '../../components/ui/StateBlock.jsx'
+import { ErrorState } from '../../components/ui/StateBlock.jsx'
+import { Skeleton, SkeletonTable } from '../../components/ui/Skeleton.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import useAsync from '../../hooks/useAsync.js'
 import { getItems } from '../../api/catalogue.js'
 import { createRequest, submitRequest } from '../../api/requests.js'
 import { formatCurrency } from '../../lib/format.js'
+import AiAssistantBox from './components/AiAssistantBox.jsx'
 
 /**
  * Maps a catalogue item onto a requisition line. Shared by the item picker below and by items
  * handed over from the Catalogue page, so both routes produce identical line objects.
  */
+const PICKER_PAGE_SIZE = 5
+
 function toRequisitionLine(item) {
   return {
     itemId: item.itemId,
@@ -52,6 +56,8 @@ export default function NewRequestPage() {
   )
   const [pickerItemIds, setPickerItemIds] = useState([])
   const [itemSearch, setItemSearch] = useState('')
+  const [stockFilter, setStockFilter] = useState('all')
+  const [pickerPage, setPickerPage] = useState(1)
   const [submitting, setSubmitting] = useState(false)
   const [submitMode, setSubmitMode] = useState(null) // 'draft' | 'submit'
   const [errorMessage, setErrorMessage] = useState(null)
@@ -65,14 +71,29 @@ export default function NewRequestPage() {
   }, [catalogueItems, selectedItems])
 
   const filteredItems = useMemo(() => {
-    if (!itemSearch.trim()) return availableItems
-    const search = itemSearch.toLowerCase()
+    const search = itemSearch.trim().toLowerCase()
     return availableItems.filter(
       (item) =>
-        item.itemName.toLowerCase().includes(search) ||
-        (item.categoryName && item.categoryName.toLowerCase().includes(search)),
+        (stockFilter !== 'low-stock' || item.quantityAvailable <= item.reorderLevel) &&
+        (!search ||
+          item.itemName.toLowerCase().includes(search) ||
+          (item.categoryName && item.categoryName.toLowerCase().includes(search))),
     )
-  }, [availableItems, itemSearch])
+  }, [availableItems, itemSearch, stockFilter])
+
+  const pickerPageCount = Math.max(1, Math.ceil(filteredItems.length / PICKER_PAGE_SIZE))
+  const pagedPickerItems = useMemo(
+    () => filteredItems.slice((pickerPage - 1) * PICKER_PAGE_SIZE, pickerPage * PICKER_PAGE_SIZE),
+    [filteredItems, pickerPage],
+  )
+
+  useEffect(() => {
+    setPickerPage(1)
+  }, [itemSearch, stockFilter])
+
+  useEffect(() => {
+    if (pickerPage > pickerPageCount) setPickerPage(pickerPageCount)
+  }, [pickerPage, pickerPageCount])
 
   // A requestor at the top of the hierarchy has no superior, so there is nobody who could approve
   // the request and the server rejects it (Plan §14 [ASK] #11 — "Can the MD (no superior) raise a
@@ -127,6 +148,26 @@ export default function NewRequestPage() {
   function handleClearAll() {
     setSelectedItems([])
     setRequiredByDate('')
+    setErrorMessage(null)
+  }
+
+  // AI draft → requisition lines (Plan §5.2). The draft's line shape matches ItemDto closely
+  // enough to reuse toRequisitionLine; lines already in the list take the draft's quantity
+  // instead of being duplicated. The date is only filled in when the user hasn't set one.
+  function handleApplyDraft(draft) {
+    setSelectedItems((previousItems) => {
+      const byId = new Map(previousItems.map((line) => [line.itemId, line]))
+      for (const item of draft.items) {
+        const existing = byId.get(item.itemId)
+        byId.set(item.itemId, existing
+          ? { ...existing, quantity: item.quantity }
+          : { ...toRequisitionLine(item), quantity: item.quantity })
+      }
+      return [...byId.values()]
+    })
+    if (!requiredByDate && draft.requiredByDate) {
+      setRequiredByDate(draft.requiredByDate.slice(0, 10))
+    }
     setErrorMessage(null)
   }
 
@@ -260,6 +301,9 @@ export default function NewRequestPage() {
             </div>
           </Card>
 
+          {/* AI Request Assistant (Plan §5.2 A1) */}
+          <AiAssistantBox disabled={!canRaiseRequest} onApplyDraft={handleApplyDraft} />
+
           {/* Item Selector Card */}
           <Card className="p-5">
             <h3 className="text-base font-semibold text-ink">Add Items from Catalogue</h3>
@@ -268,8 +312,26 @@ export default function NewRequestPage() {
             </p>
 
             {itemsLoading ? (
-              <div className="py-4">
-                <LoadingState label="Loading catalogue items…" />
+              <div className="mt-4 space-y-3">
+                {/* Matches the search + stock-filter row and the picker rows below it. */}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+                <div className="overflow-hidden rounded-md border border-surface-border">
+                  <SkeletonTable
+                    label="Loading catalogue items…"
+                    rows={5}
+                    cellClassName="px-3 py-3"
+                    columns={[
+                      { width: 1, bar: 'w-4' },
+                      4,
+                      3,
+                      { width: 2, align: 'right' },
+                      { width: 2, align: 'right' },
+                    ]}
+                  />
+                </div>
               </div>
             ) : loadError ? (
               <div className="py-4">
@@ -277,12 +339,26 @@ export default function NewRequestPage() {
               </div>
             ) : (
               <div className="mt-4 space-y-3">
-                <SearchInput
-                  value={itemSearch}
-                  onChange={setItemSearch}
-                  placeholder="Search by item or category..."
-                  label="Search catalogue items"
-                />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <SearchInput
+                    value={itemSearch}
+                    onChange={setItemSearch}
+                    placeholder="Search by item or category..."
+                    label="Search catalogue items"
+                  />
+                  <div>
+                    <select
+                      id="stock-filter"
+                      aria-label="Stock status"
+                      value={stockFilter}
+                      onChange={(event) => setStockFilter(event.target.value)}
+                      className="h-10 w-full rounded-md border border-surface-border bg-surface-card px-3 text-sm text-ink focus:border-brand-500 focus:outline-none"
+                    >
+                      <option value="all">All stock levels</option>
+                      <option value="low-stock">Low stock only</option>
+                    </select>
+                  </div>
+                </div>
 
                 {filteredItems.length === 0 ? (
                   <p className="text-sm text-ink-muted">
@@ -300,11 +376,12 @@ export default function NewRequestPage() {
                           </th>
                           <th className="px-3 py-2.5 font-semibold">Item</th>
                           <th className="px-3 py-2.5 font-semibold">Category</th>
+                          <th className="px-3 py-2.5 text-right font-semibold">Stock</th>
                           <th className="px-3 py-2.5 text-right font-semibold">Unit Price</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-surface-border">
-                        {filteredItems.map((item) => (
+                        {pagedPickerItems.map((item) => (
                           <tr key={item.itemId}>
                             <td className="px-3 py-3 text-center">
                               <input
@@ -318,12 +395,43 @@ export default function NewRequestPage() {
                             <td className="px-3 py-3 font-medium text-ink">{item.itemName}</td>
                             <td className="px-3 py-3 text-ink-muted">{item.categoryName ?? 'General'}</td>
                             <td className="px-3 py-3 text-right font-mono text-ink-muted">
+                              {item.quantityAvailable} available
+                            </td>
+                            <td className="px-3 py-3 text-right font-mono text-ink-muted">
                               {formatCurrency(item.unitCost)}
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                )}
+
+                {filteredItems.length > 0 && (
+                  <div className="flex items-center justify-between gap-3 text-sm text-ink-muted">
+                    <span>
+                      Showing {(pickerPage - 1) * PICKER_PAGE_SIZE + 1}–{Math.min(pickerPage * PICKER_PAGE_SIZE, filteredItems.length)} of {filteredItems.length}
+                    </span>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={pickerPage === 1}
+                        onClick={() => setPickerPage((page) => page - 1)}
+                      >
+                        Previous
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={pickerPage === pickerPageCount}
+                        onClick={() => setPickerPage((page) => page + 1)}
+                      >
+                        Next
+                      </Button>
+                    </div>
                   </div>
                 )}
 
