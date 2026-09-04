@@ -26,7 +26,6 @@ const STATUS_OPTIONS = [
   { value: 'Withdrawn', label: 'Withdrawn' },
   { value: 'CancellationPending', label: 'Cancellation Pending' },
   { value: 'Cancelled', label: 'Cancelled' },
-  { value: 'Fulfilled', label: 'Fulfilled' },
 ]
 
 export default function MyRequestsPage() {

@@ -17,7 +17,7 @@ using Application.DTOs.Requests;
 /// Pending → Withdrawn (requestor withdraws before approval)
 /// Approved/PartiallyApproved → CancellationPending (requestor requests cancellation)
 /// CancellationPending → Cancelled (approver approves cancellation) / back to Approved (denies)
-/// Approved → Fulfilled (all lines fulfilled, M4+)
+/// Approval issues the stock, so there is no separate Fulfilled state (audit C8).
 /// </summary>
 public interface IRequestService
 {

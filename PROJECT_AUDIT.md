@@ -72,8 +72,18 @@ Deliberately absent, correctly: `ReturnedForModification` (K1) and everything on
 > **Status 2026-09-04 (later the same day):** **C1–C6 are FIXED** — see
 > `docs/development/critical-fixes-request-workflow-handoff.md` and the matching
 > `AI_usage_report.md` entries. Verified by 142 backend + 118 frontend tests and live browser runs
-> against SQL Server. **C7, C8, C9 remain open**, as do all P-items. The rows below describe the
-> state *before* the fixes.
+> against SQL Server.
+>
+> **Status 2026-09-05: C7, C8 and C9 are FIXED — all nine confirmed errors are now closed.**
+> C1–C6 were independently re-verified against the code on this date, not taken on trust.
+> - **C7** — `RequestService.SubmitAsync` refuses an over-budget submission with 422.
+>   `docs/development/eligibility-budget.md` §"Phase 2".
+> - **C8** — approval issues stock and cancellation restores it, in one transaction;
+>   `Fulfilled` removed. `docs/development/stock-on-approval.md`.
+> - **C9** — `GetByIdAsync` includes `Category`/`Supplier`.
+>
+> Verified by 174 backend + 138 frontend tests and a live run against SQL Server. **All P-items
+> remain open.** The rows below describe the state *before* the fixes.
 
 | ID | Problem | Evidence | Impact | Recommended fix |
 |---|---|---|---|---|

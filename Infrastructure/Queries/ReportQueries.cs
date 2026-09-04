@@ -25,9 +25,11 @@ namespace Infrastructure.Queries;
 public class ReportQueries(DataContext db) : IReportQueries
 {
     // CK_Requests_Status terminal states that represent committed spend. "Approved only" in
-    // page-map §9; the status enum splits that into three (a partial approval and a fulfilled
-    // order both committed money). Rejected / Withdrawn / Cancelled / Pending are excluded.
-    private static readonly string[] ApprovedStatuses = ["Approved", "PartiallyApproved", "Fulfilled"];
+    // page-map §9; the status enum splits that in two, since a partial approval also committed
+    // money. Rejected / Withdrawn / Cancelled / Pending are excluded. 'Fulfilled' was dropped
+    // on 2026-09-05 — no transition ever set it, so counting it only made the query look
+    // broader than it was (audit finding C8).
+    private static readonly string[] ApprovedStatuses = ["Approved", "PartiallyApproved"];
 
     private const int TopConsumedCount = 5;
 

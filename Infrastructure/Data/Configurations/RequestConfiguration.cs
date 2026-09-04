@@ -57,11 +57,17 @@ public class RequestConfiguration : IEntityTypeConfiguration<Request>
             .HasForeignKey(rsh => rsh.RequestId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // Table name with status check constraint
+        // Table name with status check constraint.
+        //
+        // 'Fulfilled' was removed on 2026-09-05: Plan §3.6 has no transition into it — approval
+        // is what moves the stock — so nothing could ever set it, yet it was counted by
+        // ReportQueries/EligibilityQueries and offered as a My Requests filter that always
+        // returned nothing (audit finding C8). It was one of the K3 values invented by
+        // StationerySchema.sql. Reintroduce it only alongside a real fulfilment transition.
         builder.ToTable("Requests", t =>
             t.HasCheckConstraint(
                 "CK_Requests_Status",
-                "[Status] IN ('Draft', 'Pending', 'Approved', 'PartiallyApproved', 'Rejected', 'Withdrawn', 'CancellationPending', 'Cancelled', 'Fulfilled')"
+                "[Status] IN ('Draft', 'Pending', 'Approved', 'PartiallyApproved', 'Rejected', 'Withdrawn', 'CancellationPending', 'Cancelled')"
             )
         );
     }

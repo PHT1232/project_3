@@ -14,7 +14,7 @@ public class EligibilityQueries(DataContext db) : IEligibilityQueries
     // Statuses that represent money currently committed against the monthly allowance.
     // Rejected / Withdrawn / Cancelled release it; Pending onward hold it.
     private static readonly string[] CommittedStatuses =
-        ["Pending", "Approved", "PartiallyApproved", "Fulfilled", "CancellationPending"];
+        ["Pending", "Approved", "PartiallyApproved", "CancellationPending"];
 
     public async Task<EligibilityDto> GetForEmployeeAsync(int employeeNumber)
     {
