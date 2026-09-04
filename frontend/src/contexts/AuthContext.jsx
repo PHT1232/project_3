@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { fetchCurrentUser, login as loginRequest } from '../api/auth.js'
+import { setUnauthorizedHandler } from '../api/client.js'
 import {
   clearStoredAccessToken,
   getStoredAccessToken,
@@ -49,6 +50,15 @@ export function AuthProvider({ children }) {
     // logout() set state directly and must not re-trigger this redundant /auth/me fetch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Session expiry. The token lives 8 hours; without this, every call in a stale tab returned a
+  // raw 401 and the user stayed on a broken page with no way back to login (audit L3).
+  // clearSession() flips isAuthenticated to false, and ProtectedRoute redirects from there — so
+  // the redirect stays in the router's hands rather than a hard window.location assignment.
+  useEffect(() => {
+    setUnauthorizedHandler(() => clearSession())
+    return () => setUnauthorizedHandler(null)
+  }, [clearSession])
 
   const login = useCallback(async (identifier, password) => {
     const response = await loginRequest(identifier, password)

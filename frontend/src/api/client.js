@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { getStoredAccessToken } from '../lib/authStorage.js'
+import { clearStoredAccessToken, getStoredAccessToken } from '../lib/authStorage.js'
 
 /**
  * Shared axios instance. SHARED FILE.
@@ -10,6 +10,12 @@ import { getStoredAccessToken } from '../lib/authStorage.js'
  *
  * The request interceptor attaches the bearer token from `localStorage` (Plan §9.2). AuthContext
  * owns writing/clearing that token; this file only reads it.
+ *
+ * The response interceptor handles session expiry. Tokens last `Jwt:ExpiryHours` (default 8), so
+ * a tab left open overnight wakes up with every call returning 401 — previously surfaced as a raw
+ * "Request failed with status code 401" on each page with no route back to login (audit L3).
+ * AuthContext registers a handler via `setUnauthorizedHandler`; this file never imports it, which
+ * is what keeps the dependency one-way.
  */
 const client = axios.create({
   baseURL: '/api/v1',
@@ -23,5 +29,32 @@ client.interceptors.request.use((config) => {
   }
   return config
 })
+
+let onUnauthorized = null
+
+/**
+ * Registers the callback fired when the API rejects a call with 401. Called once by AuthContext;
+ * pass `null` to unregister. Kept here rather than in AuthContext so `client` stays importable by
+ * every api module without pulling React in.
+ */
+export function setUnauthorizedHandler(handler) {
+  onUnauthorized = handler
+}
+
+client.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    // A 401 from the login call itself is "wrong password", not an expired session — leave it to
+    // the Login page's own error handling, or it would clear a session the user never had.
+    const isLoginCall = error.config?.url?.includes('/auth/login')
+
+    if (error.response?.status === 401 && !isLoginCall) {
+      clearStoredAccessToken()
+      onUnauthorized?.()
+    }
+
+    return Promise.reject(error)
+  },
+)
 
 export default client

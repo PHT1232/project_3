@@ -214,6 +214,66 @@ public class RequestsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ApproveRequest_RejectingEverythingWithoutAComment_Returns400()
+    {
+        // Plan §3.6 guards Pending -> Rejected with "Comment required". It was never enforced, so
+        // a requestor could be rejected with no reason recorded (revision-3 finding M5). The
+        // request must be left untouched — still Pending, still in the approver's queue.
+        var (category, supplier) = await CatalogueTestData.SeedCategoryAndSupplierAsync(_factory.Services);
+        var item = await CatalogueTestData.SeedItemAsync(_factory.Services, category.Id, supplier.Id, minRankLevelToRequest: 1);
+
+        var requestor = await AuthedClientAsync(602, "Password1!");
+        var approver = await AuthedClientAsync(601, "Password1!");
+
+        var submitted = await CreateAndSubmitAsync(requestor, item.Id, quantity: 3);
+        var requestId = submitted.GetProperty("requestId").GetInt32();
+        var lineId = submitted.GetProperty("items")[0].GetProperty("requestItemId").GetInt32();
+
+        var approveRes = await approver.PostAsJsonAsync($"/api/v1/approvals/{requestId}/approve", new
+        {
+            requestId,
+            rowVersion = Guid.Parse(submitted.GetProperty("rowVersion").GetString()!),
+            lineDecisions = new[] { new { requestItemId = lineId, decision = "rejected", modifiedQuantity = (int?)null } },
+            comment = (string?)null
+        });
+
+        approveRes.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        var after = await approver.GetFromJsonAsync<JsonElement>($"/api/v1/requests/{requestId}");
+        after.GetProperty("status").GetString().Should().Be("Pending");
+        after.GetProperty("items")[0].GetProperty("decision").ValueKind
+            .Should().Be(JsonValueKind.Null, "a refused decision must not be written to the line");
+    }
+
+    [Fact]
+    public async Task ApproveRequest_PartialApprovalWithoutAComment_Succeeds()
+    {
+        // The Plan's comment guard sits on Pending -> Rejected only. A partial approval is a
+        // different edge, so tightening it here would be stricter than the specification.
+        var (category, supplier) = await CatalogueTestData.SeedCategoryAndSupplierAsync(_factory.Services);
+        var item = await CatalogueTestData.SeedItemAsync(_factory.Services, category.Id, supplier.Id, minRankLevelToRequest: 1);
+
+        var requestor = await AuthedClientAsync(602, "Password1!");
+        var approver = await AuthedClientAsync(601, "Password1!");
+
+        var submitted = await CreateAndSubmitAsync(requestor, item.Id, quantity: 6);
+        var requestId = submitted.GetProperty("requestId").GetInt32();
+        var lineId = submitted.GetProperty("items")[0].GetProperty("requestItemId").GetInt32();
+
+        var approveRes = await approver.PostAsJsonAsync($"/api/v1/approvals/{requestId}/approve", new
+        {
+            requestId,
+            rowVersion = Guid.Parse(submitted.GetProperty("rowVersion").GetString()!),
+            lineDecisions = new[] { new { requestItemId = lineId, decision = "modified", modifiedQuantity = (int?)2 } },
+            comment = (string?)null
+        });
+
+        approveRes.StatusCode.Should().Be(HttpStatusCode.OK);
+        var decided = await approveRes.Content.ReadFromJsonAsync<JsonElement>();
+        decided.GetProperty("status").GetString().Should().Be("PartiallyApproved");
+    }
+
+    [Fact]
     public async Task ApproveRequest_DecisionForForeignLine_Returns409()
     {
         var (category, supplier) = await CatalogueTestData.SeedCategoryAndSupplierAsync(_factory.Services);

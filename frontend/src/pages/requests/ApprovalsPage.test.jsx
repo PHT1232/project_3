@@ -142,4 +142,58 @@ describe('ApprovalsPage', () => {
       }),
     )
   })
+
+  // Plan §3.6 guards Pending -> Rejected with "Comment required" (revision-3 finding M5). The
+  // server refuses a commentless rejection with 400; these pin the UI half, so the approver is
+  // told on the field rather than after pressing Submit.
+  describe('rejection requires a comment', () => {
+    async function openReviewModal() {
+      requestsApi.getPendingApprovals.mockResolvedValue({
+        items: [SAMPLE_REQUEST],
+        page: 1,
+        pageSize: 20,
+        totalCount: 1,
+      })
+      requestsApi.approveRequest.mockResolvedValue({ ...SAMPLE_REQUEST, status: 'Rejected' })
+
+      render(<ApprovalsPage />)
+      await screen.findByText('Eve Engineer')
+      await userEvent.click(screen.getByRole('button', { name: /review/i }))
+      await screen.findByText(/review request #1/i)
+    }
+
+    it('blocks submitting a rejection with no comment', async () => {
+      await openReviewModal()
+
+      await userEvent.selectOptions(screen.getByRole('combobox'), 'rejected')
+
+      expect(screen.getByLabelText(/comment \(required\)/i)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /submit decision/i })).toBeDisabled()
+
+      expect(requestsApi.approveRequest).not.toHaveBeenCalled()
+    })
+
+    it('submits the rejection once a comment is typed', async () => {
+      await openReviewModal()
+
+      await userEvent.selectOptions(screen.getByRole('combobox'), 'rejected')
+      await userEvent.type(screen.getByLabelText(/comment \(required\)/i), 'Out of budget')
+      await userEvent.click(screen.getByRole('button', { name: /submit decision/i }))
+
+      await waitFor(() =>
+        expect(requestsApi.approveRequest).toHaveBeenCalledWith(1, {
+          rowVersion: 'v1',
+          lineDecisions: [{ requestItemId: 1, decision: 'rejected', modifiedQuantity: null }],
+          comment: 'Out of budget',
+        }),
+      )
+    })
+
+    it('leaves the comment optional for an approval', async () => {
+      await openReviewModal()
+
+      expect(screen.getByLabelText(/comment \(optional\)/i)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /submit decision/i })).toBeEnabled()
+    })
+  })
 })
