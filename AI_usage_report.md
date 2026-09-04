@@ -1423,3 +1423,47 @@ hash being computed, while a registered one does — a timing side-channel that 
 be used to enumerate addresses. The employee-number path has had exactly the same shape since
 M1, so this is not a regression, and closing it means always hashing against a dummy. Worth a
 decision, not silently ignoring. Auth changes need **2 reviewers** (CLAUDE.md §5).
+
+## 2026-09-04 — Pagination on the remaining large tables (12 rows per page)
+
+**Task:** "Make other tabs that have large table have next page, similar to that in catalogue.
+Keep 12 items per page."
+
+**Tool:** Claude Code (Opus 5).
+
+**What changed, by file:**
+- `frontend/src/hooks/usePagination.js` — **new.** Client-side pagination for a table that already holds all its rows. Exposes `pageRows` (the slice) and `isOnPage(index)`; `DEFAULT_PAGE_SIZE = 12`. Resets to page 1 when the row count changes, and clamps so the page is never past the end.
+- `frontend/src/components/ui/Pagination.jsx` — **new.** The footer, lifted verbatim from the Catalogue page's wording and markup ("Page 1 of 4 · 40 items" + Previous/Next), so every table now reads the same. Carries `data-print-hide`. Takes an optional `noun`/`nounPlural`.
+- `frontend/src/pages/inventory/InventoryPage.jsx` — paginates `visibleRows` (sorted + filtered) via `pageRows`; footer under the table.
+- `frontend/src/pages/manager/ItemManagement.jsx` — same, on `sortedItems`.
+- `frontend/src/pages/manager/SupplierManagement.jsx` — same, on `sortedSuppliers`, `noun="supplier"`.
+- `frontend/src/pages/reports/components/{CostByItemView,ItemHeadcountView,TeamExpenditureView,InventoryValuationView,MyActivityView}.jsx` — paginated via `isOnPage` (see below). Nouns: team / request / item.
+- Tests: `frontend/src/hooks/usePagination.test.js` (7), `frontend/src/components/ui/Pagination.test.jsx` (5).
+
+**Why the Reports tabs are paginated differently — the one real design decision.** The Reports
+page has a Print button that prints the live DOM (`window.print()` over `[data-print-region]`).
+If those tables rendered only the current slice, printing a cost report would silently emit page
+1 and nothing else — a data-integrity problem in a manager report, not a cosmetic one. So the
+report views keep **every** row in the DOM and hide the off-page ones with Tailwind's
+`hidden print:table-row`; the print stylesheet re-shows them. Verified in the browser: the
+generated rule `.print\:table-row { display: table-row }` sits at stylesheet index 375 against
+`.hidden` at 99, so it wins the cascade inside `@media print`. The `<tfoot>` totals were already
+computed over the full row set and are untouched, and CSV export reads `filteredRows` on the
+page, so neither shows a per-page number.
+
+**Deliberately not paginated:**
+- `CumulativeCostView` — its two tables are one row per period (~12 max) and a fixed top-5.
+- Dashboard "Recent Requests", and the line-item tables inside the request/approval/supplier-request modals — all small and bounded by design.
+- Catalogue (15/page), My Requests (15), Approvals (20), User Management (20), New Request picker (5) — already paginated, and left at their existing sizes rather than being retuned to 12 as an unrequested change. **They are now inconsistent with the new tables; say the word and I will unify them.**
+
+**No backend, API, database or authorization changes.** Pagination is client-side over data the
+pages already fetch, exactly as the Catalogue does; no endpoint contracts were touched.
+
+**Validation actually run (2026-09-04):**
+- `npm run build` — passed. `npx vitest run --pool=threads` — **116/116** across 20 files (was 104/18).
+- Browser, signed in as the Managing Director: Inventory "Page 1 of 4 · 40 items", 12 rows, Next → page 2 starting at "Highlighter Set, 6 Colours"; Item Management "Page 1 of 4 · 40 items"; Suppliers "Page 1 of 1 · 7 suppliers"; Reports → Inventory Valuation 40 rows in the DOM / 12 on screen / 28 hidden, footer "Page 1 of 4 · 40 items", `<tfoot>` still "Total Stock Value $30,135.28" over all 40. Every report tab rendered without error.
+
+**Known limitation:** the page resets when the row *count* changes, which covers filtering and
+searching. A filter that happens to leave the count identical keeps the current page number; the
+clamp still guarantees it is in range. Catalogue solves this by resetting on its specific filter
+state, which the shared hook cannot see.
