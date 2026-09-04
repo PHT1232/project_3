@@ -1,11 +1,12 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 import Help from '../Help.jsx'
 import { faqEntries, FAQ_AREAS } from './faqData.js'
-import { SUPPORT_EMAIL } from '../../config/support.js'
+import * as supportApi from '../../api/support.js'
 
+vi.mock('../../api/support.js')
 vi.mock('../../contexts/AuthContext.jsx', () => ({
   useAuth: () => ({
     user: {
@@ -43,6 +44,10 @@ describe('faqData', () => {
 })
 
 describe('Help page', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   it('renders the FAQ, contact card and system info', () => {
     render(<Help />)
     expect(screen.getByRole('heading', { name: /frequently asked questions/i })).toBeInTheDocument()
@@ -54,7 +59,6 @@ describe('Help page', () => {
     const user = userEvent.setup()
     render(<Help />)
 
-    // A term that only appears in the budget answers.
     await user.type(screen.getByLabelText(/search help/i), 'reset')
 
     expect(screen.getByText(/when does my budget reset/i)).toBeInTheDocument()
@@ -69,13 +73,33 @@ describe('Help page', () => {
     expect(screen.getByText(/no answers match that search/i)).toBeInTheDocument()
   })
 
-  it('points the contact buttons at the shared inbox with a prefilled subject', () => {
+  it('sends a message through the in-app dialog, not a mailto link', async () => {
+    const user = userEvent.setup()
+    supportApi.sendSupportMessage.mockResolvedValue({ id: 1, status: 'New' })
     render(<Help />)
 
-    const bug = screen.getByRole('link', { name: /report a bug/i })
-    expect(bug).toHaveAttribute('href', expect.stringContaining(`mailto:${SUPPORT_EMAIL}`))
-    expect(bug).toHaveAttribute('href', expect.stringContaining('subject='))
-    expect(bug.getAttribute('href')).toContain('bug%20report')
+    await user.click(screen.getByRole('button', { name: /message the team/i }))
+
+    // Dialog is open.
+    expect(screen.getByRole('dialog', { name: /message the team/i })).toBeInTheDocument()
+    const send = screen.getByRole('button', { name: /^send$/i })
+    expect(send).toBeDisabled() // nothing typed yet
+
+    await user.type(screen.getByPlaceholderText(/short summary/i), 'Approve button broken')
+    await user.type(screen.getByPlaceholderText(/what happened/i), 'It spins forever on request 5.')
+    await user.click(send)
+
+    await waitFor(() =>
+      expect(supportApi.sendSupportMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subject: 'Approve button broken',
+          body: 'It spins forever on request 5.',
+          area: expect.any(String),
+          diagnostics: expect.stringContaining('User: #42'),
+        }),
+      ),
+    )
+    expect(await screen.findByText(/the team can see this now/i)).toBeInTheDocument()
   })
 
   it('shows the signed-in user in system info', () => {

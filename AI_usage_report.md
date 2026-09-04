@@ -1410,3 +1410,96 @@ glossary and changelog sections (suggested, not requested).
 **Validation:** `npx vitest run --pool=threads` **106 passed** (8 new); `npm run build`
 clean. Rendered in a headless browser signed in as an Engineer — screenshots shown to the
 user.
+
+## 2026-09-04 — In-app support inbox (Help page "message the team", Option B)
+
+**Task:** Replace the Help page's `mailto:` buttons (which do nothing on a machine with no
+mail client) with an in-app dialog that delivers straight to the team.
+
+**Approach:** Option B of the contact-the-team decision — store messages in a new table and
+give Manager+ an in-app triage screen. **No SMTP** (email/SMTP is on the Plan's `[CUT]`
+list; a server-side sender would be a scope breach). Works with the network unplugged.
+
+**What changed, by file:**
+- Backend
+  - `Core/Entities/SupportMessage.cs` (new) — Id, SenderEmployeeNumber, Area, Subject, Body,
+    Diagnostics?, Status ("New"/"Resolved"), CreatedAtUtc, ResolvedAtUtc?, ResolvedByEmployeeNumber?.
+  - `Application/DTOs/Support/SupportMessageDtos.cs`, `.../Interfaces/Support/ISupportMessageService.cs`
+    + `ISupportMessageQueries.cs`, `.../Validators/Support/CreateSupportMessageCommandValidator.cs` (new).
+  - `Infrastructure/Services/SupportMessageService.cs` (create, resolve/reopen),
+    `Infrastructure/Queries/SupportMessageQueries.cs` (paged list newest-first, by-id, open count),
+    `Infrastructure/Data/Configurations/SupportMessageConfiguration.cs` (new).
+  - `Infrastructure/DataContext.cs` — `DbSet<SupportMessage>`.
+  - `Infrastructure/Data/Migrations/20260903181104_AddSupportMessages.*` (new) — creates the
+    table + 4 indexes. **Only pending migration on any branch — announce before a second one.**
+  - `WebApi/Controllers/SupportController.cs` (new): `POST /api/v1/support/messages` (any auth),
+    `GET /api/v1/support/messages` + `/{id}` + `/open-count` + `PATCH /{id}/status` (RequireManager).
+  - `WebApi/Program.cs` — DI + using.
+  - `Tests/WebApi.IntegrationTests/SupportTests.cs` (new) — 7 tests: anon 401; engineer send
+    → stored as New; blank body 400; engineer list/resolve 403; manager list newest-first +
+    status filter; manager resolve flips status, records resolver, drops open-count.
+- Frontend
+  - `frontend/src/api/support.js` (new).
+  - `frontend/src/pages/help/components/ContactModal.jsx` (new) — dialog (Area / Subject /
+    Message + expandable "session details we'll attach"); success state; error surfaced.
+  - `frontend/src/pages/help/components/ContactCard.jsx` — primary button now opens the
+    dialog; `mailto:` demoted to a plain fallback line; "Copy diagnostics" kept.
+  - `frontend/src/config/support.js` — dropped `buildSupportMailto` (unused); kept email,
+    areas, `buildDiagnostics`.
+  - `frontend/src/pages/support/SupportInboxPage.jsx` (new) — Manager+ triage: Open/Resolved/All
+    filter, per-message card, show/hide diagnostics, Mark resolved / Reopen.
+  - `frontend/src/App.jsx` — `/support-inbox` route inside the `requireManager` group.
+  - `frontend/src/navigation.js` — "Support Inbox" nav item, `minRankLevel: 2`.
+  - `frontend/src/pages/help/Help.test.jsx` — rewritten for the dialog flow;
+    `frontend/src/pages/support/SupportInboxPage.test.jsx` (new, 4 tests).
+
+**Assumptions / decisions (flagged):**
+- **No SMTP, no email delivery.** In-app only. If the team later wants Gmail delivery, it
+  layers on top (DB insert stays source of truth) and needs Leader sign-off + a Gmail App
+  Password in user-secrets — `[ASK] #4` territory.
+- **Statuses are just New / Resolved.** No "acknowledged"/assignment/priority — not requested.
+- **Any authenticated user can send; Manager+ triages.** Matches the `RequireManager` policy
+  already used for Inventory/Users. Client route guard is UX only; the server 403 is real.
+- **Diagnostics are client-supplied** (app version, page, browser, user line). Trusted only as
+  free text — never parsed or acted on server-side.
+- Table lives as columns, no `RoleThresholds`-style separate concerns; not in the Plan's ERD
+  (net-new, like `AiInteractionLogs` and `Notifications` were).
+
+**Left out of scope:** email delivery; assignment/priority/threading; notifying the sender
+when resolved; a dashboard badge count (endpoint exists — `GET /support/messages/open-count`
+— but no tile wired).
+
+**Validation:** `dotnet build` 0 errors; `dotnet test Project.slnx` **128 passed** (49 unit +
+79 integration, 7 new); `npx vitest run --pool=threads` **110 passed** (frontend, incl. new
+help + support-inbox suites); `npm run build` clean. Migration applied to the local dev DB;
+sent two messages as Engineer #26 and triaged them as Business Manager #20 in the browser.
+
+### 2026-09-04 (follow-up) — Support Inbox loading skeleton
+
+Per review feedback, `SupportInboxPage` now shows a skeleton while the list loads instead of
+the centred spinner (`LoadingState`), matching the other list pages. Added a page-local
+`SupportInboxSkeleton` (4 cards mirroring `MessageCard`'s footprint) and a test asserting the
+`role="status"` placeholder shows while pending and clears on load. vitest 111 passed.
+
+The **Help page fetches nothing** (static FAQ + auth-context reads), so it has no loading
+state to replace — a skeleton there would never render. It would only gain one if the FAQ
+moves to `GET /api/v1/help/faq` (deferred).
+
+### 2026-09-04 (follow-up) — Sender can't resolve their own support message
+
+Review feedback: it's odd that the person who sent a message could also close it. Now the
+reporter can't change the status of a message they sent — `SetResolvedAsync` throws
+`ValidationException` (→ 400) when `actor == sender`, and the Support Inbox shows a "You sent
+this" badge in place of the resolve/reopen button on those rows. Another Manager+ still
+resolves it normally. +1 backend test (own → 400, other manager → 200), +1 frontend test.
+dotnet test 129 passed; vitest 112 passed.
+
+### 2026-09-04 (follow-up) — Only the Managing Director resolves support messages
+
+Review feedback. New `RequireManagingDirector` policy (`RankLevelRequirement(4)`);
+`PATCH /api/v1/support/messages/{id}/status` moved from `RequireManager` to it. Manager /
+Business Manager still view the inbox but the resolve/reopen button is hidden for them
+(they see a plain "Open" / "Resolved" status); shown only for `rankLevel >= 4`. The
+no-self-resolve guard stays. Tests reworked to use a Managing Director for the resolve path
+(+ Manager-403, + non-MD-hides-button). Known gap noted in the handoff: an MD's own message
+can't be resolved by anyone. dotnet test 130 passed; vitest 113 passed.

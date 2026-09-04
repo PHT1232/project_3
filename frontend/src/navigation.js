@@ -10,6 +10,7 @@ import {
   Users,
   PackagePlus,
   HelpCircle,
+  LifeBuoy,
 } from 'lucide-react'
 
 /**
@@ -34,5 +35,6 @@ export const navItems = [
   { to: '/suppliers', label: 'Suppliers', icon: Truck, minRankLevel: 2 },
   { to: '/catalogue/manage', label: 'Item Management', icon: PackagePlus, minRankLevel: 2 },
   { to: '/user-management', label: 'User Management', icon: Users, minRankLevel: 2 },
+  { to: '/support-inbox', label: 'Support Inbox', icon: LifeBuoy, minRankLevel: 2 },
   { to: '/help', label: 'Help', icon: HelpCircle },
 ]
