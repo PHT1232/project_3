@@ -47,7 +47,11 @@ public class Request
     /// (Approval is what moves the stock, so there is no separate Fulfilled state — removed
     /// 2026-09-05, audit C8.)
     ///
-    /// The single source of truth; never UPDATE directly, only via RequestStateMachine.Transition().
+    /// The single source of truth. Never assign this directly — every change goes through
+    /// <c>Application.Services.Requests.RequestStateMachine.Transition()</c>, which rejects any
+    /// edge Plan §3.6 does not allow and writes the matching RequestStatusHistory row and a fresh
+    /// RowVersion in the same step (CLAUDE.md principle #7). The setter stays public only because
+    /// EF Core must materialise the column.
     /// </summary>
     public string Status { get; set; } = "Draft";
 

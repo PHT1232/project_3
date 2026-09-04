@@ -17,8 +17,16 @@ namespace Infrastructure.Queries;
 /// - Managing Director sees all requests.
 /// The sub-tree is resolved by <see cref="IHierarchyQueries"/>.
 ///
-/// Loads entities via AsNoTracking + full includes for efficiency in read-only scenarios.
-/// Maps to DTOs in-memory for consistency across database providers.
+/// <b>Query shape.</b> Every list method resolves the caller's scope <i>once</i> and then loads
+/// the whole page through <see cref="LoadPageAsync"/>: one query for the rows (with includes),
+/// one for every display name the page needs, and no per-row work. It previously called
+/// <see cref="GetByIdAsync"/> in a loop, which re-resolved the scope for every row — and scope
+/// resolution loads the entire user adjacency table — then issued a further query per requestor,
+/// per approver and per history row. A 100-row dashboard page cost ~100 full user-table scans
+/// plus ~400 round trips (audit finding H1). It is now a fixed 3 queries per page.
+///
+/// Entities are read AsNoTracking and mapped to DTOs in memory, which keeps the projection
+/// provider-portable across SQL Server and the SQLite test provider.
 /// </summary>
 public class RequestQueries(DataContext db, IHierarchyQueries hierarchy) : IRequestQueries
 {
@@ -47,26 +55,8 @@ public class RequestQueries(DataContext db, IHierarchyQueries hierarchy) : IRequ
         }
 
         var totalCount = await query.CountAsync();
-
-        // Fetch IDs for pagination
-        var ids = await query
-            .OrderByDescending(r => r.CreatedAtUtc)
-            .ThenByDescending(r => r.Id)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(r => r.Id)
-            .ToListAsync();
-
-        // Load full DTOs
-        var items = new List<RequestDto>(ids.Count);
-        foreach (var id in ids)
-        {
-            var dto = await GetByIdAsync(id, visibleToEmployeeNumber);
-            if (dto is not null)
-            {
-                items.Add(dto);
-            }
-        }
+        var ids = await PageIdsAsync(query, page, pageSize);
+        var items = await LoadPageAsync(ids, scope, visibleToEmployeeNumber);
 
         return new PagedResult<RequestDto>(items, page, pageSize, totalCount);
     }
@@ -74,118 +64,12 @@ public class RequestQueries(DataContext db, IHierarchyQueries hierarchy) : IRequ
     public async Task<RequestDto?> GetByIdAsync(int requestId, int visibleToEmployeeNumber)
     {
         var scope = await hierarchy.GetVisibleRequestorScopeAsync(visibleToEmployeeNumber);
+        var items = await LoadPageAsync([requestId], scope, visibleToEmployeeNumber);
 
-        // Category and Supplier hang off StationeryItem, so the Items -> Item chain is repeated
-        // for each leaf navigation. Without these the DTO's categoryName/supplierName were read
-        // off unloaded references under AsNoTracking and were therefore always null, which the
-        // UI rendered as its "General" / "Preferred Supplier" placeholders (audit finding C9).
-        var request = await db.Requests
-            .AsNoTracking()
-            .Include(r => r.Items).ThenInclude(i => i.Item).ThenInclude(item => item!.Category)
-            .Include(r => r.Items).ThenInclude(i => i.Item).ThenInclude(item => item!.Supplier)
-            .Include(r => r.StatusHistory)
-            .FirstOrDefaultAsync(r => r.Id == requestId);
-
-        if (request is null)
-        {
-            return null;
-        }
-
-        // Visibility: own request, one pending my approval, or one raised inside my sub-tree
-        // (null scope == Managing Director).
-        var canSee = request.RequestorEmployeeNumber == visibleToEmployeeNumber
-            || request.ApproverEmployeeNumber == visibleToEmployeeNumber
-            || scope is null
-            || scope.Contains(request.RequestorEmployeeNumber);
-
-        if (!canSee)
-        {
-            return null; // Return null instead of 404 to avoid leaking existence
-        }
-
-        // Map to DTO
-        var requestorName = await db.Users
-            .Where(u => u.Id == request.RequestorEmployeeNumber)
-            .Select(u => u.Name)
-            .FirstOrDefaultAsync();
-
-        var approverName = request.ApproverEmployeeNumber.HasValue
-            ? await db.Users
-                .Where(u => u.Id == request.ApproverEmployeeNumber.Value)
-                .Select(u => u.Name)
-                .FirstOrDefaultAsync()
-            : null;
-
-        var itemDtos = request.Items
-            .OrderBy(i => i.Id)
-            .Select(i =>
-            {
-                var categoryName = i.Item?.Category?.Name;
-                var supplierName = i.Item?.Supplier?.Name;
-
-                return new RequestItemDto(
-                    i.Id,
-                    i.ItemId,
-                    i.Item?.ItemName ?? string.Empty,
-                    categoryName,
-                    i.Item?.SupplierId,
-                    supplierName,
-                    i.Quantity,
-                    i.UnitCostSnapshot,
-                    i.LineTotal,
-                    i.Decision,
-                    i.ApprovedQuantity
-                );
-            })
-            .ToList();
-
-        // Awaited one at a time. The previous version was `.Select(async h => ... await ...)`
-        // followed by `.ToList()`, which starts every actor-name query at once against the same
-        // DbContext and throws "A second operation was started on this context instance" as soon
-        // as a request has more than one history row — i.e. on every request after its first
-        // status change, which broke approve/reject/withdraw entirely. DbContext is not
-        // thread-safe, so these must not overlap.
-        var orderedHistory = request.StatusHistory
-            .OrderBy(h => h.CreatedAtUtc)
-            .ThenBy(h => h.Id)
-            .ToList();
-
-        var historyList = new List<RequestStatusHistoryDto>(orderedHistory.Count);
-        foreach (var h in orderedHistory)
-        {
-            var actorName = await db.Users
-                .Where(u => u.Id == h.ActorEmployeeNumber)
-                .Select(u => u.Name)
-                .FirstOrDefaultAsync();
-
-            historyList.Add(new RequestStatusHistoryDto(
-                h.Id,
-                h.RequestId,
-                h.FromStatus,
-                h.ToStatus,
-                h.ActorEmployeeNumber,
-                actorName,
-                h.Comment,
-                h.CreatedAtUtc
-            ));
-        }
-
-        return new RequestDto(
-            request.Id,
-            request.RequestorEmployeeNumber,
-            requestorName,
-            request.ApproverEmployeeNumber,
-            approverName,
-            request.Status,
-            request.TotalEstimatedCost,
-            request.RequiredByDate,
-            request.DecisionComment,
-            request.CreatedAtUtc,
-            request.DecidedAtUtc,
-            request.RowVersion,
-            itemDtos,
-            historyList
-        );
+        // Empty means "does not exist" or "not visible to this caller" — indistinguishable on
+        // purpose, so the caller's 404 does not leak the existence of someone else's request
+        // (CLAUDE.md principle #9).
+        return items.Count == 0 ? null : items[0];
     }
 
     public async Task<PagedResult<RequestDto>> GetPendingApprovalsAsync(
@@ -203,24 +87,13 @@ public class RequestQueries(DataContext db, IHierarchyQueries hierarchy) : IRequ
                         && r.ApproverEmployeeNumber == approverEmployeeNumber);
 
         var totalCount = await query.CountAsync();
+        var ids = await PageIdsAsync(query, page, pageSize);
 
-        var ids = await query
-            .OrderByDescending(r => r.CreatedAtUtc)
-            .ThenByDescending(r => r.Id)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(r => r.Id)
-            .ToListAsync();
-
-        var items = new List<RequestDto>(ids.Count);
-        foreach (var id in ids)
-        {
-            var dto = await GetByIdAsync(id, approverEmployeeNumber);
-            if (dto is not null)
-            {
-                items.Add(dto);
-            }
-        }
+        // Every row here is one this caller approves, so it passes the visibility rule by
+        // construction — but the scope is still resolved and applied rather than bypassed, so
+        // there is exactly one place that decides what a caller may see.
+        var scope = await hierarchy.GetVisibleRequestorScopeAsync(approverEmployeeNumber);
+        var items = await LoadPageAsync(ids, scope, approverEmployeeNumber);
 
         return new PagedResult<RequestDto>(items, page, pageSize, totalCount);
     }
@@ -253,24 +126,8 @@ public class RequestQueries(DataContext db, IHierarchyQueries hierarchy) : IRequ
         }
 
         var totalCount = await query.CountAsync();
-
-        var ids = await query
-            .OrderByDescending(r => r.CreatedAtUtc)
-            .ThenByDescending(r => r.Id)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(r => r.Id)
-            .ToListAsync();
-
-        var items = new List<RequestDto>(ids.Count);
-        foreach (var id in ids)
-        {
-            var dto = await GetByIdAsync(id, visibleToEmployeeNumber);
-            if (dto is not null)
-            {
-                items.Add(dto);
-            }
-        }
+        var ids = await PageIdsAsync(query, page, pageSize);
+        var items = await LoadPageAsync(ids, scope, visibleToEmployeeNumber);
 
         return new PagedResult<RequestDto>(items, page, pageSize, totalCount);
     }
@@ -298,5 +155,161 @@ public class RequestQueries(DataContext db, IHierarchyQueries hierarchy) : IRequ
 
         return summary;
     }
-}
 
+    // -------------------------------------------------------------------------------------
+    // Shared loading. One place decides visibility; one place builds a RequestDto.
+    // -------------------------------------------------------------------------------------
+
+    /// <summary>Newest first, stable on ties. The ordering the returned page preserves.</summary>
+    private static Task<List<int>> PageIdsAsync(IQueryable<Core.Entities.Request> query, int page, int pageSize) =>
+        query
+            .OrderByDescending(r => r.CreatedAtUtc)
+            .ThenByDescending(r => r.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(r => r.Id)
+            .ToListAsync();
+
+    /// <summary>
+    /// Loads and maps a whole page in a fixed number of queries: one for the requests, one for
+    /// every display name they reference. Rows the caller may not see are dropped silently.
+    /// The result keeps <paramref name="ids"/>' order, which is the page's sort order.
+    /// </summary>
+    private async Task<List<RequestDto>> LoadPageAsync(
+        IReadOnlyList<int> ids, IReadOnlySet<int>? scope, int visibleToEmployeeNumber)
+    {
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        var idList = ids.ToList();
+
+        // Category and Supplier hang off StationeryItem, so the Items -> Item chain is repeated
+        // for each leaf navigation. Without these the DTO's categoryName/supplierName were read
+        // off unloaded references under AsNoTracking and were therefore always null, which the
+        // UI rendered as its "General" / "Preferred Supplier" placeholders (audit finding C9).
+        var requests = await db.Requests
+            .AsNoTracking()
+            .Include(r => r.Items).ThenInclude(i => i.Item).ThenInclude(item => item!.Category)
+            .Include(r => r.Items).ThenInclude(i => i.Item).ThenInclude(item => item!.Supplier)
+            .Include(r => r.StatusHistory)
+            .Where(r => idList.Contains(r.Id))
+            .ToListAsync();
+
+        var visible = requests
+            .Where(r => CanSee(r, scope, visibleToEmployeeNumber))
+            .ToList();
+
+        if (visible.Count == 0)
+        {
+            return [];
+        }
+
+        var names = await LoadDisplayNamesAsync(visible);
+
+        var byId = visible.ToDictionary(r => r.Id);
+
+        // Re-apply the page's ordering: the IN(...) query above makes no ordering guarantee.
+        return idList
+            .Where(byId.ContainsKey)
+            .Select(id => MapToDto(byId[id], names))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Own request, one pending my approval, or one raised inside my reporting sub-tree.
+    /// A null scope means Managing Director — no restriction.
+    /// </summary>
+    private static bool CanSee(Core.Entities.Request request, IReadOnlySet<int>? scope, int visibleToEmployeeNumber) =>
+        request.RequestorEmployeeNumber == visibleToEmployeeNumber
+        || request.ApproverEmployeeNumber == visibleToEmployeeNumber
+        || scope is null
+        || scope.Contains(request.RequestorEmployeeNumber);
+
+    /// <summary>
+    /// Every employee number the page's DTOs need a name for — requestors, approvers and history
+    /// actors — fetched in one query. This replaces the previous per-row lookups, which also had
+    /// to be awaited strictly one at a time because DbContext is not thread-safe.
+    /// </summary>
+    private async Task<Dictionary<int, string>> LoadDisplayNamesAsync(IReadOnlyCollection<Core.Entities.Request> requests)
+    {
+        var wanted = new HashSet<int>();
+
+        foreach (var request in requests)
+        {
+            wanted.Add(request.RequestorEmployeeNumber);
+
+            if (request.ApproverEmployeeNumber.HasValue)
+            {
+                wanted.Add(request.ApproverEmployeeNumber.Value);
+            }
+
+            foreach (var history in request.StatusHistory)
+            {
+                wanted.Add(history.ActorEmployeeNumber);
+            }
+        }
+
+        var wantedList = wanted.ToList();
+
+        return await db.Users
+            .AsNoTracking()
+            .Where(u => wantedList.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u.Name);
+    }
+
+    /// <summary>Pure mapping — no I/O, so it cannot reintroduce a per-row query.</summary>
+    private static RequestDto MapToDto(Core.Entities.Request request, IReadOnlyDictionary<int, string> names)
+    {
+        var itemDtos = request.Items
+            .OrderBy(i => i.Id)
+            .Select(i => new RequestItemDto(
+                i.Id,
+                i.ItemId,
+                i.Item?.ItemName ?? string.Empty,
+                i.Item?.Category?.Name,
+                i.Item?.SupplierId,
+                i.Item?.Supplier?.Name,
+                i.Quantity,
+                i.UnitCostSnapshot,
+                i.LineTotal,
+                i.Decision,
+                i.ApprovedQuantity))
+            .ToList();
+
+        var historyList = request.StatusHistory
+            .OrderBy(h => h.CreatedAtUtc)
+            .ThenBy(h => h.Id)
+            .Select(h => new RequestStatusHistoryDto(
+                h.Id,
+                h.RequestId,
+                h.FromStatus,
+                h.ToStatus,
+                h.ActorEmployeeNumber,
+                Name(names, h.ActorEmployeeNumber),
+                h.Comment,
+                h.CreatedAtUtc))
+            .ToList();
+
+        return new RequestDto(
+            request.Id,
+            request.RequestorEmployeeNumber,
+            Name(names, request.RequestorEmployeeNumber),
+            request.ApproverEmployeeNumber,
+            request.ApproverEmployeeNumber.HasValue ? Name(names, request.ApproverEmployeeNumber.Value) : null,
+            request.Status,
+            request.TotalEstimatedCost,
+            request.RequiredByDate,
+            request.DecisionComment,
+            request.CreatedAtUtc,
+            request.DecidedAtUtc,
+            request.RowVersion,
+            itemDtos,
+            historyList);
+    }
+
+    /// <summary>Null when the employee no longer exists — same as the old per-row lookup.</summary>
+    private static string? Name(IReadOnlyDictionary<int, string> names, int employeeNumber) =>
+        names.TryGetValue(employeeNumber, out var name) ? name : null;
+}
