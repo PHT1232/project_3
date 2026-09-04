@@ -28,7 +28,7 @@ Evidence run on this machine, 2026-09-05:
 | Command | Result |
 |---|---|
 | `dotnet build Project.slnx` | 0 errors, 1 warning (`NU1903`, vulnerable SQLite test package) |
-| `dotnet test Project.slnx` | **220 passed** (86 unit + 134 integration), 0 failed — was 183 before the H1/H3 and M1–M3 fixes |
+| `dotnet test Project.slnx` | **230 passed** (96 unit + 134 integration), 0 failed — was 183 before the H1/H3, M1–M3 and H2 work |
 | `npx vitest run --pool=threads` | **147 passed** across 24 files, 0 failed |
 
 ---
@@ -47,7 +47,7 @@ Evidence run on this machine, 2026-09-05:
 | **C8** No stock movement / `Fulfilled` unreachable | High | **Fixed and Verified** | `ApproveAsync` pre-checks every line's availability, then stages `StageRequestMovementAsync` with **`ApprovedQuantity`** (not `Quantity`), in the same transaction as status + history + notifications. Cancellation restores stock, guarded on `ApprovedQuantity is > 0`. `Fulfilled` removed from the entity, the CHECK constraint, `ReportQueries`, `EligibilityQueries` and the UI filter — zero references remain repo-wide. |
 | **C9** Blank category/supplier on lines | Medium | **Fixed and Verified** | `RequestQueries.cs:84-85` chains `.ThenInclude(item => item!.Category)` and `.ThenInclude(item => item!.Supplier)`. |
 | **P1** Reports open to all vs Plan Manager+ | Potential | **Still Present** | `ReportsController` is `[Authorize]` only; `/reports` sits outside the manager group in `App.jsx`. Still contradicts Plan §4.2, T5.2 and TC-18. Needs a team ruling, not a silent fix. |
-| **P2** Role-assignment escalation | Potential | **⚠ Partially Fixed** | `EnsureActorCanAssignRoleAsync` / `EnsureActorCanManageTarget` now block a **Business Manager** from creating or managing BM/MD accounts. But both guards test `currentUserService.RankLevel == BusinessManagerRankLevel` (3), so a **Manager (rank 2) is not covered and can still create or promote a Managing Director**. See current issue **H2**. |
+| **P2** Role-assignment escalation | Potential | **Fixed and Verified** | Two layers. `UsersController`'s write endpoints are `RequireBusinessManager`, so a Manager is refused outright (verified: 403 for every role). `UserManagementService.EnsureActorOutranks` then refuses any actor an account at or above their own rank, MD exempt. The re-audit's H2 claim that a Manager could create an MD was a **false positive** — see H2 below. |
 | **P3** Migrations never executed by CI | Potential | **Still Present** | `CustomWebApplicationFactory:49` still uses `EnsureCreatedAsync()`. The 8 migrations and SQL Server-only defaults are never exercised by the suite. (They *have* now been applied manually to the SQLEXPRESS dev DB — but not by CI.) |
 | **P4** N+1 in request listing | Potential | **Still Present — WORSENED** | Promoted to a confirmed issue; see **H1**. |
 | **P5** No 401 response interceptor | Potential | **Still Present** | `api/client.js` has a request interceptor only (`interceptors.response` count = 0). |
@@ -101,15 +101,39 @@ live API hit with `GET /requests?pageSize=100` (22 rows, 30 ids). SQL emitted pe
 Zero per-row queries; the adjacency table is loaded at most once (and not at all for a Managing
 Director, whose null scope short-circuits). **215 backend + 140 frontend tests pass.**
 
-### H2 — A Manager can still create or promote a Managing Director *(confirmed; P2 half-fixed)*
-**⚠ NOT FIXED — deliberately left pending a team ruling.** This descends from P2, a *Potential*
-issue, and changing who may create a Managing Director alters the permission model rather than
-correcting a defect. Raise it with the team before touching it.
-`UserManagementService.EnsureActorCanAssignRoleAsync` and `EnsureActorCanManageTarget` only
-engage when the actor's rank **equals 3** (Business Manager). A rank-2 Manager passes both
-unchecked and can create a Managing Director account, or promote themselves. The BM restriction
-that was added shows the team considers this class of escalation undesirable; the Manager case
-looks like an oversight rather than a decision. **Confirm the intended rule before changing it.**
+### ⚠️ H2 — "A Manager can create or promote a Managing Director" — **FALSE POSITIVE; guard since hardened**
+
+**The finding as originally written was wrong.** It said a rank-2 Manager "passes both guards
+unchecked and can create a Managing Director account". That conclusion came from reading
+`UserManagementService`'s guards without checking the attribute on the endpoints that reach them.
+Every write endpoint on `UsersController` — `POST`, `PUT`, `PATCH .../status` — is
+`[Authorize(Policy = "RequireBusinessManager")]` (rank ≥ 3), so a Manager never reaches the service
+at all.
+
+**Verified empirically 2026-09-05** against the live API before any change was made:
+
+| Actor | `POST /users` | Result |
+|---|---|---|
+| Manager (2) | role = Managing Director | **403** |
+| Manager (2) | role = Engineer | **403** — a Manager cannot create anyone |
+| Business Manager (3) | role = Managing Director / Business Manager | **403** (service guard) |
+| Business Manager (3) | role = Manager / Engineer | **201** |
+| Managing Director (4) | role = Managing Director | **201** |
+
+**Team ruling 2026-09-05: "a Manager should not be able to create a Managing Director."** Already
+true in practice, but the service guard only named Business Managers, so it held *only* because the
+controller policy blocked Managers first. CLAUDE.md principle #9 requires both layers, and a
+controller/service rank mismatch is not hypothetical — one was found on the Support Inbox route in
+this same audit (M2).
+
+**Hardened**, therefore: `EnsureActorOutranks` now states the rule as a rank comparison — nobody may
+create, edit or deactivate an account **at or above their own rank**, with the Managing Director
+exempt as the top rank (otherwise no one could ever create a successor). This reproduces the
+Business-Manager behaviour exactly, extends it downward, and survives a future relaxation of the
+controller policy. 10 new unit tests pin it, including the ruling stated directly.
+
+**No behaviour changed today** — re-verified live after the change: the BM matrix above is
+byte-for-byte identical, Manager is still 403, MD still 201. Only the error wording changed.
 
 ### ✅ H3 — `RequestStateMachine` did not exist — **FIXED AND VERIFIED 2026-09-05**
 *Was: Plan T3.2 and CLAUDE.md #7 require one guarded `Transition()` as the only writer of
@@ -253,16 +277,18 @@ AI Request Assistant (grounded, rate-limited, offline fallback, key never commit
 implemented and covered. **183 backend + 140 frontend tests pass**, including regression tests
 named for each closed finding.
 
-**What remains incomplete.** Two items, both awaiting a decision rather than code: the
-Manager-level half of the role-escalation guard (**H2**) and the reports-policy contradiction
-(**M4**). Everything else outstanding is Low priority or documentation.
+**What remains incomplete.** One item awaiting a decision rather than code: the reports-policy
+contradiction (**M4**). Everything else outstanding is Low priority or documentation.
 
-**What still needs attention first.** **H2 and M4 both need a team ruling** — may a Manager create
-or promote a Managing Director, and are reports Manager+ or open to all? Neither should be changed
-on one person's judgement. After that, the Low items are cleanup: dead code (L2), the 401
-interceptor (L3), the `/new-request` nav entry (L1), and the documentation reconciliations in
-PC3 — the Plan and `StationerySchema.sql` now trail the code in several places, and CLAUDE.md §1
-is actively misleading (L7).
+**H2 is closed** — the finding was a false positive (a Manager was always blocked at the
+controller), and the team's ruling has since been encoded in the service layer as well.
+
+**What still needs attention first.** **M4 needs a team ruling** — are reports Manager+ (Plan §4.2,
+T5.2, TC-18) or open to all (current code)? Whichever wins, the other document must be updated;
+it should not be changed on one person's judgement. After that the Low items are cleanup: dead
+code (L2), the 401 interceptor (L3), the `/new-request` nav entry (L1), and the documentation
+reconciliations in PC3 — the Plan and `StationerySchema.sql` now trail the code in several places,
+and CLAUDE.md §1 is actively misleading (L7).
 
 **Is it stable enough for continued development and testing? Yes.** Nothing is Critical, no
 previous fix regressed, both suites are green, and every core workflow completes end to end
