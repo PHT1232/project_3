@@ -1591,117 +1591,38 @@ was re-added. Post-merge validation is recorded below.
   `RequireManager`(2) / `RequireBusinessManager`(3) entries beside it — because pushing a branch
   with four red tests helps nobody. After the fix: **160/160** (54 unit + 106 integration).
 
-## 2026-09-05 — Audit C7: enforce the spending limit on submit
+## 2026-09-05 — Audit C9: category and supplier names on request lines
 
-**Task:** Fix `PROJECT_AUDIT.md` finding C7 — role spending limits were computed for the
-Dashboard tile and never enforced, so an Engineer with a 500 allowance could submit 50 000.
-
-**What changed, by file:**
-- `Application/Exceptions/BusinessRuleException.cs` — **new**. "Well-formed, permitted, and
-  still refused" — the Plan §4.2 422 case, distinct from Validation (400) / NotFound (404) /
-  Conflict (409).
-- `WebApi/Middleware/ExceptionHandlingMiddleware.cs` — maps it to **422 Unprocessable
-  Entity**, title "Business rule violation". First 422 in the codebase.
-- `Infrastructure/Services/RequestService.cs` — ctor takes `IEligibilityQueries`;
-  `SubmitAsync` refuses when `TotalEstimatedCost > RemainingThisMonth`, before the
-  `Draft → Pending` transition. Message names the total, the overage, the limit, the
-  month-to-date spend and the reset date (Plan T3.4: "422 with a specific message").
-- `frontend/src/pages/requests/NewRequestPage.jsx` — "Submit" is create-then-submit, so a
-  refused submit now leaves a saved draft. The error message says so and names the draft id;
-  previously it read as though nothing had been saved.
-- `Tests/WebApi.IntegrationTests/BudgetEnforcementTests.cs` — **new**, 7 tests: exactly at the
-  limit passes / one unit over → 422 naming limit and overage / refused request stays `Draft`
-  and never reaches the approver's queue / second request judged on *remaining* not the full
-  allowance / withdrawing releases the budget / an over-limit **draft** can still be created /
-  a Manager's higher allowance applies.
-- `docs/development/eligibility-budget.md` — Phase 2 section (was marked deferred).
-
-**Assumptions made where the request was ambiguous:**
-- **Which limit** — the Plan says only "Total ≤ role threshold" and the schema has both
-  `MaxAmountPerRequest` and `MaxAmountPerMonth`. Confirmed with the user: enforce
-  **`RemainingThisMonth`** (monthly allowance − month-to-date committed). `MaxAmountPerRequest`
-  is deliberately *not* enforced — it is seeded equal to the monthly figure, so it would be a
-  no-op today.
-- **Block vs warn** — `[ASK] #6` is open in the Plan. Confirmed with the user: **hard block**,
-  the Plan's own stated default. No config knob, against the earlier handoff's suggestion of
-  `Eligibility:Mode` — a single code path is easier to test and defend.
-- **Month attribution** — month-to-date windows on `Request.CreatedAtUtc`, so a January draft
-  submitted in February is judged against January. Flagged in the handoff, not changed.
-- `__ai_agents/Requirements/` still does not exist; Plan §3.6 / §M3 line 977 / T3.4 / TC-05 are
-  the requirement sources used.
-
-**Deliberately left out of scope:**
-- Per-request cap enforcement (see above).
-- Any pre-emptive UI warning while building a basket — the server refusal is the control; a
-  live "you have X left" hint on New Request is a separate, additive change.
-- C8 (stock), which follows on its own branch and reuses `BusinessRuleException`.
-
-**Validation:** `dotnet build` 0 errors. `dotnet test Project.slnx` — **167 passed**
-(54 unit + 113 integration; was 160, +7 new). `npx vitest run --pool=threads` — **138 passed**
-(+1 new). `npm run build` clean.
-
-## 2026-09-05 — Audit C8: stock moves on approval, is restored on cancellation
-
-**Task:** Fix `PROJECT_AUDIT.md` finding C8 — approval never checked or moved stock
-(`IStockService.IssueAsync` had zero callers), cancellation never gave it back, and the
-`Fulfilled` status was unreachable yet still counted.
+**Task:** Fix `PROJECT_AUDIT.md` finding C9 — request detail lines always showed a blank
+category and supplier.
 
 **What changed, by file:**
-- `Core/Entities/StockTransaction.cs` — nullable `RequestId`, so an `Issue` row says which
-  request took the stock instead of only a free-text `Reference`.
-- `Application/Interfaces/Inventory/IStockService.cs` +
-  `Infrastructure/Services/StockService.cs` — new `StageRequestMovementAsync`: applies the
-  balance change and adds the ledger row **without saving**, so the caller commits it in the
-  same `SaveChangesAsync` as the status change (Plan §3.6 "one DB transaction").
-- `Infrastructure/Services/RequestService.cs` — ctor takes `IStockService`. `ApproveAsync`
-  loads `Items.Item`, verifies **every** line has stock (422 naming each short item) and only
-  then stages one `Issue` per line at `-ApprovedQuantity`. `ApproveCancellationAsync` stages
-  one `Adjustment` per line at `+ApprovedQuantity` when the cancellation is approved.
-- `Infrastructure/Data/Configurations/StockTransactionConfiguration.cs` — FK + index on
-  `RequestId`, `OnDelete(SetNull)`.
-- `Infrastructure/Data/Configurations/RequestConfiguration.cs`,
-  `Queries/ReportQueries.cs`, `Queries/EligibilityQueries.cs`, `Data/DbSeeder.cs`,
-  `frontend/.../MyRequestsPage.jsx`, `.../RequestStatusBadge.jsx` — `Fulfilled` removed from
-  the CHECK constraint, both status sets, the dead demo seeder, the filter and the badge map.
-- `Infrastructure/Data/Migrations/20260904043931_AddStockIssueOnApproval.*` — **new**:
-  `RequestId` column/index/FK, narrowed `CK_Requests_Status`, and a hand-written
-  `UPDATE Requests SET Status='Approved' WHERE Status='Fulfilled'` that must run before the
-  constraint goes back on.
-- `Tests/WebApi.IntegrationTests/ApprovalStockTests.cs` — **new**, 7 tests (see Validation).
-- `docs/development/stock-on-approval.md` — **new** handoff. `PROJECT_AUDIT.md` — status
-  header updated: all nine confirmed errors now closed.
-- Doc-comment cleanups referencing `Fulfilled` in `Request.cs`, `IRequestService.cs`,
-  `IReportQueries.cs`, `CostByItemReportDto.cs`, `api/reports.js`, `faqData.js`.
+- `Infrastructure/Queries/RequestQueries.cs` — `GetByIdAsync` now includes
+  `Items → Item → Category` and `Items → Item → Supplier`. The mapping already read
+  `i.Item?.Category?.Name` / `i.Item?.Supplier?.Name`, but under `AsNoTracking` those
+  references were never loaded, so both were always `null`. The `Items → Item` chain is
+  repeated per leaf navigation because that is how EF's `ThenInclude` composes.
+- `Tests/WebApi.IntegrationTests/RequestsTests.cs` — two tests:
+  `GetById_RequestLines_CarryCategoryAndSupplierNames` (asserts the seeded
+  "Test Category"/"Test Supplier" reach the DTO) and
+  `GetById_ItemWithNoSupplier_LeavesSupplierNameNull`.
 
 **Assumptions made where the request was ambiguous:**
-- **`Fulfilled` removed**, confirmed with the user. Plan §3.6 has no transition into it —
-  approval is what moves the stock — so it was unreachable by construction. Reintroducing it
-  needs a real fulfilment step, not just the enum value.
-- **One `SaveChangesAsync`, no explicit `BeginTransactionAsync`.** EF wraps a single
-  `SaveChanges` in one transaction, which satisfies Plan §3.6 and keeps the SQLite test
-  provider working. Chosen over an explicit transaction, which the plan offered as the
-  alternative.
-- **No item row-version check on the staged path.** The approval already gated on the
-  *request's* row version; re-checking each item's would fail approvals because an unrelated
-  goods receipt touched the item. Flagged as reviewer follow-up 4 with the concurrency
-  reasoning.
-- **`Adjustment`, not `Receipt`, for the restore** — nothing physically arrived; this reverses
-  a movement. Plan §3.6 line 410 says "Adjustment".
-- **Stock is taken at approval, not reserved at submit** — matches Plan §3.6, which puts the
-  guard on `Pending → Approved`. Two requests can therefore both pass eligibility and the
-  second fail the stock guard.
-- `__ai_agents/Requirements/` still does not exist; Plan §3.6 lines 405/410, §200 and T2.6 are
-  the requirement sources.
+- `RequestDetailModal.jsx` renders `categoryName ?? '—'` / `supplierName ?? '—'`. That
+  fallback is **kept**: a `StationeryItem` may legitimately have `SupplierId == null`, so
+  "—" is the correct display for that case rather than a bug symptom. No frontend change.
+- The "General" / "Preferred Supplier" placeholders the audit mentions live in
+  `NewRequestPage.jsx` / `AiAssistantBox.jsx`, which read the **catalogue** endpoint, not
+  `RequestDto`. They are a different code path and were left alone.
+- `__ai_agents/Requirements/` has no spec for this; the audit entry and Plan §3.4 (line
+  header/detail split) are the only requirement sources.
 
 **Deliberately left out of scope:**
-- Reports still sum `TotalEstimatedCost` (requested), not issued spend — pre-existing, and a
-  team decision (also flagged in the C1–C6 handoff).
-- No stock reservation at submit; no low-stock warning on the approval screen.
-- Audit P-items (P1–P7) — untouched.
+- Audit **P4** (N+1: `GetVisibleAsync`/`GetByRequestorAsync` call `GetByIdAsync` per row).
+  This fix reaches every list through that same path, which makes each row's query slightly
+  heavier — the Dashboard asks for 100 rows. Collapsing the N+1 is a separate change.
+- C7 and C8, which follow on their own branches.
 
-**Validation:** `dotnet build` 0 errors. `dotnet test Project.slnx` — **174 passed**
-(54 unit + 120 integration, +7 new). `npx vitest run --pool=threads` — **138 passed**.
-`npm run build` clean. Migration applied to `StationeryManagementSystem.Dev` on real SQL
-Server at startup. **Live round trip** on item #2: 112 → approve 10 units of request #108 →
-**102** (`Issue −10, reqId 108, by 22`) → approve its cancellation → **112**
-(`Adjustment +10, reqId 108`); ledger sum matches the cached balance.
+**Validation:** `dotnet build Project.slnx` 0 errors. `dotnet test` — `RequestsTests` 34/34
+(was 32). Both new tests confirmed to **fail** with the `ThenInclude`s reverted, so they
+genuinely guard the fix.

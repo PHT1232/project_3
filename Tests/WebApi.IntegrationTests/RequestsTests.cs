@@ -379,6 +379,39 @@ public class RequestsTests : IAsyncLifetime
         stillThere.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
+    [Fact]
+    public async Task GetById_RequestLines_CarryCategoryAndSupplierNames()
+    {
+        var (category, supplier) = await CatalogueTestData.SeedCategoryAndSupplierAsync(_factory.Services);
+        var item = await CatalogueTestData.SeedItemAsync(_factory.Services, category.Id, supplier.Id, minRankLevelToRequest: 1);
+
+        var requestor = await AuthedClientAsync(602, "Password1!");
+        var requestId = await CreateRequestAsync(requestor, item.Id, 2);
+
+        var body = await requestor.GetFromJsonAsync<JsonElement>($"/api/v1/requests/{requestId}");
+        var line = body.GetProperty("items")[0];
+
+        // Both were always null before the Category/Supplier ThenIncludes were added (audit C9).
+        line.GetProperty("categoryName").GetString().Should().Be("Test Category");
+        line.GetProperty("supplierName").GetString().Should().Be("Test Supplier");
+    }
+
+    [Fact]
+    public async Task GetById_ItemWithNoSupplier_LeavesSupplierNameNull()
+    {
+        var (category, _) = await CatalogueTestData.SeedCategoryAndSupplierAsync(_factory.Services);
+        var item = await CatalogueTestData.SeedItemAsync(_factory.Services, category.Id, supplierId: null, minRankLevelToRequest: 1);
+
+        var requestor = await AuthedClientAsync(602, "Password1!");
+        var requestId = await CreateRequestAsync(requestor, item.Id, 1);
+
+        var body = await requestor.GetFromJsonAsync<JsonElement>($"/api/v1/requests/{requestId}");
+        var line = body.GetProperty("items")[0];
+
+        line.GetProperty("categoryName").GetString().Should().Be("Test Category");
+        line.GetProperty("supplierName").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
     /// <summary>Create then submit, returning the submitted (Pending) request body.</summary>
     private static async Task<JsonElement> CreateAndSubmitAsync(HttpClient requestor, int itemId, int quantity)
     {
