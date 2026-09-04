@@ -78,6 +78,21 @@ Validation: `CreateSupportMessageCommandValidator` (FluentValidation → `Valida
   resolve, filter switch, diagnostics reveal).
 - `dotnet test Project.slnx` 128 passed · `npx vitest run --pool=threads` 110 passed · builds clean.
 
+## 2026-09-04 policy registration repair
+
+Jenkins exposed a missing composition-root registration: `SupportController` referenced
+`RequireManagingDirector`, but `WebApi/Program.cs` registered only Manager and Business Manager
+rank policies. ASP.NET Core therefore threw `InvalidOperationException` in authorization middleware
+before the controller action executed, producing HTTP 500 instead of the endpoint's intended status.
+
+`Program.cs` now registers `RequireManagingDirector` with the existing
+`RankLevelRequirement(4)` / `RankLevelHandler` authorization mechanism. No controller, service,
+API contract, database schema, or migration changed. The repair restores the intended behavior:
+Engineer and Manager receive 403, another Managing Director can resolve a message, and an MD
+resolving their own message reaches the existing 400 guard.
+
+Validation run for this repair: `dotnet test Tests/WebApi.IntegrationTests/WebApi.IntegrationTests.csproj --no-restore --filter FullyQualifiedName~SupportTests` passed 9/9; `dotnet test Project.slnx --no-restore` passed 140/140. Both report the existing `NU1903` warning for `SQLitePCLRaw.lib.e_sqlite3` 2.1.11.
+
 ## Reviewer follow-ups
 
 1. **Migration** — `AddSupportMessages` is the only pending one; announce before a second
