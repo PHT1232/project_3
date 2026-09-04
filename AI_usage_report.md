@@ -1369,3 +1369,57 @@ page-map §14.
 
 **Validation:** `dotnet build Project.slnx` 0 errors; `dotnet test Project.slnx` 91 passed
 (incl. 4 new EligibilityTests); `npm run build` + `npm test` 91 passed.
+
+## 2026-09-04 — Sign in by email address as well as employee number
+
+**Task:** Add email login to the sign-in page, keeping employee-number login working.
+
+**Tool:** Claude Code (Opus 5). Prompt summary: "can you add login by email to the login page?"
+
+**Scope note — this goes beyond the Plan.** Plan §3.1 line 213 makes `EmployeeNumber` "primary
+key **and** login", and §4.2 / T1.2 / the M1 acceptance list all specify "employee number +
+password". Email as a second identifier is a user-requested addition, not something the Plan
+asks for; it is safe because Identity already holds `Email` unique (`RequireUniqueEmail = true`
+in Program.cs), so an address identifies exactly one account. Flagged here rather than merged
+silently (CLAUDE.md §5).
+
+**Design:** one input labelled "Employee number or email". `frontend/src/api/auth.js` decides the
+wire shape — all digits → `{employeeNumber}`, anything else → `{email}` — so the page and
+`AuthContext` stay unaware of the contract. The server accepts exactly one identifier.
+
+**What changed, by file:**
+- `Application/DTOs/Auth/LoginRequest.cs` — now `(int? EmployeeNumber, string? Email, string Password)`. Both identifiers optional at the type level so the 16 existing callers that send `employeeNumber` are untouched.
+- `Application/Validators/Auth/LoginRequestValidator.cs` — new. Exactly one identifier (XOR), password non-empty. Deliberately **no** format or range checks — see the correction below.
+- `Application/Interfaces/Auth/IAccountStore.cs` — `+ VerifyCredentialsByEmailAsync`.
+- `Infrastructure/Identity/IdentityAccountAdapter.cs` — both lookups now funnel into one private `VerifyAsync`, so the email path cannot drift from the employee-number path: same `IsActive` gate, same `CheckPasswordSignInAsync(lockoutOnFailure: true)`, same generic failure. Email lookup uses `FindByEmailAsync`, which matches on Identity's `NormalizedEmail` and is therefore case- and whitespace-insensitive for free.
+- `Application/Services/Auth/AuthService.cs` — validates, then branches on which identifier is present. Constructor gained `IValidator<LoginRequest>`.
+- `WebApi/Controllers/AuthController.cs` — 401 detail changed from "Employee number or password is incorrect." to "Those sign-in details are incorrect." so it names neither identifier.
+- `frontend/src/api/auth.js` — `login(identifier, password)` picks the wire shape.
+- `frontend/src/contexts/AuthContext.jsx` — parameter renamed `employeeNumber` → `identifier` (it was never used as a number).
+- `frontend/src/pages/Login.jsx` — single `identifier` field, `type="text"`, placeholder `101 or you@hmt.local`; separate messages for 400 (malformed request) and 401 (generic).
+- Tests: `AuthServiceTests` (+3), `AuthTests` integration (+6), `Login.test.jsx` (+2), new `frontend/src/api/auth.test.js` (4).
+
+**A mistake made and corrected during this task, worth recording.** The first version of
+`LoginRequestValidator` enforced the Plan's 1–1000 employee-number range and an email-format
+check. That broke the pre-existing contract test
+`Login_UnknownEmployeeNumber_ReturnsSameGeneric401AsWrongPassword`: employee number `999999`
+started returning **400** where it had returned the generic **401**. That is a real information
+leak, not just a failing test — a 400/401 split tells an attacker which identifiers are even
+worth trying. Both rules were removed. The rule now is: a request is rejected with 400 only when
+it is structurally unanswerable (no identifier, both identifiers, or no password); anything that
+merely *cannot match an account* returns the same generic 401 as a wrong password.
+
+**No database, migration, authorization-policy, token or request-state changes.** Lockout,
+`IsActive` enforcement and JWT contents are untouched.
+
+**Validation actually run (2026-09-04):**
+- `dotnet build Project.slnx` — 0 errors. `dotnet test Project.slnx` — **133/133** (Application.UnitTests 53, WebApi.IntegrationTests 80).
+- `npx vitest run --pool=threads` — **104/104** across 18 files. `npm run build` — passed.
+- Live API on `.\SQLEXPRESS`: login by email → 200; `"  AI.Tester@HMT.Local  "` (case + whitespace) → 200; employee number 901 → 200; unregistered email → 401 "Those sign-in details are incorrect."; both identifiers at once → 400.
+- Browser: signed in as `ai.tester@hmt.local` → dashboard "Welcome back, Ai Tester"; wrong password → the generic alert, still on `/login`; `901` → dashboard. (The Browser pane's viewport collapsed to 0×0 partway through, so the last two checks were driven through the DOM rather than by clicking.)
+
+**Known issue / follow-up for the reviewer:** an unregistered email returns without a password
+hash being computed, while a registered one does — a timing side-channel that could in principle
+be used to enumerate addresses. The employee-number path has had exactly the same shape since
+M1, so this is not a regression, and closing it means always hashing against a dummy. Worth a
+decision, not silently ignoring. Auth changes need **2 reviewers** (CLAUDE.md §5).
