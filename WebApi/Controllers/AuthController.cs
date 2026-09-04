@@ -19,7 +19,7 @@ public class AuthController(IAuthService authService, ICurrentUserService curren
             return Problem(
                 statusCode: StatusCodes.Status401Unauthorized,
                 title: "Invalid credentials",
-                detail: "Employee number or password is incorrect.");
+                detail: "Those sign-in details are incorrect.");
         }
 
         return Ok(response);

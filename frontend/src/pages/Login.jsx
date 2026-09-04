@@ -9,7 +9,9 @@ export default function Login() {
   const { login } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const [employeeNumber, setEmployeeNumber] = useState('')
+  // One field for both identifiers. api/auth.js decides which one to send: all digits is an
+  // employee number, anything else is an email address.
+  const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState(null)
   const [submitting, setSubmitting] = useState(false)
@@ -22,13 +24,17 @@ export default function Login() {
     setSubmitting(true)
 
     try {
-      await login(Number(employeeNumber), password)
+      await login(identifier, password)
       navigate(redirectTo, { replace: true })
     } catch (err) {
+      // 400 means the identifier itself was malformed (not a number in range, not a valid
+      // address); 401 stays deliberately vague about which half was wrong.
       setError(
-        err.response?.status === 401
-          ? 'Employee number or password is incorrect.'
-          : 'Could not sign in. Please try again.',
+        err.response?.status === 400
+          ? 'Enter a valid employee number or email address.'
+          : err.response?.status === 401
+            ? 'Those sign-in details are incorrect.'
+            : 'Could not sign in. Please try again.',
       )
     } finally {
       setSubmitting(false)
@@ -48,20 +54,20 @@ export default function Login() {
 
           <form className="mt-6 space-y-4" onSubmit={handleSubmit} noValidate>
             <div>
-              <label htmlFor="employeeNumber" className="block text-sm font-medium text-ink">
-                Employee number
+              <label htmlFor="identifier" className="block text-sm font-medium text-ink">
+                Employee number or email
               </label>
               <input
-                id="employeeNumber"
-                name="employeeNumber"
-                type="number"
-                min="1"
-                max="1000"
+                id="identifier"
+                name="identifier"
+                type="text"
+                inputMode="email"
                 required
                 autoFocus
                 autoComplete="username"
-                value={employeeNumber}
-                onChange={(event) => setEmployeeNumber(event.target.value)}
+                placeholder="101 or you@hmt.local"
+                value={identifier}
+                onChange={(event) => setIdentifier(event.target.value)}
                 className="mt-1 w-full rounded-md border border-surface-border bg-surface-card px-3 py-2 text-sm text-ink outline-none focus:border-brand-500"
               />
             </div>

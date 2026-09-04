@@ -14,6 +14,8 @@ import { formatCurrency, formatNumber } from '../../lib/format.js'
 
 import InventoryToolbar from './components/InventoryToolbar.jsx'
 import InventoryTable from './components/InventoryTable.jsx'
+import Pagination from '../../components/ui/Pagination.jsx'
+import usePagination from '../../hooks/usePagination.js'
 import StockActionModal from './components/StockActionModal.jsx'
 import SupplierRequestModal from './components/SupplierRequestModal.jsx'
 
@@ -63,6 +65,8 @@ export default function InventoryPage() {
     key: 'itemName',
     dir: 'asc',
   })
+
+  const { page, setPage, totalPages, total, pageRows } = usePagination(visibleRows)
 
   function toggleRow(itemId) {
     setSelectedIds((current) =>
@@ -222,15 +226,23 @@ export default function InventoryPage() {
         )}
 
         {!loading && !error && visibleRows.length > 0 && (
-          <InventoryTable
-            rows={visibleRows}
-            selectedIds={selectedIds}
-            onToggle={toggleRow}
-            onToggleAll={toggleAll}
-            onAdjust={(item) => setAction({ mode: 'adjust', item })}
-            onReceive={(item) => setAction({ mode: 'receive', item })}
-            headerProps={headerProps}
-          />
+          <>
+            <InventoryTable
+              rows={pageRows}
+              selectedIds={selectedIds}
+              onToggle={toggleRow}
+              onToggleAll={toggleAll}
+              onAdjust={(item) => setAction({ mode: 'adjust', item })}
+              onReceive={(item) => setAction({ mode: 'receive', item })}
+              headerProps={headerProps}
+            />
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              onPageChange={setPage}
+            />
+          </>
         )}
       </Card>
 

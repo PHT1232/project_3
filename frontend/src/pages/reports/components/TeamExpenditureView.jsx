@@ -4,6 +4,8 @@ import { formatCurrency, formatNumber } from '../../../lib/format.js'
 import BarChart from './charts/BarChart.jsx'
 import SortHeader from './SortHeader.jsx'
 import { nextSort, applySort } from '../tableSort.js'
+import Pagination from '../../../components/ui/Pagination.jsx'
+import usePagination from '../../../hooks/usePagination.js'
 
 /**
  * Report 5 — Expenditure by Team. Approved spend grouped by the requestor's
@@ -26,6 +28,7 @@ export default function TeamExpenditureView({ report }) {
   const [sort, setSort] = useState(null)
   const onSort = (key) => setSort((current) => nextSort(current, key))
   const sorted = applySort(rows, sort, ACCESSORS)
+  const { page, setPage, totalPages, total, isOnPage } = usePagination(sorted)
 
   const totalMembers = rows.reduce((sum, row) => sum + row.memberCount, 0)
 
@@ -52,8 +55,13 @@ export default function TeamExpenditureView({ report }) {
             </tr>
           </thead>
           <tbody>
-            {sorted.map((row) => (
-              <tr key={row.teamName} className="border-b border-surface-border last:border-0">
+            {sorted.map((row, index) => (
+              <tr
+                key={row.teamName}
+                className={`border-b border-surface-border last:border-0 ${
+                  isOnPage(index) ? '' : 'hidden print:table-row'
+                }`}
+              >
                 <td className="px-4 py-3 font-medium text-ink">{row.teamName}</td>
                 <td className="px-4 py-3 text-right tabular-nums text-ink">
                   {formatNumber(row.memberCount)}
@@ -80,6 +88,7 @@ export default function TeamExpenditureView({ report }) {
             </tr>
           </tfoot>
         </table>
+        <Pagination page={page} totalPages={totalPages} total={total} onPageChange={setPage} noun="team" />
       </div>
     </div>
   )
