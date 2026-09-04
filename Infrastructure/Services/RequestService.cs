@@ -202,6 +202,30 @@ public class RequestService(
         // is still Draft at this point, so RemainingThisMonth excludes the very total being
         // checked.
         var eligibility = await eligibilityQueries.GetForEmployeeAsync(submitterEmployeeNumber);
+
+        // Per-request cap first, because it is the tighter and more specific of the two: a single
+        // request over the single-request limit is refused no matter how much monthly budget is
+        // left, and saying so names the right limit. Checked before the monthly figure so the
+        // message cannot blame the month for a per-request breach.
+        //
+        // A role with no per-request cap configured (0) is treated as "monthly limit only" — the
+        // column defaults to 0 for roles created before the budget columns existed, and a 0 cap
+        // would otherwise block every request outright.
+        //
+        // This half of the limit was stored, seeded and shown on the Dashboard but never enforced
+        // (audit finding M1, the unfinished half of C7). DbSeeder currently sets per-request equal
+        // to per-month, so today the two checks coincide; the moment anyone tightens the
+        // per-request column this is what makes it mean something.
+        if (eligibility.MaxAmountPerRequest > 0m
+            && request.TotalEstimatedCost > eligibility.MaxAmountPerRequest)
+        {
+            var overBy = request.TotalEstimatedCost - eligibility.MaxAmountPerRequest;
+            throw new BusinessRuleException(
+                $"This request totals {request.TotalEstimatedCost:0.00}, which is {overBy:0.00} over the " +
+                $"{eligibility.MaxAmountPerRequest:0.00} limit for a single request at your role " +
+                $"({eligibility.Role}). Split it into smaller requests or ask someone with a higher limit.");
+        }
+
         if (request.TotalEstimatedCost > eligibility.RemainingThisMonth)
         {
             var overBy = request.TotalEstimatedCost - eligibility.RemainingThisMonth;

@@ -164,7 +164,67 @@ public class BudgetEnforcementTests : IAsyncLifetime
         (await SubmitAsync(manager, draft)).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
+    // ---- Per-request cap (audit finding M1 — the unfinished half of C7) --------------------
+    //
+    // DbSeeder sets MaxAmountPerRequest equal to MaxAmountPerMonth, so the two limits coincide
+    // by default and a per-request breach is indistinguishable from a monthly one. These tests
+    // tighten the Engineer role's per-request cap so the two can be told apart.
+
+    [Fact]
+    public async Task Submit_OverThePerRequestCap_Returns422_EvenWithMonthlyBudgetLeft()
+    {
+        var (client, itemId) = await SetupAsync();
+        await SetEngineerPerRequestCapAsync(100.00m);
+
+        // 150.00: over the 100.00 single-request cap, but far inside the 500.00 month.
+        var draft = await CreateDraftAsync(client, itemId, 30);
+        draft.GetProperty("totalEstimatedCost").GetDecimal().Should().Be(150.00m);
+
+        var submit = await SubmitAsync(client, draft);
+
+        submit.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+
+        var problem = await submit.Content.ReadFromJsonAsync<JsonElement>();
+        var detail = problem.GetProperty("detail").GetString()!;
+        detail.Should().Contain("100.00", "the message must name the per-request limit");
+        detail.Should().Contain("single request", "and say which limit was hit, not blame the month");
+        detail.Should().NotContain("resets on", "that wording belongs to the monthly breach");
+    }
+
+    [Fact]
+    public async Task Submit_ExactlyAtThePerRequestCap_Succeeds()
+    {
+        var (client, itemId) = await SetupAsync();
+        await SetEngineerPerRequestCapAsync(100.00m);
+
+        var draft = await CreateDraftAsync(client, itemId, 20); // exactly 100.00
+        draft.GetProperty("totalEstimatedCost").GetDecimal().Should().Be(100.00m);
+
+        (await SubmitAsync(client, draft)).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Submit_PerRequestCapOfZero_IsTreatedAsUnset_AndOnlyTheMonthlyLimitApplies()
+    {
+        // 0 is what the column defaults to for roles created before the budget columns existed;
+        // enforcing it literally would block every request.
+        var (client, itemId) = await SetupAsync();
+        await SetEngineerPerRequestCapAsync(0m);
+
+        var draft = await CreateDraftAsync(client, itemId, UnitsAtTheLimit); // 500.00, at the month's limit
+        (await SubmitAsync(client, draft)).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
     // ---------------------------------------------------------------------------------------
+
+    private async Task SetEngineerPerRequestCapAsync(decimal cap)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<Infrastructure.DataContext>();
+        var role = await db.Roles.FirstAsync(r => r.Name == "Engineer");
+        role.MaxAmountPerRequest = cap;
+        await db.SaveChangesAsync();
+    }
 
     private async Task<(HttpClient Client, int ItemId)> SetupAsync()
     {

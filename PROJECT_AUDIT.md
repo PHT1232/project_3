@@ -28,8 +28,8 @@ Evidence run on this machine, 2026-09-05:
 | Command | Result |
 |---|---|
 | `dotnet build Project.slnx` | 0 errors, 1 warning (`NU1903`, vulnerable SQLite test package) |
-| `dotnet test Project.slnx` | **215 passed** (86 unit + 129 integration), 0 failed — was 183 before the H1/H3 fixes |
-| `npx vitest run --pool=threads` | **140 passed** across 23 files, 0 failed |
+| `dotnet test Project.slnx` | **220 passed** (86 unit + 134 integration), 0 failed — was 183 before the H1/H3 and M1–M3 fixes |
+| `npx vitest run --pool=threads` | **147 passed** across 24 files, 0 failed |
 
 ---
 
@@ -139,26 +139,63 @@ rows. **215 backend + 140 frontend tests pass; no regressions.**
 
 ## Current Medium Priority Issues
 
-### M1 — `MaxAmountPerRequest` is stored and displayed but never enforced *(confirmed)*
-Only the **monthly** allowance gates submission. `MaxAmountPerRequest` exists on `AspNetRoles`, is
-seeded by `DbSeeder`, and is returned in `EligibilityDto` — but no code compares a request total
-against it. Today `DbSeeder` sets per-request equal to per-month, so behaviour coincides and
-nothing looks wrong; the moment anyone sets a stricter single-request cap it will silently do
-nothing. This is the unfinished half of C7.
+### ✅ M1 — `MaxAmountPerRequest` never enforced — **FIXED AND VERIFIED 2026-09-05**
+*Was: only the monthly allowance gated submission; the per-request cap was stored, seeded and
+shown on the Dashboard but never compared against anything — the unfinished half of C7.*
 
-### M2 — `/support-inbox` is implemented but unreachable from the UI *(confirmed)*
-The route exists in `App.jsx:61` and `SupportInboxPage` is fully built, but there is **no
-navigation entry and no link to it anywhere** — the only mentions are code comments saying
-"Manager+ triage them at `/support-inbox`". Since this page is the only way to read the support
-messages users submit from the Help page, those messages are effectively invisible unless a
-Manager types the URL by hand.
+**Fix.** `SubmitAsync` now checks the per-request cap **before** the monthly one, so a
+single-request breach names the right limit instead of blaming the month. A cap of `0` is treated
+as "unset" (the column's default for roles created before the budget columns existed; enforcing it
+literally would block every request). Both checks throw `BusinessRuleException` → 422.
 
-### M3 — Integration tests never execute the migrations *(P3, unchanged)*
-`EnsureCreatedAsync()` builds the schema from the model, skipping all 8 migration files, their
-CHECK constraints and the SQL Server-only defaults (`NEWID()`, `GETUTCDATE()`). A broken migration
-would pass CI. Three migrations have landed since the last audit, raising the exposure.
+**Verified.** Three new tests in `BudgetEnforcementTests` tighten the Engineer role's per-request
+cap so it can be told apart from the monthly one: over-cap-but-within-month → 422 naming the
+per-request limit and *not* the monthly wording; exactly at the cap → 200; cap of 0 → only the
+monthly limit applies. Budget suite 7 → 10.
+
+### ✅ M2 — `/support-inbox` unreachable from the UI — **FIXED AND VERIFIED 2026-09-05**
+*Was: the route and page were fully built but had no navigation entry and no link anywhere, so
+support messages sent from the Help page were invisible unless someone typed the URL.*
+
+**Fix.** Added the nav entry (`Support Inbox`, `LifeBuoy` icon — already imported and unused,
+suggesting this was started and abandoned) at **`minRankLevel: 2` — Manager and above only**, per
+the team's instruction that it appear only in a manager account interface.
+
+Also corrected a **frontend/backend mismatch found while doing it**: the route sat in the
+Business-Manager+ (rank 3) group in `App.jsx`, while `SupportController`'s read endpoints are
+`RequireManager` (rank 2). A Manager was allowed by the server but blocked by the SPA. The route
+moved to the Manager+ group so nav floor, route guard and controller policy now all agree.
+Resolving a message stays Managing-Director-only (`RequireManagingDirector`), which
+`SupportInboxPage` already gates separately.
+
+**Verified.** New `navigation.test.js` (7 cases) pins the rank floor and asserts the entry is
+hidden from an Engineer and shown to Manager/BM/MD, plus a regression guard on the neighbouring
+floors. Live: `GET /support/messages` → Engineer **403**, Manager **200**, Business Manager **200**;
+in the browser the Manager's sidebar shows Support Inbox and the page loads with its empty state,
+the Engineer's sidebar does not, and an Engineer typing `/support-inbox` is redirected to the
+Dashboard.
+
+### ✅ M3 — Integration tests never executed the migrations — **FIXED AND VERIFIED 2026-09-05**
+*Was: `EnsureCreatedAsync()` builds the schema from the model, so none of the 8 migration files,
+their CHECK constraints or their hand-written data fixes were ever run. A broken migration passed CI.*
+
+**Fix.** The SQLite factory is unchanged — deliberately, because the migrations are
+irreducibly SQL Server-flavoured (`NEWID()`, `GETUTCDATE()`, `ALTER TABLE … ADD CONSTRAINT … CHECK`,
+bracketed T-SQL in the data fixes), so pointing `MigrateAsync` at SQLite would only fail. Instead a
+new `MigrationTests` applies the real chain to a throwaway SQL Server database (`MigrateAsync`,
+uniquely named, dropped afterwards) and asserts: nothing pending afterwards, **no pending model
+changes** — which catches the stale-designer-snapshot mistake this branch hit twice — and that the
+CHECK constraints the workflow depends on exist with the right vocabularies (`Draft` present,
+`Fulfilled` absent, `PendingArrival`/`Received` present).
+
+`RequiresSqlServerFactAttribute` skips cleanly when no LocalDB or SQLEXPRESS is reachable, so a
+teammate without SQL Server does not get a red build. **On this machine both tests actually ran
+and passed — they were not skipped.**
 
 ### M4 — Reports are open to every authenticated user *(P1, unchanged — needs a team ruling)*
+**⚠ NOT FIXED — deliberately.** This is P1 renamed: a *Potential* issue where the code and the Plan
+disagree in writing, not a defect. Whichever side wins, the other must be updated — a call for the
+team, not a silent code change.
 Row-scoping means an Engineer only sees their own spend, so nothing leaks. But Plan §4.2, T5.2
 ("Engineer → 403") and TC-18 all say Manager+. The code and the Plan disagree **in writing**;
 whichever wins, the other must be updated.
@@ -194,8 +231,15 @@ whichever wins, the other must be updated.
 **Update 2026-09-05 (post-fix).** Of the three High issues, **H1 and H3 are fixed and verified**;
 **H2 is deliberately still open** because it needs a team ruling, not a code change. Request
 listing is now a fixed 4 queries per page (measured), and `RequestStateMachine` is the sole writer
-of `Request.Status`, backed by a specification-derived transition matrix. Backend tests
-**183 → 215**. Everything below still holds.
+of `Request.Status`, backed by a specification-derived transition matrix.
+
+**Of the four Medium issues, M1, M2 and M3 are fixed and verified; M4 is deliberately still open**
+(it is P1 renamed — the Plan and the code disagree in writing and the team must pick). The
+per-request spending cap is now enforced, Support Inbox is reachable and Manager-only with the
+route guard corrected to match the controller policy, and the migration chain is executed against
+real SQL Server by CI-skippable tests.
+
+Tests: backend **183 → 220**, frontend **140 → 147**. Everything below still holds.
 
 **What is now working correctly.** The full request lifecycle behaves as Plan §3.6 specifies:
 create → `Draft` (invisible to the approver, the only deletable state) → submit (budget-gated,
@@ -209,15 +253,16 @@ AI Request Assistant (grounded, rate-limited, offline fallback, key never commit
 implemented and covered. **183 backend + 140 frontend tests pass**, including regression tests
 named for each closed finding.
 
-**What remains incomplete.** The per-request spending cap (M1); a reachable entry point for the
-support inbox (M2); migration coverage in CI (M3); and the Manager-level half of the
-role-escalation guard (H2).
+**What remains incomplete.** Two items, both awaiting a decision rather than code: the
+Manager-level half of the role-escalation guard (**H2**) and the reports-policy contradiction
+(**M4**). Everything else outstanding is Low priority or documentation.
 
-**What still needs attention first.** **H2 needs a team ruling** — whether a Manager may create or
-promote a Managing Director — before anyone changes the guard. Then M1 and M2, both small and
-self-contained. M4/PC3 are documentation reconciliations the team owes itself: the Plan and
-`StationerySchema.sql` now trail the code in several places, and CLAUDE.md §1 is actively
-misleading (L7).
+**What still needs attention first.** **H2 and M4 both need a team ruling** — may a Manager create
+or promote a Managing Director, and are reports Manager+ or open to all? Neither should be changed
+on one person's judgement. After that, the Low items are cleanup: dead code (L2), the 401
+interceptor (L3), the `/new-request` nav entry (L1), and the documentation reconciliations in
+PC3 — the Plan and `StationerySchema.sql` now trail the code in several places, and CLAUDE.md §1
+is actively misleading (L7).
 
 **Is it stable enough for continued development and testing? Yes.** Nothing is Critical, no
 previous fix regressed, both suites are green, and every core workflow completes end to end
