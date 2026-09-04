@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Infrastructure.Data.Migrations
 {
     [DbContext(typeof(DataContext))]
-    [Migration("20260904104551_AddSupplierOrderArrivalStatus")]
-    partial class AddSupplierOrderArrivalStatus
+    [Migration("20260904043931_AddStockIssueOnApproval")]
+    partial class AddStockIssueOnApproval
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -201,7 +201,7 @@ namespace Infrastructure.Data.Migrations
 
                     b.ToTable("Requests", null, t =>
                         {
-                            t.HasCheckConstraint("CK_Requests_Status", "[Status] IN ('Draft', 'Pending', 'Approved', 'PartiallyApproved', 'Rejected', 'Withdrawn', 'CancellationPending', 'Cancelled', 'Fulfilled')");
+                            t.HasCheckConstraint("CK_Requests_Status", "[Status] IN ('Draft', 'Pending', 'Approved', 'PartiallyApproved', 'Rejected', 'Withdrawn', 'CancellationPending', 'Cancelled')");
                         });
                 });
 
@@ -374,6 +374,9 @@ namespace Infrastructure.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<int?>("RequestId")
+                        .HasColumnType("int");
+
                     b.Property<int?>("SupplierId")
                         .HasColumnType("int");
 
@@ -389,6 +392,8 @@ namespace Infrastructure.Data.Migrations
                     b.HasIndex("CreatedByEmployeeNumber");
 
                     b.HasIndex("ItemId");
+
+                    b.HasIndex("RequestId");
 
                     b.HasIndex("SupplierId");
 
@@ -440,19 +445,6 @@ namespace Infrastructure.Data.Migrations
                     b.Property<int>("CreatedByEmployeeNumber")
                         .HasColumnType("int");
 
-                    b.Property<DateTime?>("ReceivedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int?>("ReceivedByEmployeeNumber")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)")
-                        .HasDefaultValue("PendingArrival");
-
                     b.Property<int>("SupplierId")
                         .HasColumnType("int");
 
@@ -466,16 +458,9 @@ namespace Infrastructure.Data.Migrations
 
                     b.HasIndex("CreatedByEmployeeNumber");
 
-                    b.HasIndex("ReceivedByEmployeeNumber");
-
-                    b.HasIndex("Status");
-
                     b.HasIndex("SupplierId");
 
-                    b.ToTable("SupplierRequests", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_SupplierRequests_Status", "[Status] IN ('PendingArrival', 'Received')");
-                        });
+                    b.ToTable("SupplierRequests");
                 });
 
             modelBuilder.Entity("Core.Entities.SupplierRequestItem", b =>
@@ -905,6 +890,11 @@ namespace Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Core.Entities.Request", null)
+                        .WithMany()
+                        .HasForeignKey("RequestId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Core.Entities.Supplier", "Supplier")
                         .WithMany()
                         .HasForeignKey("SupplierId")
@@ -922,11 +912,6 @@ namespace Infrastructure.Data.Migrations
                         .HasForeignKey("CreatedByEmployeeNumber")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.HasOne("Infrastructure.Identity.ApplicationUser", null)
-                        .WithMany()
-                        .HasForeignKey("ReceivedByEmployeeNumber")
-                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Core.Entities.Supplier", "Supplier")
                         .WithMany()

@@ -1,6 +1,6 @@
 # Handoff — Goods-arrival confirmation (stock no longer rises before delivery)
 
-**Date:** 2026-09-04 · **Branch:** `khang` · **Migration:** `20260904104551_AddSupplierOrderArrivalStatus` (announce it — one open migration PR at a time)
+**Date:** 2026-09-04 · **Branch:** `khang` · **Migration:** `20260904110611_AddSupplierOrderArrivalStatus` (announce it — one open migration PR at a time)
 
 ## 1. The problem
 
@@ -72,7 +72,7 @@ and the status flip commits in the same transaction as the receipts. A second cl
 |---|---|---|
 | Core | `Entities/SupplierRequest.cs` | `Status`, `ReceivedAtUtc`, `ReceivedByEmployeeNumber` + status constants |
 | Infrastructure | `Data/Configurations/SupplierRequestConfiguration.cs` | columns, `CK_SupplierRequests_Status`, status index, FK |
-| Infrastructure | `Data/Migrations/20260904104551_AddSupplierOrderArrivalStatus.*` | **new** — see §7 |
+| Infrastructure | `Data/Migrations/20260904110611_AddSupplierOrderArrivalStatus.*` | **new** — see §7 |
 | Infrastructure | `Services/SupplierRequestService.cs` | `ConfirmArrivalAsync` |
 | Infrastructure | `Services/StockService.cs` | `StageReceiptAsync` added, `ReceiveAsync` removed |
 | Infrastructure | `Queries/SupplierRequestQueries.cs` | new fields + confirmer name |
@@ -102,8 +102,8 @@ nobody confirmed them under this workflow. Verified on the dev database — 9 or
 
 ## 8. Tests actually run
 
-- `dotnet test Project.slnx` — **167/167** (54 unit + 113 integration).
-- `npx vitest run --pool=threads` — **137/137** across 23 files.
+- `dotnet test Project.slnx` — **183/183** (54 unit + 129 integration), after merging main's C7/C8/C9 work.
+- `npx vitest run --pool=threads` — **140/140** across 23 files.
 - Live against SQL Server and through the browser — see the 2026-09-04 entry in
   `AI_usage_report.md` for the full transcript.
 

@@ -21,6 +21,15 @@ public class StockTransaction
 
     public string? Reference { get; set; }
 
+    /// <summary>
+    /// FK to Request.Id when this movement was caused by a stationery request — the Issue rows
+    /// written when an approver approves it, and the Adjustment rows written when an approved
+    /// request is later cancelled. Null for goods receipts and manual adjustments, which have
+    /// no request behind them. Lets the ledger answer "which request took this stock?" instead
+    /// of leaving only the free-text <see cref="Reference"/>.
+    /// </summary>
+    public int? RequestId { get; set; }
+
     public int? SupplierId { get; set; }
 
     public Supplier? Supplier { get; set; }

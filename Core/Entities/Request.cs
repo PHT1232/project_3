@@ -44,7 +44,8 @@ public class Request
     /// - Withdrawn: requestor withdrew before approval
     /// - CancellationPending: requestor requested cancellation of approved order
     /// - Cancelled: approver approved the cancellation
-    /// - Fulfilled: all lines fulfilled (stock already moved, M4+)
+    /// (Approval is what moves the stock, so there is no separate Fulfilled state — removed
+    /// 2026-09-05, audit C8.)
     ///
     /// The single source of truth; never UPDATE directly, only via RequestStateMachine.Transition().
     /// </summary>

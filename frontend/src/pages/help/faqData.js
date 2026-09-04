@@ -90,7 +90,7 @@ export const faqEntries = [
     area: 'Tracking your requests',
     question: 'What do the statuses mean?',
     answer:
-      'Pending: waiting on your approver. Approved / Partially Approved: granted in full or in part. Rejected or Returned: sent back with a comment. Withdrawn: you pulled it back. Cancellation Pending / Cancelled: a two-step cancellation of an approved request. Fulfilled: stock issued.',
+      'Pending: waiting on your approver. Approved / Partially Approved: granted in full or in part. Rejected or Returned: sent back with a comment. Withdrawn: you pulled it back. Cancellation Pending / Cancelled: a two-step cancellation of an approved request. Approving a request is also what issues the stock.',
   },
   {
     area: 'Tracking your requests',

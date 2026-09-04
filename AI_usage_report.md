@@ -1631,7 +1631,7 @@ already `Received` returns 409 and posts nothing.
   lifecycle" note replaced with a pointer to this decision.
 - `Infrastructure/Data/Configurations/SupplierRequestConfiguration.cs` — columns, check
   constraint, status index, FK for the confirming user.
-- `Infrastructure/Data/Migrations/20260904104551_AddSupplierOrderArrivalStatus.*` — **new
+- `Infrastructure/Data/Migrations/20260904110611_AddSupplierOrderArrivalStatus.*` — **new
   migration**, with a hand-added backfill (see below). ⚠️ one open migration PR at a time.
 - `Infrastructure/Services/SupplierRequestService.cs` — `ConfirmArrivalAsync`; injects `IStockService`.
 - `Infrastructure/Services/StockService.cs` — `StageReceiptAsync` (stages balance + ledger row,
@@ -1695,3 +1695,69 @@ team wants it.
 
 **Out of scope, untouched:** `{itemId}/adjust`, the employee request workflow, reports,
 notifications, and audit findings C7/C8/C9.
+## 2026-09-05 — Audit C9: category and supplier names on request lines
+
+**Task:** Fix `PROJECT_AUDIT.md` finding C9 — request detail lines always showed a blank
+category and supplier.
+
+**What changed, by file:**
+- `Infrastructure/Queries/RequestQueries.cs` — `GetByIdAsync` now includes
+  `Items → Item → Category` and `Items → Item → Supplier`. The mapping already read
+  `i.Item?.Category?.Name` / `i.Item?.Supplier?.Name`, but under `AsNoTracking` those
+  references were never loaded, so both were always `null`. The `Items → Item` chain is
+  repeated per leaf navigation because that is how EF's `ThenInclude` composes.
+- `Tests/WebApi.IntegrationTests/RequestsTests.cs` — two tests:
+  `GetById_RequestLines_CarryCategoryAndSupplierNames` (asserts the seeded
+  "Test Category"/"Test Supplier" reach the DTO) and
+  `GetById_ItemWithNoSupplier_LeavesSupplierNameNull`.
+
+**Assumptions made where the request was ambiguous:**
+- `RequestDetailModal.jsx` renders `categoryName ?? '—'` / `supplierName ?? '—'`. That
+  fallback is **kept**: a `StationeryItem` may legitimately have `SupplierId == null`, so
+  "—" is the correct display for that case rather than a bug symptom. No frontend change.
+- The "General" / "Preferred Supplier" placeholders the audit mentions live in
+  `NewRequestPage.jsx` / `AiAssistantBox.jsx`, which read the **catalogue** endpoint, not
+  `RequestDto`. They are a different code path and were left alone.
+- `__ai_agents/Requirements/` has no spec for this; the audit entry and Plan §3.4 (line
+  header/detail split) are the only requirement sources.
+
+**Deliberately left out of scope:**
+- Audit **P4** (N+1: `GetVisibleAsync`/`GetByRequestorAsync` call `GetByIdAsync` per row).
+  This fix reaches every list through that same path, which makes each row's query slightly
+  heavier — the Dashboard asks for 100 rows. Collapsing the N+1 is a separate change.
+- C7 and C8, which follow on their own branches.
+
+**Validation:** `dotnet build Project.slnx` 0 errors. `dotnet test` — `RequestsTests` 34/34
+(was 32). Both new tests confirmed to **fail** with the `ThenInclude`s reverted, so they
+genuinely guard the fix.
+
+## 2026-09-05 — Login: show/hide password toggle
+
+**Task:** Let people see what they are typing into the password field on the sign-in page.
+
+**What changed, by file:**
+- `frontend/src/pages/Login.jsx` — `showPassword` state flips the input between `type="password"`
+  and `type="text"`. The input sits in a `relative` wrapper with `pr-10` so an absolutely
+  positioned button can sit inside its right edge; the button carries `aria-label`
+  "Show password" / "Hide password" and `aria-pressed`, and uses the `Eye` / `EyeOff`
+  `lucide-react` icons already used elsewhere in the app.
+- `frontend/src/pages/Login.test.jsx` — two tests: the toggle flips the input `type` both ways,
+  and the typed value survives the toggle. Existing password queries narrowed from
+  `/password/i` to `/^password$/i`, because the new button's aria-label also matches the loose
+  pattern.
+
+**Assumptions made where the request was ambiguous:**
+- `tabIndex={-1}` on the button, so Tab still goes password → Sign in. Someone typing a password
+  and pressing Tab expects to reach the submit button, not a decoration; the reveal is there
+  for the mouse. Reachable by screen readers either way through the accessible name.
+- Toggle starts **hidden** and resets on every page load — no persistence of the revealed state.
+- Applied only to the sign-in page. The change-password form was not in scope for this request;
+  it has the same ergonomics problem and is the obvious follow-up.
+
+**Deliberately left out of scope:**
+- The change-password form (see above).
+- Any caps-lock warning or password-strength hint.
+
+**Validation:** `npx vitest run --pool=threads` — **140 passed** (23 files, +2 new).
+`npm run build` clean. Rendered in a headless browser: typing into the field and clicking the
+eye reveals the text and swaps the icon to `EyeOff`.

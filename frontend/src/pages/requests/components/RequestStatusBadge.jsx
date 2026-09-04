@@ -13,7 +13,6 @@ const STATUS_STYLE = {
   Withdrawn: { tone: 'outline', label: 'Withdrawn' },
   CancellationPending: { tone: 'muted', label: 'Cancellation Pending' },
   Cancelled: { tone: 'outline', label: 'Cancelled' },
-  Fulfilled: { tone: 'solid', label: 'Fulfilled' },
 }
 
 export default function RequestStatusBadge({ status }) {
