@@ -1590,3 +1590,52 @@ was re-added. Post-merge validation is recorded below.
   line — `.AddPolicy("RequireManagingDirector", … RankLevelRequirement(4))`, matching the
   `RequireManager`(2) / `RequireBusinessManager`(3) entries beside it — because pushing a branch
   with four red tests helps nobody. After the fix: **160/160** (54 unit + 106 integration).
+
+## 2026-09-05 — Audit C7: enforce the spending limit on submit
+
+**Task:** Fix `PROJECT_AUDIT.md` finding C7 — role spending limits were computed for the
+Dashboard tile and never enforced, so an Engineer with a 500 allowance could submit 50 000.
+
+**What changed, by file:**
+- `Application/Exceptions/BusinessRuleException.cs` — **new**. "Well-formed, permitted, and
+  still refused" — the Plan §4.2 422 case, distinct from Validation (400) / NotFound (404) /
+  Conflict (409).
+- `WebApi/Middleware/ExceptionHandlingMiddleware.cs` — maps it to **422 Unprocessable
+  Entity**, title "Business rule violation". First 422 in the codebase.
+- `Infrastructure/Services/RequestService.cs` — ctor takes `IEligibilityQueries`;
+  `SubmitAsync` refuses when `TotalEstimatedCost > RemainingThisMonth`, before the
+  `Draft → Pending` transition. Message names the total, the overage, the limit, the
+  month-to-date spend and the reset date (Plan T3.4: "422 with a specific message").
+- `frontend/src/pages/requests/NewRequestPage.jsx` — "Submit" is create-then-submit, so a
+  refused submit now leaves a saved draft. The error message says so and names the draft id;
+  previously it read as though nothing had been saved.
+- `Tests/WebApi.IntegrationTests/BudgetEnforcementTests.cs` — **new**, 7 tests: exactly at the
+  limit passes / one unit over → 422 naming limit and overage / refused request stays `Draft`
+  and never reaches the approver's queue / second request judged on *remaining* not the full
+  allowance / withdrawing releases the budget / an over-limit **draft** can still be created /
+  a Manager's higher allowance applies.
+- `docs/development/eligibility-budget.md` — Phase 2 section (was marked deferred).
+
+**Assumptions made where the request was ambiguous:**
+- **Which limit** — the Plan says only "Total ≤ role threshold" and the schema has both
+  `MaxAmountPerRequest` and `MaxAmountPerMonth`. Confirmed with the user: enforce
+  **`RemainingThisMonth`** (monthly allowance − month-to-date committed). `MaxAmountPerRequest`
+  is deliberately *not* enforced — it is seeded equal to the monthly figure, so it would be a
+  no-op today.
+- **Block vs warn** — `[ASK] #6` is open in the Plan. Confirmed with the user: **hard block**,
+  the Plan's own stated default. No config knob, against the earlier handoff's suggestion of
+  `Eligibility:Mode` — a single code path is easier to test and defend.
+- **Month attribution** — month-to-date windows on `Request.CreatedAtUtc`, so a January draft
+  submitted in February is judged against January. Flagged in the handoff, not changed.
+- `__ai_agents/Requirements/` still does not exist; Plan §3.6 / §M3 line 977 / T3.4 / TC-05 are
+  the requirement sources used.
+
+**Deliberately left out of scope:**
+- Per-request cap enforcement (see above).
+- Any pre-emptive UI warning while building a basket — the server refusal is the control; a
+  live "you have X left" hint on New Request is a separate, additive change.
+- C8 (stock), which follows on its own branch and reuses `BusinessRuleException`.
+
+**Validation:** `dotnet build` 0 errors. `dotnet test Project.slnx` — **167 passed**
+(54 unit + 113 integration; was 160, +7 new). `npx vitest run --pool=threads` — **138 passed**
+(+1 new). `npm run build` clean.

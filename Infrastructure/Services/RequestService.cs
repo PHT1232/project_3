@@ -3,6 +3,7 @@ using Application.DTOs.Requests;
 using Application.Exceptions;
 using Application.Interfaces.Notifications;
 using Application.Interfaces.Requests;
+using Application.Interfaces.Users;
 using Core.Entities;
 using Core.Enums;
 using FluentValidation;
@@ -28,6 +29,7 @@ public class RequestService(
     DataContext db,
     IRequestQueries queries,
     INotificationService notificationService,
+    IEligibilityQueries eligibilityQueries,
     IValidator<CreateRequestCommand> createValidator,
     IValidator<ApproveRequestCommand> approveValidator,
     IValidator<WithdrawRequestCommand> withdrawValidator,
@@ -179,6 +181,30 @@ public class RequestService(
         if (request.Status != "Draft")
         {
             throw new ConflictException($"Cannot submit a request in {request.Status} status.");
+        }
+
+        // Spending eligibility (Plan §3.6 "Draft -> Pending ... Total <= role threshold", T3.4,
+        // TC-05). Until now the limit was computed for the Dashboard tile and never enforced, so
+        // an Engineer with a 500 allowance could submit 50 000 (audit finding C7).
+        //
+        // The comparison is against RemainingThisMonth, not the raw monthly allowance: the
+        // threshold is a monthly budget, so what matters is what is left after this month's
+        // other commitments. [ASK] #6 is answered as hard-block, the Plan's stated default —
+        // a system that stores thresholds and then allows over-limit submissions has no reason
+        // to store them.
+        //
+        // No double-count: EligibilityQueries only counts Pending-and-beyond, and this request
+        // is still Draft at this point, so RemainingThisMonth excludes the very total being
+        // checked.
+        var eligibility = await eligibilityQueries.GetForEmployeeAsync(submitterEmployeeNumber);
+        if (request.TotalEstimatedCost > eligibility.RemainingThisMonth)
+        {
+            var overBy = request.TotalEstimatedCost - eligibility.RemainingThisMonth;
+            throw new BusinessRuleException(
+                $"This request totals {request.TotalEstimatedCost:0.00}, which is {overBy:0.00} over your " +
+                $"remaining budget of {eligibility.RemainingThisMonth:0.00} for this month " +
+                $"(monthly limit {eligibility.MaxAmountPerMonth:0.00}, already committed " +
+                $"{eligibility.MonthToDateSpend:0.00}). It resets on {eligibility.MonthResetsOn:yyyy-MM-dd}.");
         }
 
         request.Status = "Pending";
