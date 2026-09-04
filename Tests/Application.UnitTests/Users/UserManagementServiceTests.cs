@@ -1,5 +1,6 @@
 using Application.DTOs.Users;
 using Application.Exceptions;
+using Application.Interfaces.Auth;
 using Application.Interfaces.Users;
 using Application.Services.Users;
 using Application.Validators.Users;
@@ -11,10 +12,17 @@ namespace Application.UnitTests.Users;
 
 public class UserManagementServiceTests
 {
-    private static UserManagementService CreateSut(Mock<IUserStore> userStore) => new(
-        userStore.Object,
-        new CreateUserRequestValidator(),
-        new UpdateUserRequestValidator());
+    private static UserManagementService CreateSut(Mock<IUserStore> userStore, int rankLevel = 4)
+    {
+        var currentUserService = new Mock<ICurrentUserService>();
+        currentUserService.SetupGet(s => s.RankLevel).Returns(rankLevel);
+
+        return new UserManagementService(
+            userStore.Object,
+            currentUserService.Object,
+            new CreateUserRequestValidator(),
+            new UpdateUserRequestValidator());
+    }
 
     private static CreateUserRequest ValidCreateRequest(int superior = 0) => new(
         EmployeeNumber: 10,
@@ -125,6 +133,8 @@ public class UserManagementServiceTests
         // 5's superior is 10; assigning 10's superior to 5 would create a 2-node cycle.
         var userStore = new Mock<IUserStore>();
         userStore.Setup(s => s.EmployeeExistsAsync(10)).ReturnsAsync(true);
+        userStore.Setup(s => s.GetByEmployeeNumberAsync(10))
+            .ReturnsAsync(new UserDto(10, "Jane", "jane@hmt.test", "Engineer", 1, null, null, null, true));
         userStore.Setup(s => s.RoleExistsAsync("Engineer")).ReturnsAsync(true);
         userStore.Setup(s => s.EmployeeExistsAsync(5)).ReturnsAsync(true);
         userStore.Setup(s => s.GetSuperiorEmployeeNumberAsync(5)).ReturnsAsync(10);
@@ -144,6 +154,8 @@ public class UserManagementServiceTests
         // Chain of 11 hops back to the target — walk caps at 10, so this must NOT throw.
         var userStore = new Mock<IUserStore>();
         userStore.Setup(s => s.EmployeeExistsAsync(1)).ReturnsAsync(true);
+        userStore.Setup(s => s.GetByEmployeeNumberAsync(1))
+            .ReturnsAsync(new UserDto(1, "Jane", "jane@hmt.test", "Engineer", 1, null, null, null, true));
         userStore.Setup(s => s.RoleExistsAsync("Engineer")).ReturnsAsync(true);
         userStore.Setup(s => s.EmployeeExistsAsync(2)).ReturnsAsync(true);
         userStore.Setup(s => s.EmailExistsAsync("jane@hmt.test", 1)).ReturnsAsync(false);
@@ -164,6 +176,22 @@ public class UserManagementServiceTests
         var result = await sut.UpdateUserAsync(1, request);
 
         result.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task UpdateUserAsync_BusinessManager_CannotManageBusinessManager()
+    {
+        var userStore = new Mock<IUserStore>();
+        userStore.Setup(s => s.GetByEmployeeNumberAsync(99))
+            .ReturnsAsync(new UserDto(99, "Other BM", "other.bm@hmt.test", "Business Manager", 3, null, null, null, true));
+
+        var sut = CreateSut(userStore, rankLevel: 3);
+        var request = new UpdateUserRequest("Other BM", "other.bm@hmt.test", "Business Manager", 0, null, null);
+
+        var act = () => sut.UpdateUserAsync(99, request);
+
+        await act.Should().ThrowAsync<ForbiddenException>();
+        userStore.Verify(s => s.UpdateUserAsync(It.IsAny<int>(), It.IsAny<UpdateUserRequest>()), Times.Never);
     }
 
     [Fact]

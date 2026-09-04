@@ -18,6 +18,8 @@ public class CatalogueTests : IAsyncLifetime
             _factory.Services, 301, "Mia Manager", "mia.cat@hmt.test", "Manager", "Password1!");
         await TestUserFactory.CreateUserAsync(
             _factory.Services, 302, "Eve Engineer", "eve.cat@hmt.test", "Engineer", "Password1!");
+        await TestUserFactory.CreateUserAsync(
+            _factory.Services, 303, "Bea Business Manager", "bea.cat@hmt.test", "Business Manager", "Password1!");
     }
 
     public Task DisposeAsync()
@@ -65,7 +67,27 @@ public class CatalogueTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Manager_CanCreateItem()
+    public async Task BusinessManager_CanCreateItem()
+    {
+        var (category, _) = await CatalogueTestData.SeedCategoryAndSupplierAsync(_factory.Services);
+        var client = await AuthedClientAsync(303, "Password1!");
+
+        var response = await client.PostAsJsonAsync("/api/v1/items", new
+        {
+            itemName = "Stapler",
+            categoryId = category.Id,
+            unitOfMeasure = "Each",
+            unitCost = 4.5,
+            reorderLevel = 5,
+            minRankLevelToRequest = 1,
+            supplierId = (int?)null,
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
+    [Fact]
+    public async Task Manager_CannotCreateItem_Receives403()
     {
         var (category, _) = await CatalogueTestData.SeedCategoryAndSupplierAsync(_factory.Services);
         var client = await AuthedClientAsync(301, "Password1!");
@@ -81,7 +103,7 @@ public class CatalogueTests : IAsyncLifetime
             supplierId = (int?)null,
         });
 
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
     [Fact]

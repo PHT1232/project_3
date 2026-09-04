@@ -1501,7 +1501,7 @@ no test caught, because the tests were written from the implementation, not from
 **What changed, by file:**
 - `Core/Entities/RequestItem.cs` — `Decision` (string?, ≤20) and `ApprovedQuantity` (int?). `Core/Entities/Request.cs` — default status `Draft`; doc lists `Draft`.
 - `Infrastructure/Data/Configurations/RequestItemConfiguration.cs` — the two columns + `CK_RequestItems_Decision`. `RequestConfiguration.cs` — `Draft` added to `CK_Requests_Status`, default `Draft`.
-- `Infrastructure/Data/Migrations/20260904030457_AddDraftStatusAndLineDecisions.*` — **new migration** (generated with `dotnet ef`, then hand-edited to add a data fix: existing `Pending` rows with no `Pending→Pending` submit marker become `Draft`, with the reverse in `Down`). This is the one open-migration PR — announce it.
+- `Infrastructure/Data/Migrations/20260904033743_AddDraftStatusAndLineDecisions.*` — **new migration** (generated with `dotnet ef`, then hand-edited to add a data fix: existing `Pending` rows with no `Pending→Pending` submit marker become `Draft`, with the reverse in `Down`). This is the one open-migration PR — announce it.
 - `Infrastructure/Services/RequestService.cs` — `CreateAsync` (Draft), `SubmitAsync` (Draft→Pending), `ApproveAsync` (persist decisions, new status rule), `DeletePendingAsync` → `DeleteDraftAsync`.
 - `Infrastructure/Queries/RequestQueries.cs` — `GetRankLevelAsync` helper (C3); `GetPendingApprovalsAsync` includes `CancellationPending`; DTO mapping carries the two new fields.
 - `Application/Interfaces/Requests/{IRequestService,IRequestQueries}.cs`, `Application/DTOs/Requests/{RequestDto,SubmitRequestCommand}.cs` — signatures/docs; `RequestItemDto` gains `Decision`, `ApprovedQuantity`.
@@ -1563,3 +1563,18 @@ unvalidated. Both became user-reachable once C5 gave the approver a "Decide" but
 **Assumptions / decisions:** reverting to the `FromStatus` of the *most recent* entry into `CancellationPending` (by time, then id) is the only reading consistent with Plan §3.6 ("CancellationPending → Approved: superior rejects cancellation" for a request that was Approved — and, by the same rule, PartiallyApproved for one that was). The 409-instead-of-guess on a missing history row is defensive; it cannot be hit through the API because `RequestCancellationAsync` always writes that row in the same save.
 
 **Still open:** C7, C8, C9, the `RequestStateMachine` class, P1–P7 — see `PROJECT_AUDIT.md`.
+
+**Merge note (same day, on "commit and push"):** `origin/khang` had moved 17 commits ahead
+(Help page, support inbox, dashboard quick-link, sub-tree request visibility, BM restrictions,
+and migration `20260903181104_AddSupportMessages`). Merged with `--no-ff`. Two conflicts:
+- `RequestQueries.cs` — their commit `5f31a29` had already replaced the `ApplicationUser.RankLevel`
+  reads with `IHierarchyQueries` sub-tree scoping, a stricter and correct fix for C3. **Their
+  version was kept**; this branch's `GetRankLevelAsync` helper and the C3 regression test
+  (`GetById_UnrelatedManager_SeesRequest_RankComesFromRole`, which asserted a peer manager can see
+  any request — false under the sub-tree rule) were dropped. Only the C5 queue filter and the two
+  DTO fields were re-applied.
+- `RequestsTests.cs` — took their hierarchy users; all other tests merged cleanly.
+The migration was **regenerated** as `20260904033743_AddDraftStatusAndLineDecisions` so it sits
+after `AddSupportMessages` in the snapshot chain (the dev DB was first rolled back to
+`AddRoleBudgetThresholds` with `dotnet ef database update`), and the hand-written data-fix SQL
+was re-added. Post-merge validation is recorded below.

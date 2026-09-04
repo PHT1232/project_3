@@ -1,6 +1,6 @@
 # Handoff — Critical fixes to the request workflow (audit findings C1–C6)
 
-**Date:** 2026-09-04 · **Branch:** `khang` · **Migration in this change:** `20260904030457_AddDraftStatusAndLineDecisions` (announce it — one open migration PR at a time)
+**Date:** 2026-09-04 · **Branch:** `khang` · **Migration in this change:** `20260904033743_AddDraftStatusAndLineDecisions` (announce it — one open migration PR at a time)
 
 This follows `PROJECT_AUDIT.md`. It fixes the five findings rated **Critical** there, plus
 **C6** (rated High) because fixing C5 made C6 reachable from the UI. Nothing else. Read the audit
@@ -22,6 +22,10 @@ were approved, and a reduced quantity was silently lost.
 **C3 — managers saw nothing extra.** `RequestQueries` read `ApplicationUser.RankLevel` to decide
 Manager+ visibility. That column is never set by the real user-creation path and is 1 for
 everyone. Every other file resolves rank from the *role* table.
+*Superseded on merge:* `origin/khang` commit `5f31a29` ("scope request visibility to the
+reporting sub-tree") had already replaced every `RankLevel` read with `IHierarchyQueries`
+sub-tree scoping (Plan §6, TC-15), which is stricter and correct. That version was kept; this
+branch's interim role-join helper was dropped, along with its test.
 
 **C4 — deletable after submission.** `DELETE /requests/{id}` accepted any `Pending` request.
 Because Pending also meant "submitted" (C1), a requestor could erase a request already in the
@@ -106,9 +110,9 @@ its exceptions like every other controller (CLAUDE.md #2).
 | Core | `Entities/Request.cs` | default `Draft`; doc |
 | Infrastructure | `Data/Configurations/RequestItemConfiguration.cs` | columns + `CK_RequestItems_Decision` |
 | Infrastructure | `Data/Configurations/RequestConfiguration.cs` | `Draft` in `CK_Requests_Status`; default `Draft` |
-| Infrastructure | `Data/Migrations/20260904030457_AddDraftStatusAndLineDecisions.*` | **new** — see §5 |
+| Infrastructure | `Data/Migrations/20260904033743_AddDraftStatusAndLineDecisions.*` | **new** — see §5 |
 | Infrastructure | `Services/RequestService.cs` | Create / Submit / Approve / DeleteDraft |
-| Infrastructure | `Queries/RequestQueries.cs` | `GetRankLevelAsync` (C3); queue filter (C5); DTO fields |
+| Infrastructure | `Queries/RequestQueries.cs` | queue filter (C5); DTO fields — visibility logic is `origin/khang`'s sub-tree scoping (see C3) |
 | Application | `Interfaces/Requests/IRequestService.cs`, `IRequestQueries.cs` | rename + docs |
 | Application | `DTOs/Requests/RequestDto.cs`, `SubmitRequestCommand.cs` | `RequestItemDto` + 2 fields; docs |
 | WebApi | `Controllers/RequestsController.cs` | `DeleteDraft` |
@@ -121,7 +125,7 @@ its exceptions like every other controller (CLAUDE.md #2).
 | Frontend | `pages/requests/ApprovalsPage.jsx` | "Decide" on CancellationPending rows |
 | Frontend | `pages/requests/components/CancellationDecisionModal.jsx` | **new** |
 | Tooling | `.claude/launch.json` | `api` launch entry (SQLEXPRESS override as CLI arg) |
-| Tests | `Tests/WebApi.IntegrationTests/RequestsTests.cs` | +9 tests, 3 renamed, helper `CreateAndSubmitAsync` |
+| Tests | `Tests/WebApi.IntegrationTests/RequestsTests.cs` | +8 tests, 3 renamed, helper `CreateAndSubmitAsync` |
 | Tests | `MyRequestsPage.test.jsx`, `ApprovalsPage.test.jsx` | fixtures → Draft/Pending; +2 tests |
 
 ## 5. The migration
@@ -156,7 +160,7 @@ New regression tests, each named for the finding it guards:
 `ApproveRequest_ModifiedLine_PersistsDecisionAndApprovedQuantity`,
 `ApproveRequest_RejectedLine_PersistsZeroApprovedQuantity`,
 `ApproveRequest_DecisionForForeignLine_Returns409` (C2) ·
-`GetById_UnrelatedManager_SeesRequest_RankComesFromRole` (C3) ·
+(C3 is covered by `origin/khang`'s four `GetVisible_*` / `GetById_*` hierarchy tests) ·
 `DeleteRequest_AfterSubmit_Returns400AndKeepsRequest` (C4) ·
 `PendingApprovals_IncludesCancellationPendingRequests` (C5) ·
 `RefuseCancellation_PartiallyApprovedRequest_RevertsToPartiallyApproved`,

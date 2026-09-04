@@ -1,60 +1,42 @@
 using Application.DTOs.Common;
 using Application.DTOs.Requests;
 using Application.Interfaces.Requests;
+using Application.Interfaces.Users;
 using Microsoft.EntityFrameworkCore;
 
 namespace Infrastructure.Queries;
 
 /// <summary>
 /// Query service for browsing and filtering stationery requests.
-/// 
-/// All queries enforce ownership/eligibility checks:
-/// - Requestors see only their own requests (unless they are an approver for others).
-/// - Approvers see requests they must approve (their subordinates' requests).
-/// - Managers see all requests.
-/// 
+///
+/// Row-level visibility follows the reporting line (CLAUDE.md #9, Plan §6, TC-15):
+/// - Everyone sees their own requests, and any request pending their own approval.
+/// - Manager / Business Manager additionally see every request raised by someone in their
+///   reporting sub-tree (their reports, and their reports' reports, to any depth) — never a
+///   peer's or a superior's.
+/// - Managing Director sees all requests.
+/// The sub-tree is resolved by <see cref="IHierarchyQueries"/>.
+///
 /// Loads entities via AsNoTracking + full includes for efficiency in read-only scenarios.
 /// Maps to DTOs in-memory for consistency across database providers.
 /// </summary>
-public class RequestQueries(DataContext db) : IRequestQueries
+public class RequestQueries(DataContext db, IHierarchyQueries hierarchy) : IRequestQueries
 {
-    /// <summary>
-    /// Rank comes from the assigned Identity role (AspNetUserRoles → AspNetRoles.RankLevel),
-    /// never from ApplicationUser.RankLevel — that column is not written by the real
-    /// user-creation path (IdentityUserStore) and is 1 for every user, which made every
-    /// "Manager+ sees all" branch below dead code. Same join as ReportQueries.ResolveScopeAsync
-    /// and RequestService.CreateAsync, so all three agree with what /auth/me reports.
-    /// Returns 0 when the user has no role (or does not exist).
-    /// </summary>
-    private async Task<int> GetRankLevelAsync(int employeeNumber) =>
-        await (
-            from ur in db.UserRoles
-            join r in db.Roles on ur.RoleId equals r.Id
-            where ur.UserId == employeeNumber
-            select (int?)r.RankLevel
-        ).FirstOrDefaultAsync() ?? 0;
-
     public async Task<PagedResult<RequestDto>> GetVisibleAsync(
         int page,
         int pageSize,
         string? statusFilter,
         int visibleToEmployeeNumber)
     {
-        var userExists = await db.Users.AsNoTracking().AnyAsync(u => u.Id == visibleToEmployeeNumber);
-        if (!userExists)
-        {
-            throw new ApplicationException($"User {visibleToEmployeeNumber} not found.");
-        }
+        var scope = await hierarchy.GetVisibleRequestorScopeAsync(visibleToEmployeeNumber);
 
-        var rankLevel = await GetRankLevelAsync(visibleToEmployeeNumber);
-
-        // Determine visibility: Manager+ sees all, others see their own + those they approve
         IQueryable<Core.Entities.Request> query = db.Requests.AsNoTracking();
 
-        if (rankLevel < 2) // Engineer or below (not Manager or above)
+        if (scope is not null) // null == Managing Director, no row filter
         {
+            var scopedRequestorIds = scope.ToArray();
             query = query.Where(r =>
-                r.RequestorEmployeeNumber == visibleToEmployeeNumber
+                scopedRequestorIds.Contains(r.RequestorEmployeeNumber)
                 || r.ApproverEmployeeNumber == visibleToEmployeeNumber);
         }
 
@@ -91,14 +73,7 @@ public class RequestQueries(DataContext db) : IRequestQueries
 
     public async Task<RequestDto?> GetByIdAsync(int requestId, int visibleToEmployeeNumber)
     {
-        // Load the user for visibility check
-        var userExists = await db.Users.AsNoTracking().AnyAsync(u => u.Id == visibleToEmployeeNumber);
-        if (!userExists)
-        {
-            return null;
-        }
-
-        var rankLevel = await GetRankLevelAsync(visibleToEmployeeNumber);
+        var scope = await hierarchy.GetVisibleRequestorScopeAsync(visibleToEmployeeNumber);
 
         // Load full request with navigation properties
         var request = await db.Requests
@@ -113,10 +88,12 @@ public class RequestQueries(DataContext db) : IRequestQueries
             return null;
         }
 
-        // Visibility check: requestor, approver, or Manager+
+        // Visibility: own request, one pending my approval, or one raised inside my sub-tree
+        // (null scope == Managing Director).
         var canSee = request.RequestorEmployeeNumber == visibleToEmployeeNumber
             || request.ApproverEmployeeNumber == visibleToEmployeeNumber
-            || rankLevel >= 2;
+            || scope is null
+            || scope.Contains(request.RequestorEmployeeNumber);
 
         if (!canSee)
         {
@@ -252,15 +229,13 @@ public class RequestQueries(DataContext db) : IRequestQueries
         int visibleToEmployeeNumber,
         string? statusFilter = null)
     {
-        // Requestor visibility: only they can see their own requests, unless caller is Manager+
-        var callerExists = await db.Users.AsNoTracking().AnyAsync(u => u.Id == visibleToEmployeeNumber);
-        if (!callerExists)
-        {
-            return new PagedResult<RequestDto>([], page, pageSize, 0);
-        }
+        // The caller may list a person's requests if it is their own list, or the person sits
+        // inside the caller's reporting sub-tree (null scope == Managing Director).
+        var scope = await hierarchy.GetVisibleRequestorScopeAsync(visibleToEmployeeNumber);
 
         if (visibleToEmployeeNumber != requestorEmployeeNumber
-            && await GetRankLevelAsync(visibleToEmployeeNumber) < 2)
+            && scope is not null
+            && !scope.Contains(requestorEmployeeNumber))
         {
             return new PagedResult<RequestDto>([], page, pageSize, 0);
         }
@@ -299,20 +274,15 @@ public class RequestQueries(DataContext db) : IRequestQueries
 
     public async Task<Dictionary<string, int>> GetStatusSummaryForDashboardAsync(int employeeNumber)
     {
-        // Load the user to determine visibility scope
-        var userExists = await db.Users.AsNoTracking().AnyAsync(u => u.Id == employeeNumber);
-        if (!userExists)
-        {
-            return new Dictionary<string, int>();
-        }
+        var scope = await hierarchy.GetVisibleRequestorScopeAsync(employeeNumber);
 
-        // Build the query based on visibility (Manager+ see all, others see their own + those they approve)
         IQueryable<Core.Entities.Request> query = db.Requests.AsNoTracking();
 
-        if (await GetRankLevelAsync(employeeNumber) < 2)
+        if (scope is not null) // null == Managing Director, no row filter
         {
+            var scopedRequestorIds = scope.ToArray();
             query = query.Where(r =>
-                r.RequestorEmployeeNumber == employeeNumber
+                scopedRequestorIds.Contains(r.RequestorEmployeeNumber)
                 || r.ApproverEmployeeNumber == employeeNumber);
         }
 

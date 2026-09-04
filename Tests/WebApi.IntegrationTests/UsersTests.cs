@@ -23,6 +23,8 @@ public class UsersTests : IAsyncLifetime
         await TestUserFactory.CreateUserAsync(
             _factory.Services, 202, "Eve Engineer", "eve.engineer@hmt.test", "Engineer", "Password1!");
         await TestUserFactory.CreateUserAsync(
+            _factory.Services, 203, "Bea Business Manager", "bea.business.manager@hmt.test", "Business Manager", "Password1!");
+        await TestUserFactory.CreateUserAsync(
             _factory.Services, 1, "Mo MD", "mo.md@hmt.test", "Managing Director", "Password1!");
     }
 
@@ -43,9 +45,19 @@ public class UsersTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Manager_CanListAndCreateUsers()
+    public async Task Manager_CallingUsersList_Receives403()
     {
         var client = await AuthedClientAsync(201, "Password1!");
+
+        var response = await client.GetAsync("/api/v1/users");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task BusinessManager_CanListAndCreateUsers()
+    {
+        var client = await AuthedClientAsync(203, "Password1!");
 
         var listResponse = await client.GetAsync("/api/v1/users");
         listResponse.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -66,9 +78,9 @@ public class UsersTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Manager_CreateUser_DuplicateEmployeeNumber_Returns409()
+    public async Task BusinessManager_CreateUser_DuplicateEmployeeNumber_Returns409()
     {
-        var client = await AuthedClientAsync(201, "Password1!");
+        var client = await AuthedClientAsync(203, "Password1!");
 
         var response = await client.PostAsJsonAsync("/api/v1/users", new
         {
@@ -86,9 +98,9 @@ public class UsersTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Manager_UpdateUser_CycleAssignment_Returns400()
+    public async Task BusinessManager_UpdateUser_CycleAssignment_Returns400()
     {
-        var client = await AuthedClientAsync(201, "Password1!");
+        var client = await AuthedClientAsync(203, "Password1!");
 
         var makeEveReportToMia = await client.PutAsJsonAsync("/api/v1/users/202", new
         {
@@ -112,6 +124,57 @@ public class UsersTests : IAsyncLifetime
         });
 
         createCycle.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task BusinessManager_CannotCreateBusinessManager()
+    {
+        var client = await AuthedClientAsync(203, "Password1!");
+
+        var response = await client.PostAsJsonAsync("/api/v1/users", new
+        {
+            employeeNumber = 204,
+            name = "Another BM",
+            email = "another.bm@hmt.test",
+            role = "Business Manager",
+            superiorEmployeeNumber = 1,
+            initialPassword = "Password1!",
+            grade = (string?)null,
+            location = (string?)null,
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task BusinessManager_CannotUpdateAnotherBusinessManager()
+    {
+        var client = await AuthedClientAsync(203, "Password1!");
+
+        var response = await client.PutAsJsonAsync("/api/v1/users/203", new
+        {
+            name = "Bea Manager",
+            email = "bea.bm@hmt.test",
+            role = "Business Manager",
+            superiorEmployeeNumber = 1,
+            grade = (string?)null,
+            location = (string?)null,
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task BusinessManager_CannotChangeManagingDirectorStatus()
+    {
+        var client = await AuthedClientAsync(203, "Password1!");
+
+        var response = await client.PatchAsJsonAsync("/api/v1/users/1/status", new
+        {
+            isActive = false,
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
     [Fact]

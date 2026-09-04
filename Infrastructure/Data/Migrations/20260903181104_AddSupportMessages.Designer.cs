@@ -4,6 +4,7 @@ using Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Infrastructure.Data.Migrations
 {
     [DbContext(typeof(DataContext))]
-    partial class DataContextModelSnapshot : ModelSnapshot
+    [Migration("20260903181104_AddSupportMessages")]
+    partial class AddSupportMessages
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -186,7 +189,7 @@ namespace Infrastructure.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)")
-                        .HasDefaultValue("Draft");
+                        .HasDefaultValue("Pending");
 
                     b.Property<decimal>("TotalEstimatedCost")
                         .ValueGeneratedOnAdd()
@@ -198,7 +201,7 @@ namespace Infrastructure.Data.Migrations
 
                     b.ToTable("Requests", null, t =>
                         {
-                            t.HasCheckConstraint("CK_Requests_Status", "[Status] IN ('Draft', 'Pending', 'Approved', 'PartiallyApproved', 'Rejected', 'Withdrawn', 'CancellationPending', 'Cancelled', 'Fulfilled')");
+                            t.HasCheckConstraint("CK_Requests_Status", "[Status] IN ('Pending', 'Approved', 'PartiallyApproved', 'Rejected', 'Withdrawn', 'CancellationPending', 'Cancelled', 'Fulfilled')");
                         });
                 });
 
@@ -209,13 +212,6 @@ namespace Infrastructure.Data.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<int?>("ApprovedQuantity")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Decision")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
 
                     b.Property<int>("ItemId")
                         .HasColumnType("int");
@@ -240,10 +236,7 @@ namespace Infrastructure.Data.Migrations
 
                     b.HasIndex("RequestId");
 
-                    b.ToTable("RequestItems", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_RequestItems_Decision", "[Decision] IS NULL OR [Decision] IN ('approved', 'rejected', 'modified')");
-                        });
+                    b.ToTable("RequestItems", (string)null);
                 });
 
             modelBuilder.Entity("Core.Entities.RequestStatusHistory", b =>
