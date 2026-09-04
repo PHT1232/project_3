@@ -1626,3 +1626,34 @@ category and supplier.
 **Validation:** `dotnet build Project.slnx` 0 errors. `dotnet test` — `RequestsTests` 34/34
 (was 32). Both new tests confirmed to **fail** with the `ThenInclude`s reverted, so they
 genuinely guard the fix.
+
+## 2026-09-05 — Login: show/hide password toggle
+
+**Task:** Let people see what they are typing into the password field on the sign-in page.
+
+**What changed, by file:**
+- `frontend/src/pages/Login.jsx` — `showPassword` state flips the input between `type="password"`
+  and `type="text"`. The input sits in a `relative` wrapper with `pr-10` so an absolutely
+  positioned button can sit inside its right edge; the button carries `aria-label`
+  "Show password" / "Hide password" and `aria-pressed`, and uses the `Eye` / `EyeOff`
+  `lucide-react` icons already used elsewhere in the app.
+- `frontend/src/pages/Login.test.jsx` — two tests: the toggle flips the input `type` both ways,
+  and the typed value survives the toggle. Existing password queries narrowed from
+  `/password/i` to `/^password$/i`, because the new button's aria-label also matches the loose
+  pattern.
+
+**Assumptions made where the request was ambiguous:**
+- `tabIndex={-1}` on the button, so Tab still goes password → Sign in. Someone typing a password
+  and pressing Tab expects to reach the submit button, not a decoration; the reveal is there
+  for the mouse. Reachable by screen readers either way through the accessible name.
+- Toggle starts **hidden** and resets on every page load — no persistence of the revealed state.
+- Applied only to the sign-in page. The change-password form was not in scope for this request;
+  it has the same ergonomics problem and is the obvious follow-up.
+
+**Deliberately left out of scope:**
+- The change-password form (see above).
+- Any caps-lock warning or password-strength hint.
+
+**Validation:** `npx vitest run --pool=threads` — **140 passed** (23 files, +2 new).
+`npm run build` clean. Rendered in a headless browser: typing into the field and clicking the
+eye reveals the text and swaps the icon to `EyeOff`.

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Files } from 'lucide-react'
+import { Files, Eye, EyeOff } from 'lucide-react'
 import Card from '../components/ui/Card.jsx'
 import Button from '../components/ui/Button.jsx'
 import { useAuth } from '../contexts/AuthContext.jsx'
@@ -13,6 +13,7 @@ export default function Login() {
   // employee number, anything else is an email address.
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -76,16 +77,32 @@ export default function Login() {
               <label htmlFor="password" className="block text-sm font-medium text-ink">
                 Password
               </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                required
-                autoComplete="current-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="mt-1 w-full rounded-md border border-surface-border bg-surface-card px-3 py-2 text-sm text-ink outline-none focus:border-brand-500"
-              />
+              <div className="relative mt-1">
+                <input
+                  id="password"
+                  name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  className="w-full rounded-md border border-surface-border bg-surface-card py-2 pl-3 pr-10 text-sm text-ink outline-none focus:border-brand-500"
+                />
+                {/* tabIndex -1 keeps Tab going straight from the password field to Sign in, so
+                    the reveal is available to the mouse without interrupting a typed sign-in. */}
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => setShowPassword((visible) => !visible)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  aria-pressed={showPassword}
+                  className="absolute inset-y-0 right-0 flex items-center rounded-r-md px-3 text-ink-muted hover:text-ink focus:outline-none focus-visible:text-ink"
+                >
+                  {showPassword
+                    ? <EyeOff className="h-4 w-4" aria-hidden="true" />
+                    : <Eye className="h-4 w-4" aria-hidden="true" />}
+                </button>
+              </div>
             </div>
 
             {error && (
