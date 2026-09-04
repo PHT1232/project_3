@@ -48,17 +48,21 @@ export default function App() {
               server-side (ReportQueries), so a requestor only ever sees their own spend. */}
           <Route path="/reports" element={<ReportsPage />} />
 
-          {/* Manager+ only; server-side policy is the real control. */}
+          {/* Manager+ only; server-side policy is the real control.
+              Support Inbox sits here, not in the Business Manager group below, because
+              SupportController's read endpoints are [Authorize(Policy = "RequireManager")] —
+              a Manager may read and triage; only the Managing Director may resolve, which
+              SupportInboxPage gates separately and the server enforces. */}
           <Route element={<ProtectedRoute requireManager />}>
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/suppliers" element={<SupplierManagement />} />
+            <Route path="/support-inbox" element={<SupportInboxPage />} />
           </Route>
 
           {/* Business Manager+ only; Engineer and Manager cannot manage items or users. */}
           <Route element={<ProtectedRoute minimumRankLevel={3} />}>
             <Route path="/catalogue/manage" element={<ItemManagement />} />
             <Route path="/user-management" element={<UserManagementPage />} />
-            <Route path="/support-inbox" element={<SupportInboxPage />} />
           </Route>
 
           <Route path="/help" element={<Help />} />

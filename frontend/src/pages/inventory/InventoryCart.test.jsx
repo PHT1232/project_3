@@ -14,6 +14,19 @@ vi.mock('../../api/inventory.js', async () => {
 vi.mock('../../api/supplierRequests.js')
 vi.mock('../../api/suppliers.js')
 
+// InventoryPage reads the caller's rank to decide whether to offer "Goods Arrived" on a supplier
+// order. A Manager (rank 2) may raise orders but not confirm arrivals — the cart behaviour these
+// tests cover is the same either way.
+vi.mock('../../contexts/AuthContext.jsx', () => ({
+  useAuth: () => ({
+    user: { employeeNumber: 401, name: 'Mia Manager', role: 'Manager', rankLevel: 2 },
+    isAuthenticated: true,
+    restoring: false,
+    login: vi.fn(),
+    logout: vi.fn(),
+  }),
+}))
+
 const ROWS = [
   {
     itemId: 1,

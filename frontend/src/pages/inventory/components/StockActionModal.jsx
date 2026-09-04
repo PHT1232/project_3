@@ -3,10 +3,13 @@ import { AlertCircle } from 'lucide-react'
 
 import Modal from '../../../components/ui/Modal.jsx'
 import Button from '../../../components/ui/Button.jsx'
-import { adjustStock, receiveGoods } from '../../../api/inventory.js'
+import { adjustStock } from '../../../api/inventory.js'
 
 /**
- * Adjust Stock / Receive Goods dialog.
+ * Adjust Stock dialog — manual corrections only (damage, stocktake, write-off).
+ *
+ * The "Receive Goods" mode was removed on 2026-09-04: goods enter stock only when a Business
+ * Manager confirms a supplier order arrived (SupplierOrdersModal), never ad hoc per item.
  *
  * `rowVersion` comes from the InventoryRowDto the page last loaded — required so the server can
  * detect a stale edit (m2 plan §4.5) and return 409 instead of silently overwriting a concurrent
@@ -21,14 +24,6 @@ const CONFIG = {
     quantityHint: 'Use a negative number to reduce stock.',
     showReason: true,
     showReference: false,
-  },
-  receive: {
-    title: 'Receive Goods',
-    submitLabel: 'Receive goods',
-    quantityLabel: 'Quantity received',
-    quantityHint: 'Quantity delivered by the supplier.',
-    showReason: false,
-    showReference: true,
   },
 }
 
@@ -48,14 +43,11 @@ export default function StockActionModal({ mode, item, onClose, onSuccess }) {
     setSubmitting(false)
   }, [mode, item])
 
-  if (!mode || !item) return null
   const config = CONFIG[mode]
+  if (!mode || !item || !config) return null
 
   const quantityValue = Number(quantity)
-  const quantityValid =
-    quantity !== '' &&
-    Number.isFinite(quantityValue) &&
-    (mode === 'adjust' ? quantityValue !== 0 : quantityValue > 0)
+  const quantityValid = quantity !== '' && Number.isFinite(quantityValue) && quantityValue !== 0
   const reasonValid = !config.showReason || reason.trim().length > 0
   const canSubmit = quantityValid && reasonValid && !submitting
 
@@ -64,19 +56,11 @@ export default function StockActionModal({ mode, item, onClose, onSuccess }) {
     setSubmitting(true)
     setError(null)
     try {
-      if (mode === 'adjust') {
-        await adjustStock(item.itemId, {
-          changeQuantity: quantityValue,
-          reason: reason.trim(),
-          rowVersion: item.rowVersion,
-        })
-      } else {
-        await receiveGoods(item.itemId, {
-          quantity: quantityValue,
-          reference: reason.trim() || null,
-          rowVersion: item.rowVersion,
-        })
-      }
+      await adjustStock(item.itemId, {
+        changeQuantity: quantityValue,
+        reason: reason.trim(),
+        rowVersion: item.rowVersion,
+      })
       onSuccess?.()
       onClose()
     } catch (err) {

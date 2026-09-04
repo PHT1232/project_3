@@ -1,5 +1,6 @@
 using Application.DTOs.SupplierRequests;
 using Application.Exceptions;
+using Application.Interfaces.Inventory;
 using Application.Interfaces.SupplierRequests;
 using Core.Entities;
 using FluentValidation;
@@ -23,12 +24,14 @@ namespace Infrastructure.Services;
 ///     Add, and everything commits through a single SaveChangesAsync, so a cart with one bad line
 ///     leaves no partial order behind.
 ///
-/// It deliberately does NOT touch stock. Ordering and receiving are separate; stock moves only
-/// through IStockService when the goods actually arrive.
+/// Creating an order deliberately does NOT touch stock: it is recorded as PendingArrival, and
+/// the balance only moves when a Business Manager confirms the goods physically arrived
+/// (<see cref="ConfirmArrivalAsync"/>). Ordering and receiving are separate events.
 /// </summary>
 public class SupplierRequestService(
     DataContext db,
     ISupplierRequestQueries supplierRequestQueries,
+    IStockService stockService,
     IValidator<CreateSupplierRequestCommand> validator) : ISupplierRequestService
 {
     public async Task<IReadOnlyList<SupplierRequestDto>> CreateAsync(
@@ -117,6 +120,7 @@ public class SupplierRequestService(
             {
                 SupplierId = group.Key,
                 CreatedByEmployeeNumber = actorEmployeeNumber,
+                Status = SupplierRequest.StatusPendingArrival,
             };
 
             foreach (var (line, item, _) in group)
@@ -150,5 +154,50 @@ public class SupplierRequestService(
         }
 
         return result;
+    }
+
+    /// <inheritdoc />
+    public async Task<SupplierRequestDto> ConfirmArrivalAsync(int supplierRequestId, int actorEmployeeNumber)
+    {
+        var request = await db.SupplierRequests
+            .Include(r => r.Items)
+            .FirstOrDefaultAsync(r => r.Id == supplierRequestId)
+            ?? throw new NotFoundException($"Supplier order {supplierRequestId} not found.");
+
+        // The duplicate-confirmation guard. An already-Received order is rejected outright rather
+        // than posting a second set of receipts, so pressing "Confirm Arrival" twice — or two
+        // Business Managers doing it — cannot inflate the balance.
+        if (request.Status != SupplierRequest.StatusPendingArrival)
+        {
+            throw new ConflictException(
+                $"Supplier order {supplierRequestId} is already {request.Status}; arrival can only be confirmed once.");
+        }
+
+        if (request.Items.Count == 0)
+        {
+            throw new ConflictException($"Supplier order {supplierRequestId} has no lines to receive.");
+        }
+
+        // Stage one Receipt per line. Nothing is written until the single SaveChangesAsync below,
+        // so the balances, the ledger rows and the status flip commit together or not at all
+        // (CLAUDE.md principle #5 — every balance change writes its ledger row in the same
+        // transaction — and #6 — a state change is one atomic transaction).
+        var reference = $"Supplier order #{request.Id}";
+
+        foreach (var line in request.Items)
+        {
+            await stockService.StageReceiptAsync(
+                line.ItemId, line.Quantity, request.SupplierId, reference, actorEmployeeNumber);
+        }
+
+        request.Status = SupplierRequest.StatusReceived;
+        request.ReceivedAtUtc = DateTime.UtcNow;
+        request.ReceivedByEmployeeNumber = actorEmployeeNumber;
+
+        await db.SaveChangesAsync();
+
+        return await supplierRequestQueries.GetByIdAsync(request.Id)
+            ?? throw new InvalidOperationException(
+                $"Supplier request {request.Id} could not be reloaded after confirmation.");
     }
 }

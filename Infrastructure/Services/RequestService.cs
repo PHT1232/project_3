@@ -5,6 +5,7 @@ using Application.Interfaces.Inventory;
 using Application.Interfaces.Notifications;
 using Application.Interfaces.Requests;
 using Application.Interfaces.Users;
+using Application.Services.Requests;
 using Core.Entities;
 using Core.Enums;
 using FluentValidation;
@@ -178,11 +179,13 @@ public class RequestService(
             throw new ConflictException("Request was modified. Please refresh and try again.");
         }
 
-        // Draft --> Pending is the only legal submit transition (Plan §3.6). It used to be
-        // Pending --> Pending, a no-op that only wrote a history row — see CreateAsync.
-        if (request.Status != "Draft")
+        // Draft --> Pending is the only legal submit transition; RequestStateMachine.Transition
+        // below rejects anything else with a 409. Checked here as well so an already-submitted
+        // request fails before the budget query runs.
+        if (request.Status != RequestStateMachine.Draft)
         {
-            throw new ConflictException($"Cannot submit a request in {request.Status} status.");
+            throw new InvalidStateTransitionException(
+                request.Status, RequestStateMachine.Pending, "only a Draft can be submitted.");
         }
 
         // Spending eligibility (Plan §3.6 "Draft -> Pending ... Total <= role threshold", T3.4,
@@ -199,6 +202,30 @@ public class RequestService(
         // is still Draft at this point, so RemainingThisMonth excludes the very total being
         // checked.
         var eligibility = await eligibilityQueries.GetForEmployeeAsync(submitterEmployeeNumber);
+
+        // Per-request cap first, because it is the tighter and more specific of the two: a single
+        // request over the single-request limit is refused no matter how much monthly budget is
+        // left, and saying so names the right limit. Checked before the monthly figure so the
+        // message cannot blame the month for a per-request breach.
+        //
+        // A role with no per-request cap configured (0) is treated as "monthly limit only" — the
+        // column defaults to 0 for roles created before the budget columns existed, and a 0 cap
+        // would otherwise block every request outright.
+        //
+        // This half of the limit was stored, seeded and shown on the Dashboard but never enforced
+        // (audit finding M1, the unfinished half of C7). DbSeeder currently sets per-request equal
+        // to per-month, so today the two checks coincide; the moment anyone tightens the
+        // per-request column this is what makes it mean something.
+        if (eligibility.MaxAmountPerRequest > 0m
+            && request.TotalEstimatedCost > eligibility.MaxAmountPerRequest)
+        {
+            var overBy = request.TotalEstimatedCost - eligibility.MaxAmountPerRequest;
+            throw new BusinessRuleException(
+                $"This request totals {request.TotalEstimatedCost:0.00}, which is {overBy:0.00} over the " +
+                $"{eligibility.MaxAmountPerRequest:0.00} limit for a single request at your role " +
+                $"({eligibility.Role}). Split it into smaller requests or ask someone with a higher limit.");
+        }
+
         if (request.TotalEstimatedCost > eligibility.RemainingThisMonth)
         {
             var overBy = request.TotalEstimatedCost - eligibility.RemainingThisMonth;
@@ -209,17 +236,9 @@ public class RequestService(
                 $"{eligibility.MonthToDateSpend:0.00}). It resets on {eligibility.MonthResetsOn:yyyy-MM-dd}.");
         }
 
-        request.Status = "Pending";
-        request.StatusHistory.Add(new RequestStatusHistory
-        {
-            FromStatus = "Draft",
-            ToStatus = "Pending",
-            ActorEmployeeNumber = submitterEmployeeNumber,
-            Comment = "Request submitted for approval",
-            CreatedAtUtc = DateTime.UtcNow
-        });
+        RequestStateMachine.Transition(
+            request, RequestStateMachine.Pending, submitterEmployeeNumber, "Request submitted for approval");
 
-        request.RowVersion = Guid.NewGuid();
         await notificationService.NotifyRequestEventAsync(NotificationEventType.RequestSubmitted, request, submitterEmployeeNumber);
         await db.SaveChangesAsync();
 
@@ -344,19 +363,10 @@ public class RequestService(
             }
         }
 
-        request.Status = newStatus;
         request.DecisionComment = command.Comment;
         request.DecidedAtUtc = DateTime.UtcNow;
-        request.RowVersion = Guid.NewGuid();
 
-        request.StatusHistory.Add(new RequestStatusHistory
-        {
-            FromStatus = "Pending",
-            ToStatus = newStatus,
-            ActorEmployeeNumber = approverEmployeeNumber,
-            Comment = command.Comment,
-            CreatedAtUtc = DateTime.UtcNow
-        });
+        RequestStateMachine.Transition(request, newStatus, approverEmployeeNumber, command.Comment);
 
         var approvalEventType = newStatus == "Rejected"
             ? NotificationEventType.RequestRejected
@@ -396,17 +406,8 @@ public class RequestService(
             throw new ConflictException("Request was modified. Please refresh and try again.");
         }
 
-        request.Status = "Withdrawn";
-        request.RowVersion = Guid.NewGuid();
-
-        request.StatusHistory.Add(new RequestStatusHistory
-        {
-            FromStatus = "Pending",
-            ToStatus = "Withdrawn",
-            ActorEmployeeNumber = requestorEmployeeNumber,
-            Comment = "Request withdrawn by requestor",
-            CreatedAtUtc = DateTime.UtcNow
-        });
+        RequestStateMachine.Transition(
+            request, RequestStateMachine.Withdrawn, requestorEmployeeNumber, "Request withdrawn by requestor");
 
         await notificationService.NotifyRequestEventAsync(NotificationEventType.RequestWithdrawn, request, requestorEmployeeNumber);
         await db.SaveChangesAsync();
@@ -445,18 +446,13 @@ public class RequestService(
             throw new ConflictException("Request was modified. Please refresh and try again.");
         }
 
-        var previousStatus = request.Status;
-        request.Status = "CancellationPending";
-        request.RowVersion = Guid.NewGuid();
-
-        request.StatusHistory.Add(new RequestStatusHistory
-        {
-            FromStatus = previousStatus,
-            ToStatus = "CancellationPending",
-            ActorEmployeeNumber = requestorEmployeeNumber,
-            Comment = reason ?? "Cancellation requested",
-            CreatedAtUtc = DateTime.UtcNow
-        });
+        // The FromStatus this records (Approved or PartiallyApproved) is what
+        // ApproveCancellationAsync reads back to revert to if the approver refuses.
+        RequestStateMachine.Transition(
+            request,
+            RequestStateMachine.CancellationPending,
+            requestorEmployeeNumber,
+            reason ?? "Cancellation requested");
 
         // No notification here by design — Plan §4.2 names exactly 6 triggers, and "cancelled"
         // is one of them, not "cancellation requested". The notification fires from
@@ -537,17 +533,7 @@ public class RequestService(
             }
         }
 
-        request.Status = newStatus;
-        request.RowVersion = Guid.NewGuid();
-
-        request.StatusHistory.Add(new RequestStatusHistory
-        {
-            FromStatus = "CancellationPending",
-            ToStatus = newStatus,
-            ActorEmployeeNumber = approverEmployeeNumber,
-            Comment = reason,
-            CreatedAtUtc = DateTime.UtcNow
-        });
+        RequestStateMachine.Transition(request, newStatus, approverEmployeeNumber, reason);
 
         // Only the final "Cancelled" outcome is one of the Plan's 6 named triggers — a denial
         // (reverting to Approved/PartiallyApproved) doesn't fire a notification.

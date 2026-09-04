@@ -59,6 +59,13 @@ public class SupplierRequestQueries(DataContext db) : ISupplierRequestQueries
                 i.LineTotal))
             .ToList();
 
+        var receivedByName = request.ReceivedByEmployeeNumber is { } receivedBy
+            ? await db.Users.AsNoTracking()
+                .Where(u => u.Id == receivedBy)
+                .Select(u => u.Name)
+                .FirstOrDefaultAsync()
+            : null;
+
         return new SupplierRequestDto(
             request.Id,
             request.SupplierId,
@@ -66,6 +73,10 @@ public class SupplierRequestQueries(DataContext db) : ISupplierRequestQueries
             request.TotalCost,
             request.CreatedAtUtc,
             request.CreatedByEmployeeNumber,
-            lines);
+            lines,
+            request.Status,
+            request.ReceivedAtUtc,
+            request.ReceivedByEmployeeNumber,
+            receivedByName);
     }
 }

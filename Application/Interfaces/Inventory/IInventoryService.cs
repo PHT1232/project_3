@@ -10,7 +10,8 @@ public interface IInventoryService
 
     Task<InventoryRowDto> AdjustStockAsync(int itemId, AdjustStockRequest request, int actorEmployeeNumber);
 
-    Task<InventoryRowDto> ReceiveGoodsAsync(int itemId, ReceiveGoodsRequest request, int actorEmployeeNumber);
+    // ReceiveGoodsAsync was removed on 2026-09-04 — goods are received by confirming arrival on a
+    // supplier order (ISupplierRequestService.ConfirmArrivalAsync), never ad hoc per item.
 
     Task<IReadOnlyList<StockTransactionDto>> GetTransactionHistoryAsync(int itemId);
 }

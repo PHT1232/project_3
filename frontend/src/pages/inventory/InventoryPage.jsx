@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { SlidersHorizontal, PackagePlus, ShoppingCart } from 'lucide-react'
+import { SlidersHorizontal, PackageCheck, ShoppingCart } from 'lucide-react'
 
 import PageHeader from '../../components/layout/PageHeader.jsx'
 import Card from '../../components/ui/Card.jsx'
@@ -18,6 +18,8 @@ import Pagination from '../../components/ui/Pagination.jsx'
 import usePagination from '../../hooks/usePagination.js'
 import StockActionModal from './components/StockActionModal.jsx'
 import SupplierRequestModal from './components/SupplierRequestModal.jsx'
+import SupplierOrdersModal from './components/SupplierOrdersModal.jsx'
+import { useAuth } from '../../contexts/AuthContext.jsx'
 
 /**
  * Sortable columns. The itemName/quantityAvailable comparators are the ones the old "Sort by"
@@ -44,6 +46,12 @@ export default function InventoryPage() {
   // (local useState only — the project deliberately has no Redux, Plan §2.4).
   const [cartQuantities, setCartQuantities] = useState({})
   const [cartOpen, setCartOpen] = useState(false)
+  const [ordersOpen, setOrdersOpen] = useState(false)
+
+  // Confirming a delivery is a Business Manager act (rank >= 3). Hiding the button is UX only —
+  // the server returns 403 regardless (Plan §2.5).
+  const { user } = useAuth()
+  const canConfirmArrival = (user?.rankLevel ?? 0) >= 3
 
   const { data, error, loading, reload } = useAsync(() => getInventory(), [])
 
@@ -123,13 +131,9 @@ export default function InventoryPage() {
               <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
               Adjust Stock
             </Button>
-            <Button
-              variant="secondary"
-              onClick={() => setAction({ mode: 'receive', item: visibleRows[0] ?? null })}
-              disabled={visibleRows.length === 0}
-            >
-              <PackagePlus className="h-4 w-4" aria-hidden="true" />
-              Receive Goods
+            <Button variant="secondary" onClick={() => setOrdersOpen(true)}>
+              <PackageCheck className="h-4 w-4" aria-hidden="true" />
+              Supplier Orders
             </Button>
             <Button
               onClick={() => setCartOpen(true)}
@@ -233,7 +237,6 @@ export default function InventoryPage() {
               onToggle={toggleRow}
               onToggleAll={toggleAll}
               onAdjust={(item) => setAction({ mode: 'adjust', item })}
-              onReceive={(item) => setAction({ mode: 'receive', item })}
               headerProps={headerProps}
             />
             <Pagination
@@ -264,6 +267,13 @@ export default function InventoryPage() {
         item={action.item}
         onClose={() => setAction({ mode: null, item: null })}
         onSuccess={reload}
+      />
+
+      <SupplierOrdersModal
+        open={ordersOpen}
+        canConfirm={canConfirmArrival}
+        onClose={() => setOrdersOpen(false)}
+        onConfirmed={reload}
       />
 
       <SupplierRequestModal

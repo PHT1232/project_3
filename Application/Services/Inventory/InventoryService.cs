@@ -8,8 +8,7 @@ public class InventoryService(
     IInventoryQueries inventoryQueries,
     IStockService stockService,
     IStockQueries stockQueries,
-    IValidator<AdjustStockRequest> adjustValidator,
-    IValidator<ReceiveGoodsRequest> receiveValidator) : IInventoryService
+    IValidator<AdjustStockRequest> adjustValidator) : IInventoryService
 {
     public async Task<InventoryPageResult> GetInventoryAsync(int page, int pageSize)
     {
@@ -25,13 +24,6 @@ public class InventoryService(
         await adjustValidator.ValidateAndThrowAsync(request);
         return await stockService.AdjustAsync(
             itemId, request.ChangeQuantity, request.Reason, actorEmployeeNumber, request.RowVersion);
-    }
-
-    public async Task<InventoryRowDto> ReceiveGoodsAsync(int itemId, ReceiveGoodsRequest request, int actorEmployeeNumber)
-    {
-        await receiveValidator.ValidateAndThrowAsync(request);
-        return await stockService.ReceiveAsync(
-            itemId, request.Quantity, request.SupplierId, request.Reference, actorEmployeeNumber, request.RowVersion);
     }
 
     public Task<IReadOnlyList<StockTransactionDto>> GetTransactionHistoryAsync(int itemId) =>

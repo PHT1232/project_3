@@ -36,14 +36,11 @@ public class InventoryController(IInventoryService inventoryService, ICurrentUse
         return Ok(updated);
     }
 
-    [HttpPost("{itemId:int}/receive")]
-    public async Task<ActionResult<InventoryRowDto>> ReceiveGoods(int itemId, ReceiveGoodsRequest request)
-    {
-        var actor = currentUserService.EmployeeNumber
-            ?? throw new InvalidOperationException("Authenticated request missing employee number claim.");
-        var updated = await inventoryService.ReceiveGoodsAsync(itemId, request, actor);
-        return Ok(updated);
-    }
+    // POST {itemId}/receive was removed on 2026-09-04. It raised the balance the moment stock was
+    // "recorded", so the system showed goods as available before they had physically arrived, and
+    // any Manager could do it. Receipts now happen only through
+    // POST /api/v1/supplier-requests/{id}/confirm-arrival, where a Business Manager confirms a
+    // real delivery against a real order. Corrections still go through {itemId}/adjust.
 
     [HttpGet("{itemId:int}/transactions")]
     public async Task<ActionResult<IReadOnlyList<StockTransactionDto>>> GetTransactions(int itemId)

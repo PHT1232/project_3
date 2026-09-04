@@ -25,13 +25,16 @@ public class InventoryTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task ReceiveGoods_PersistsTransactionAndUpdatesBalance()
+    public async Task ReceiveEndpoint_IsGone_StockCannotBeRaisedAdHoc()
     {
         var (category, supplier) = await CatalogueTestData.SeedCategoryAndSupplierAsync(_factory.Services);
         var item = await CatalogueTestData.SeedItemAsync(_factory.Services, category.Id, supplier.Id, minRankLevelToRequest: 1, quantityAvailable: 50);
 
         var client = await AuthedClientAsync(401, "Password1!");
 
+        // Removed 2026-09-04: raising the balance without a confirmed delivery is exactly the bug.
+        // Receipts now only come from a Business Manager confirming a supplier order's arrival
+        // (see SupplierRequestsTests).
         var response = await client.PostAsJsonAsync($"/api/v1/inventory/{item.Id}/receive", new
         {
             quantity = 20,
@@ -40,13 +43,16 @@ public class InventoryTests : IAsyncLifetime
             rowVersion = item.RowVersion,
         });
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        body.GetProperty("quantityAvailable").GetInt32().Should().Be(70);
+        // 405, not 404: the SPA fallback (MapFallbackToFile) claims unmatched paths for GET, so a
+        // POST to a route that no longer exists comes back Method Not Allowed. Either is proof the
+        // endpoint is gone; what matters is the balance below.
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.MethodNotAllowed);
 
-        var historyResponse = await client.GetAsync($"/api/v1/inventory/{item.Id}/transactions");
-        var history = await historyResponse.Content.ReadFromJsonAsync<JsonElement>();
-        history.EnumerateArray().Should().Contain(t => t.GetProperty("reference").GetString() == "PO-1");
+        var inventory = await client.GetAsync("/api/v1/inventory?pageSize=200");
+        var body = await inventory.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("page").GetProperty("items").EnumerateArray()
+            .Single(r => r.GetProperty("itemId").GetInt32() == item.Id)
+            .GetProperty("quantityAvailable").GetInt32().Should().Be(50);
     }
 
     [Fact]

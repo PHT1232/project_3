@@ -1591,6 +1591,110 @@ was re-added. Post-merge validation is recorded below.
   `RequireManager`(2) / `RequireBusinessManager`(3) entries beside it — because pushing a branch
   with four red tests helps nobody. After the fix: **160/160** (54 unit + 106 integration).
 
+## 2026-09-04 — Goods-arrival confirmation: stock no longer rises before delivery
+
+**Task:** "Inventory quantity is automatically increased when incoming stock is recorded … change
+the workflow to Purchase Record → Pending Arrival → Business Manager confirms 'Goods Arrived' →
+Received → inventory updated." With: no increase before confirmation, Business Manager only,
+confirm exactly once, duplicate confirmation must not re-add, unauthorised roles blocked.
+
+**Tool:** Claude Code (Opus 5).
+
+### Where the quantity was actually being increased
+
+Two paths could add stock; only one was wrong.
+
+- `POST /api/v1/inventory/{itemId}/receive` → `InventoryService.ReceiveGoodsAsync` →
+  `StockService.ReceiveAsync`. **This was the bug**: any Manager could type a number into the
+  "Receive Goods" modal and the balance rose immediately, with nothing recording that goods had
+  physically turned up. Removed.
+- `SupplierRequest` (the purchase record) already did *not* touch stock — it had no lifecycle at
+  all, so there was nowhere to hang an arrival confirmation. That is what this change adds.
+- `POST /inventory/{itemId}/adjust` is a manual correction (damage, stocktake), a different
+  concern, and was left alone.
+
+### What changed
+
+`SupplierRequest` gains `Status` (`PendingArrival` | `Received`), `ReceivedAtUtc` and
+`ReceivedByEmployeeNumber`, with a `CK_SupplierRequests_Status` check constraint. Orders are
+created `PendingArrival` and move no stock. `POST /api/v1/supplier-requests/{id}/confirm-arrival`
+(policy `RequireBusinessManager`, rank >= 3 — deliberately narrower than the controller's
+Manager+ default: a Manager may *raise* an order but not certify it arrived) posts one Receipt
+ledger row per line, updates each balance, and flips the status — all in one `SaveChangesAsync`,
+so lines, ledger rows and status commit together (CLAUDE.md #5 and #6).
+
+Duplicate confirmation is blocked by the status check in the same transaction: an order that is
+already `Received` returns 409 and posts nothing.
+
+**Files changed, by layer:**
+- `Core/Entities/SupplierRequest.cs` — status constants + three fields; the "deliberately no
+  lifecycle" note replaced with a pointer to this decision.
+- `Infrastructure/Data/Configurations/SupplierRequestConfiguration.cs` — columns, check
+  constraint, status index, FK for the confirming user.
+- `Infrastructure/Data/Migrations/20260904110611_AddSupplierOrderArrivalStatus.*` — **new
+  migration**, with a hand-added backfill (see below). ⚠️ one open migration PR at a time.
+- `Infrastructure/Services/SupplierRequestService.cs` — `ConfirmArrivalAsync`; injects `IStockService`.
+- `Infrastructure/Services/StockService.cs` — `StageReceiptAsync` (stages balance + ledger row,
+  caller saves — the same "stage, caller saves" contract `INotificationService` already uses);
+  `ReceiveAsync` deleted.
+- `Infrastructure/Queries/SupplierRequestQueries.cs` — projects status/received fields + confirmer name.
+- `Application/…` — `ISupplierRequestService.ConfirmArrivalAsync`; `IStockService.StageReceiptAsync`;
+  `SupplierRequestDto` + 4 fields; `IInventoryService.ReceiveGoodsAsync` and
+  `InventoryService.ReceiveGoodsAsync` deleted; `ReceiveGoodsRequest` DTO + validator deleted.
+- `WebApi/Controllers/SupplierRequestsController.cs` — the confirm-arrival endpoint.
+- `WebApi/Controllers/InventoryController.cs` — `{itemId}/receive` deleted.
+- Frontend: `api/supplierRequests.js` (`confirmSupplierRequestArrival`, `SUPPLIER_ORDER_STATUS`),
+  `api/inventory.js` (`receiveGoods` deleted), **new**
+  `pages/inventory/components/SupplierOrdersModal.jsx`, `InventoryPage.jsx` ("Receive Goods"
+  header button → "Supplier Orders"; reads rank to gate the confirm button),
+  `components/InventoryTable.jsx` ("Receive goods" row action removed),
+  `components/StockActionModal.jsx` (adjust-only now).
+- Tests: `SupplierRequestsTests.cs` (+7), `InventoryTests.cs` (receive test replaced with one
+  asserting the endpoint is gone and the balance is untouched), `InventoryCart.test.jsx` (AuthContext mock).
+
+**Migration data fix.** Existing orders would default to `PendingArrival`, which would let a
+Business Manager "confirm" goods that were already counted in under the old `/receive` path — a
+second receipt for the same delivery. The migration closes all pre-existing orders as `Received`,
+stamped with their `CreatedAtUtc`, leaving `ReceivedByEmployeeNumber` NULL because nobody
+confirmed them under the new workflow. Verified on the dev database: 9 orders backfilled.
+
+**Validation actually run (2026-09-04):**
+- `dotnet build` — 0 errors. `dotnet test Project.slnx` — **167/167** (54 unit + 113 integration; was 160).
+- `npx vitest run --pool=threads` — **137/137** across 23 files.
+- **Live against SQL Server**, Manager 904 / Engineer 902 / Business Manager 903:
+  order raised → `PendingArrival`, stock 200 unchanged · Manager confirm → **403** · Engineer
+  confirm → **403** · anonymous → **401** (stock still 200, status still PendingArrival) · BM
+  confirm → **200**, `Received`, `receivedByEmployeeNumber: 903`, stock **225** · BM confirm again
+  → **409**, stock still **225**, exactly **1** ledger row (`TxType` Receipt, actor 903, reference
+  "Supplier order #10").
+- **Through the browser as the Business Manager**: Inventory header now shows "Supplier Orders"
+  (no "Receive Goods" anywhere), the modal lists every order with its status and confirmer, and
+  clicking **Goods Arrived** on order #11 sent `POST /supplier-requests/11/confirm-arrival` → 200;
+  item stock went 50 → 90 with one ledger row and `ReceivedByEmployeeNumber = 903`.
+
+**Conflicts with existing project documents — reported, not silently resolved:**
+1. `Core/Entities/SupplierRequest.cs` previously stated there was deliberately **no** status
+   column because no project document specified a supplier-order lifecycle (the K3 concern), and
+   that adding one "is an additive migration" once the team specifies it. This change is that
+   additive migration, on the team's instruction. No status vocabulary beyond the two states the
+   task named was invented. **The Plan (§3.3 table 11, §4.2) still describes no supplier-order
+   lifecycle and no confirm-arrival endpoint — the Plan and `StationerySchema.sql` now trail the
+   code here and should be updated.**
+2. Plan §4.2 lists `POST /api/v1/inventory/{itemId}/receive` in the endpoint catalogue. It has
+   been **removed**, because leaving it open would let any Manager raise the balance without a
+   delivery — exactly the bug. Receipts now have one entry point. This is a deliberate deviation
+   from the Plan's endpoint list and needs the Plan updated to match.
+3. `docs/development/supplier-request-cart-implementation-handoff.md` says stock moves "later via
+   receiveGoods()" — now stale.
+
+**Known limitation.** The duplicate guard is the status check inside the transaction. Two
+confirmations racing in separate transactions could in principle both read `PendingArrival`;
+`SupplierRequest` has no RowVersion to make that impossible. Sequential double-clicks — the case
+the task names — are fully covered and tested. Adding a concurrency token would be the fix if the
+team wants it.
+
+**Out of scope, untouched:** `{itemId}/adjust`, the employee request workflow, reports,
+notifications, and audit findings C7/C8/C9.
 ## 2026-09-05 — Audit C9: category and supplier names on request lines
 
 **Task:** Fix `PROJECT_AUDIT.md` finding C9 — request detail lines always showed a blank
