@@ -1421,85 +1421,60 @@ give Manager+ an in-app triage screen. **No SMTP** (email/SMTP is on the Plan's 
 list; a server-side sender would be a scope breach). Works with the network unplugged.
 
 **What changed, by file:**
-- Backend
-  - `Core/Entities/SupportMessage.cs` (new) — Id, SenderEmployeeNumber, Area, Subject, Body,
-    Diagnostics?, Status ("New"/"Resolved"), CreatedAtUtc, ResolvedAtUtc?, ResolvedByEmployeeNumber?.
-  - `Application/DTOs/Support/SupportMessageDtos.cs`, `.../Interfaces/Support/ISupportMessageService.cs`
-    + `ISupportMessageQueries.cs`, `.../Validators/Support/CreateSupportMessageCommandValidator.cs` (new).
-  - `Infrastructure/Services/SupportMessageService.cs` (create, resolve/reopen),
-    `Infrastructure/Queries/SupportMessageQueries.cs` (paged list newest-first, by-id, open count),
-    `Infrastructure/Data/Configurations/SupportMessageConfiguration.cs` (new).
-  - `Infrastructure/DataContext.cs` — `DbSet<SupportMessage>`.
-  - `Infrastructure/Data/Migrations/20260903181104_AddSupportMessages.*` (new) — creates the
-    table + 4 indexes. **Only pending migration on any branch — announce before a second one.**
-  - `WebApi/Controllers/SupportController.cs` (new): `POST /api/v1/support/messages` (any auth),
-    `GET /api/v1/support/messages` + `/{id}` + `/open-count` + `PATCH /{id}/status` (RequireManager).
-  - `WebApi/Program.cs` — DI + using.
-  - `Tests/WebApi.IntegrationTests/SupportTests.cs` (new) — 7 tests: anon 401; engineer send
-    → stored as New; blank body 400; engineer list/resolve 403; manager list newest-first +
-    status filter; manager resolve flips status, records resolver, drops open-count.
-- Frontend
-  - `frontend/src/api/support.js` (new).
-  - `frontend/src/pages/help/components/ContactModal.jsx` (new) — dialog (Area / Subject /
-    Message + expandable "session details we'll attach"); success state; error surfaced.
-  - `frontend/src/pages/help/components/ContactCard.jsx` — primary button now opens the
-    dialog; `mailto:` demoted to a plain fallback line; "Copy diagnostics" kept.
-  - `frontend/src/config/support.js` — dropped `buildSupportMailto` (unused); kept email,
-    areas, `buildDiagnostics`.
-  - `frontend/src/pages/support/SupportInboxPage.jsx` (new) — Manager+ triage: Open/Resolved/All
-    filter, per-message card, show/hide diagnostics, Mark resolved / Reopen.
-  - `frontend/src/App.jsx` — `/support-inbox` route inside the `requireManager` group.
-  - `frontend/src/navigation.js` — "Support Inbox" nav item, `minRankLevel: 2`.
-  - `frontend/src/pages/help/Help.test.jsx` — rewritten for the dialog flow;
-    `frontend/src/pages/support/SupportInboxPage.test.jsx` (new, 4 tests).
+- `frontend/src/pages/requests/NewRequestPage.jsx` — removed the `mt-1` class from `#stock-filter`; added a Stock column showing `quantityAvailable` followed by `available` for each picker row.
+- `frontend/src/pages/requests/NewRequestPage.test.jsx` — asserts available-stock text for the picker item.
+- `docs/development/request-pages-implementation-handoff.md` — documented compact select spacing and the quantity-available table column.
 
-**Assumptions / decisions (flagged):**
-- **No SMTP, no email delivery.** In-app only. If the team later wants Gmail delivery, it
-  layers on top (DB insert stays source of truth) and needs Leader sign-off + a Gmail App
-  Password in user-secrets — `[ASK] #4` territory.
-- **Statuses are just New / Resolved.** No "acknowledged"/assignment/priority — not requested.
-- **Any authenticated user can send; Manager+ triages.** Matches the `RequireManager` policy
-  already used for Inventory/Users. Client route guard is UX only; the server 403 is real.
-- **Diagnostics are client-supplied** (app version, page, browser, user line). Trusted only as
-  free text — never parsed or acted on server-side.
-- Table lives as columns, no `RoleThresholds`-style separate concerns; not in the Plan's ERD
-  (net-new, like `AiInteractionLogs` and `Notifications` were).
+**No API, backend, database, migration, authorization, stock-filter behavior, or request-state changes.** The displayed value is already supplied by `GET /api/v1/items`.
 
-**Left out of scope:** email delivery; assignment/priority/threading; notifying the sender
-when resolved; a dashboard badge count (endpoint exists — `GET /support/messages/open-count`
-— but no tile wired).
+**Validation:** `npx vitest run src/pages/requests/NewRequestPage.test.jsx --pool=threads` — 8/8 passed. `npm run build` in `frontend/` — passed.
 
-**Validation:** `dotnet build` 0 errors; `dotnet test Project.slnx` **128 passed** (49 unit +
-79 integration, 7 new); `npx vitest run --pool=threads` **110 passed** (frontend, incl. new
-help + support-inbox suites); `npm run build` clean. Migration applied to the local dev DB;
-sent two messages as Engineer #26 and triaged them as Business Manager #20 in the browser.
+**Out of scope:** stock reservations, quantity validation against live stock, and stock-threshold changes.
 
-### 2026-09-04 (follow-up) — Support Inbox loading skeleton
+## 2026-09-04 — Restrict Item Management and User Management to Business Manager+
 
-Per review feedback, `SupportInboxPage` now shows a skeleton while the list loads instead of
-the centred spinner (`LoadingState`), matching the other list pages. Added a page-local
-`SupportInboxSkeleton` (4 cards mirroring `MessageCard`'s footprint) and a test asserting the
-`role="status"` placeholder shows while pending and clears on load. vitest 111 passed.
+**Task:** Apply the user-requested access override: Engineer and Manager cannot access Item Management or User Management; Business Manager and Managing Director can. Inventory and Suppliers remain Manager+.
 
-The **Help page fetches nothing** (static FAQ + auth-context reads), so it has no loading
-state to replace — a skeleton there would never render. It would only gain one if the FAQ
-moves to `GET /api/v1/help/faq` (deferred).
+**What changed:**
+- `WebApi/Program.cs`: added `RequireBusinessManager` with existing `RankLevelRequirement(3)`.
+- `WebApi/Controllers/ManagerCatalogueController.cs`: item and category management now require `RequireBusinessManager`.
+- `WebApi/Controllers/UsersController.cs`: list, create, update, and status-change APIs now require `RequireBusinessManager`; subordinate lookup remains self-or-Manager+.
+- `frontend/src/routes/ProtectedRoute.jsx`: accepts `minimumRankLevel` while retaining existing `requireManager` compatibility.
+- `frontend/src/App.jsx` and `frontend/src/navigation.js`: Item Management and User Management require/show at rank 3; Inventory and Suppliers remain rank 2.
+- `Tests/WebApi.IntegrationTests/{UsersTests,CatalogueTests}.cs`: Business Manager success fixtures and Manager 403 coverage.
+- `frontend/src/routes/ProtectedRoute.test.jsx`: Manager redirect and Business Manager rendering coverage.
+- `docs/development/business-manager-management-access-handoff.md`: architecture, API matrix, tests, exclusions, and reviewer follow-up.
 
-### 2026-09-04 (follow-up) — Sender can't resolve their own support message
+**Assumption / override:** This intentionally overrides the prior Plan baseline that used Manager+ for Item Management and User Management. It was explicitly requested; it must be reconciled into the Plan revision history by the team.
 
-Review feedback: it's odd that the person who sent a message could also close it. Now the
-reporter can't change the status of a message they sent — `SetResolvedAsync` throws
-`ValidationException` (→ 400) when `actor == sender`, and the Support Inbox shows a "You sent
-this" badge in place of the resolve/reopen button on those rows. Another Manager+ still
-resolves it normally. +1 backend test (own → 400, other manager → 200), +1 frontend test.
-dotnet test 129 passed; vitest 112 passed.
+**APIs changed:** No routes added or removed. Authorization for `POST/PUT/PATCH /api/v1/items`, category management APIs, and `GET/POST/PUT/PATCH /api/v1/users` now requires rank 3. `GET /api/v1/users/{empNo}/subordinates` is unchanged.
 
-### 2026-09-04 (follow-up) — Only the Managing Director resolves support messages
+**DB changes:** None. No migration.
 
-Review feedback. New `RequireManagingDirector` policy (`RankLevelRequirement(4)`);
-`PATCH /api/v1/support/messages/{id}/status` moved from `RequireManager` to it. Manager /
-Business Manager still view the inbox but the resolve/reopen button is hidden for them
-(they see a plain "Open" / "Resolved" status); shown only for `rankLevel >= 4`. The
-no-self-resolve guard stays. Tests reworked to use a Managing Director for the resolve path
-(+ Manager-403, + non-MD-hides-button). Known gap noted in the handoff: an MD's own message
-can't be resolved by anyone. dotnet test 130 passed; vitest 113 passed.
+**Validation actually run:** `dotnet test Project.slnx --no-restore` — 89/89 passed; existing `NU1903` warning for `SQLitePCLRaw.lib.e_sqlite3` 2.1.11. `npx vitest run src/routes/ProtectedRoute.test.jsx --pool=threads` — 6/6 passed. `npm run build` — passed. React Router emitted non-failing future-flag warnings.
+
+**Out of scope:** No access change for Inventory, Suppliers, catalogue reads, or subordinate lookup. No role data or Identity schema changes.
+
+## 2026-09-04 — Prevent Business Managers from managing peer or superior accounts
+
+**Task:** Enforce the requested row-level User Management rule: a Business Manager cannot perform actions on Business Manager or Managing Director accounts.
+
+**What changed:**
+- `Application/Services/Users/UserManagementService.cs`: injects `ICurrentUserService`; Business Managers are denied update/status actions for target rank 3 or 4 and denied creating or assigning rank 3/4 roles.
+- `Application/Interfaces/Users/IUserStore.cs` and `Infrastructure/Identity/IdentityUserStore.cs`: added `GetRoleRankLevelAsync`, resolved from ASP.NET Core Identity `ApplicationRole.RankLevel`.
+- `Application/Exceptions/ForbiddenException.cs` and `WebApi/Middleware/ExceptionHandlingMiddleware.cs`: domain authorization failures become RFC 7807 HTTP `403 Forbidden`.
+- `Tests/Application.UnitTests/Users/UserManagementServiceTests.cs`: Business Manager peer-management unit coverage and current-user fixture support.
+- `Tests/WebApi.IntegrationTests/UsersTests.cs`: HTTP 403 coverage for create Business Manager, update Business Manager, and change Managing Director status.
+- `docs/development/business-manager-management-access-handoff.md`: updated access matrix, architecture, tests, and validation result.
+
+**Behavior:** Business Managers can manage Engineer/Manager accounts only. They cannot create or promote accounts to Business Manager/Managing Director, modify Business Manager/Managing Director accounts including themselves, or change their active status. Managing Director behavior is unchanged.
+
+**Assumption:** “Actions” covers create, update/role assignment, and active-status changes exposed by User Management. The list API remains available to Business Manager because it is required to locate/manage lower-rank accounts; no sensitive data beyond the existing user list is added.
+
+**APIs changed:** No routes changed. Existing `POST /api/v1/users`, `PUT /api/v1/users/{empNo}`, and `PATCH /api/v1/users/{empNo}/status` can now return `403` for these row-level cases.
+
+**DB changes:** None. No migration.
+
+**Validation actually run:** `dotnet test Project.slnx --no-restore` — 93/93 passed; existing `NU1903` warning for `SQLitePCLRaw.lib.e_sqlite3` 2.1.11. `npx vitest run src/routes/ProtectedRoute.test.jsx --pool=threads` — 6/6 passed. `npm run build` — passed; non-failing React Router future-flag warnings.
+
+**Out of scope:** No restriction on Managing Director, no changes to Inventory/Suppliers/Catalogue, no UI-specific disabling because server-side enforcement is authoritative.

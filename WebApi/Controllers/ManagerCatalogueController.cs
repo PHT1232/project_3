@@ -7,7 +7,7 @@ namespace WebApi.Controllers;
 
 [ApiController]
 [Route("api/v1")]
-[Authorize(Policy = "RequireManager")]
+[Authorize(Policy = "RequireBusinessManager")]
 public class ManagerCatalogueController(IItemService itemService, ICategoryService categoryService) : ControllerBase
 {
     [HttpPost("items")]

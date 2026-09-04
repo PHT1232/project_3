@@ -21,6 +21,9 @@ function renderWithRoute(initialEntries) {
           <Route element={<ProtectedRoute requireManager />}>
             <Route path="/manager-only" element={<div>Manager content</div>} />
           </Route>
+          <Route element={<ProtectedRoute minimumRankLevel={3} />}>
+            <Route path="/business-manager-only" element={<div>Business Manager content</div>} />
+          </Route>
         </Routes>
       </AuthProvider>
     </MemoryRouter>,
@@ -64,5 +67,23 @@ describe('ProtectedRoute', () => {
     renderWithRoute(['/manager-only'])
 
     await waitFor(() => expect(screen.getByText('Manager content')).toBeInTheDocument())
+  })
+
+  it('redirects a Manager away from a Business Manager-only route', async () => {
+    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, 'token')
+    authApi.fetchCurrentUser.mockResolvedValue({ employeeNumber: 202, name: 'Eve', rankLevel: 2 })
+
+    renderWithRoute(['/business-manager-only'])
+
+    await waitFor(() => expect(screen.getByText('Home page')).toBeInTheDocument())
+  })
+
+  it('renders Business Manager-only content for rank 3 users', async () => {
+    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, 'token')
+    authApi.fetchCurrentUser.mockResolvedValue({ employeeNumber: 303, name: 'Ford', rankLevel: 3 })
+
+    renderWithRoute(['/business-manager-only'])
+
+    await waitFor(() => expect(screen.getByText('Business Manager content')).toBeInTheDocument())
   })
 })
