@@ -11,11 +11,23 @@ public class AuthService(
     ITokenService tokenService,
     IPasswordService passwordService,
     INotificationService notificationService,
+    IValidator<LoginRequest> loginValidator,
     IValidator<ChangePasswordRequest> changePasswordValidator) : IAuthService
 {
+    /// <summary>
+    /// Signs in by employee number (the Plan's login field, §3.1) or by email address, whichever
+    /// the caller supplied. Which identifier was used changes nothing after the lookup: the same
+    /// verification runs, and every failure returns null so the controller can answer with one
+    /// generic 401 (Plan §9.2 — never leak which check failed, or whether an account exists).
+    /// </summary>
     public async Task<LoginResponse?> LoginAsync(LoginRequest request)
     {
-        var result = await accountStore.VerifyCredentialsAsync(request.EmployeeNumber, request.Password);
+        await loginValidator.ValidateAndThrowAsync(request);
+
+        var result = request.EmployeeNumber is { } employeeNumber
+            ? await accountStore.VerifyCredentialsAsync(employeeNumber, request.Password)
+            : await accountStore.VerifyCredentialsByEmailAsync(request.Email!, request.Password);
+
         if (!result.Succeeded || result.Account is null)
         {
             return null;
