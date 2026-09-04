@@ -156,6 +156,7 @@ try
 
     builder.Services.AddAuthorizationBuilder()
         .AddPolicy("RequireManager", policy => policy.Requirements.Add(new RankLevelRequirement(2)))
+        .AddPolicy("RequireBusinessManager", policy => policy.Requirements.Add(new RankLevelRequirement(3)))
         .AddPolicy("RequireApprover", policy => policy.Requirements.Add(new ApproverRequirement()));
 
     builder.Services.AddSingleton<IAuthorizationHandler, RankLevelHandler>();

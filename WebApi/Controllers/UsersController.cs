@@ -15,7 +15,7 @@ public class UsersController(
     ICurrentUserService currentUserService) : ControllerBase
 {
     [HttpGet]
-    [Authorize(Policy = "RequireManager")]
+    [Authorize(Policy = "RequireBusinessManager")]
     public async Task<ActionResult<PagedResult<UserDto>>> GetUsers(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
@@ -27,7 +27,7 @@ public class UsersController(
     }
 
     [HttpPost]
-    [Authorize(Policy = "RequireManager")]
+    [Authorize(Policy = "RequireBusinessManager")]
     public async Task<ActionResult<UserDto>> CreateUser(CreateUserRequest request)
     {
         var created = await userManagementService.CreateUserAsync(request);
@@ -35,7 +35,7 @@ public class UsersController(
     }
 
     [HttpPut("{empNo:int}")]
-    [Authorize(Policy = "RequireManager")]
+    [Authorize(Policy = "RequireBusinessManager")]
     public async Task<ActionResult<UserDto>> UpdateUser(int empNo, UpdateUserRequest request)
     {
         var updated = await userManagementService.UpdateUserAsync(empNo, request);
@@ -43,7 +43,7 @@ public class UsersController(
     }
 
     [HttpPatch("{empNo:int}/status")]
-    [Authorize(Policy = "RequireManager")]
+    [Authorize(Policy = "RequireBusinessManager")]
     public async Task<ActionResult<UserDto>> SetStatus(int empNo, UserStatusRequest request)
     {
         var updated = await userManagementService.SetStatusAsync(empNo, request.IsActive);

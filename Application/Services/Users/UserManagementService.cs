@@ -1,6 +1,7 @@
 using Application.DTOs.Common;
 using Application.DTOs.Users;
 using Application.Exceptions;
+using Application.Interfaces.Auth;
 using Application.Interfaces.Users;
 using FluentValidation;
 using FluentValidation.Results;
@@ -9,9 +10,11 @@ namespace Application.Services.Users;
 
 public class UserManagementService(
     IUserStore userStore,
+    ICurrentUserService currentUserService,
     IValidator<CreateUserRequest> createValidator,
     IValidator<UpdateUserRequest> updateValidator) : IUserManagementService
 {
+    private const int BusinessManagerRankLevel = 3;
     private const int MaxHierarchyWalk = 10;
 
     public Task<PagedResult<UserDto>> GetUsersAsync(int page, int pageSize, string? role, string? location) =>
@@ -48,6 +51,8 @@ public class UserManagementService(
             throw new ValidationException(failures);
         }
 
+        await EnsureActorCanAssignRoleAsync(request.Role);
+
         if (await userStore.EmployeeExistsAsync(request.EmployeeNumber))
         {
             throw new ConflictException($"Employee number {request.EmployeeNumber} already exists.");
@@ -65,10 +70,9 @@ public class UserManagementService(
     {
         await updateValidator.ValidateAndThrowAsync(request);
 
-        if (!await userStore.EmployeeExistsAsync(employeeNumber))
-        {
-            throw new NotFoundException($"Employee {employeeNumber} not found.");
-        }
+        var target = await userStore.GetByEmployeeNumberAsync(employeeNumber)
+            ?? throw new NotFoundException($"Employee {employeeNumber} not found.");
+        EnsureActorCanManageTarget(target);
 
         var failures = new List<ValidationFailure>();
         var superior = request.SuperiorEmployeeNumber == 0 ? (int?)null : request.SuperiorEmployeeNumber;
@@ -102,6 +106,8 @@ public class UserManagementService(
             throw new ValidationException(failures);
         }
 
+        await EnsureActorCanAssignRoleAsync(request.Role);
+
         if (await userStore.EmailExistsAsync(request.Email, employeeNumber))
         {
             throw new ConflictException($"Email '{request.Email}' is already in use.");
@@ -113,6 +119,10 @@ public class UserManagementService(
 
     public async Task<UserDto> SetStatusAsync(int employeeNumber, bool isActive)
     {
+        var target = await userStore.GetByEmployeeNumberAsync(employeeNumber)
+            ?? throw new NotFoundException($"Employee {employeeNumber} not found.");
+        EnsureActorCanManageTarget(target);
+
         var updated = await userStore.SetStatusAsync(employeeNumber, isActive);
         return updated ?? throw new NotFoundException($"Employee {employeeNumber} not found.");
     }
@@ -125,6 +135,25 @@ public class UserManagementService(
         }
 
         return await userStore.GetSubordinatesAsync(employeeNumber);
+    }
+
+    private void EnsureActorCanManageTarget(UserDto target)
+    {
+        if (currentUserService.RankLevel == BusinessManagerRankLevel
+            && target.RankLevel >= BusinessManagerRankLevel)
+        {
+            throw new ForbiddenException("Business Managers cannot manage Business Manager or Managing Director accounts.");
+        }
+    }
+
+    private async Task EnsureActorCanAssignRoleAsync(string role)
+    {
+        var requestedRankLevel = await userStore.GetRoleRankLevelAsync(role);
+        if (currentUserService.RankLevel == BusinessManagerRankLevel
+            && requestedRankLevel >= BusinessManagerRankLevel)
+        {
+            throw new ForbiddenException("Business Managers cannot assign Business Manager or Managing Director roles.");
+        }
     }
 
     /// <summary>Walks at most 10 superior links (Plan §7) looking for a path back to employeeNumber.</summary>

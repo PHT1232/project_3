@@ -3,10 +3,9 @@ import { useAuth } from '../contexts/AuthContext.jsx'
 import { LoadingState } from '../components/ui/StateBlock.jsx'
 
 /**
- * Gate for every application route. `requireManager` additionally hides routes from
- * non-Manager+ users — this is UX only, never the real control (server-side 403 is).
+ * Gate for every application route. Rank floors are UX only; server-side policies enforce access.
  */
-export default function ProtectedRoute({ requireManager = false }) {
+export default function ProtectedRoute({ minimumRankLevel = 1, requireManager = false }) {
   const { isAuthenticated, restoring, user } = useAuth()
   const location = useLocation()
 
@@ -18,7 +17,8 @@ export default function ProtectedRoute({ requireManager = false }) {
     return <Navigate to="/login" replace state={{ from: location }} />
   }
 
-  if (requireManager && (user?.rankLevel ?? 0) < 2) {
+  const requiredRankLevel = requireManager ? 2 : minimumRankLevel
+  if ((user?.rankLevel ?? 0) < requiredRankLevel) {
     return <Navigate to="/" replace />
   }
 
