@@ -6,13 +6,11 @@ import SupportInboxPage from './SupportInboxPage.jsx'
 import * as supportApi from '../../api/support.js'
 
 vi.mock('../../api/support.js')
+
+// Reassign per test to switch the signed-in role (Managing Director resolves; others don't).
+let mockUser = { employeeNumber: 900, name: 'Dee Director', role: 'Managing Director', rankLevel: 4 }
 vi.mock('../../contexts/AuthContext.jsx', () => ({
-  useAuth: () => ({
-    user: { employeeNumber: 801, name: 'Meg Manager', role: 'Manager', rankLevel: 2 },
-    token: 'mock-token',
-    login: vi.fn(),
-    logout: vi.fn(),
-  }),
+  useAuth: () => ({ user: mockUser, token: 'mock-token', login: vi.fn(), logout: vi.fn() }),
 }))
 
 const OPEN_MSG = {
@@ -32,6 +30,7 @@ const OPEN_MSG = {
 describe('SupportInboxPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockUser = { employeeNumber: 900, name: 'Dee Director', role: 'Managing Director', rankLevel: 4 }
     supportApi.getSupportMessages.mockResolvedValue({
       items: [OPEN_MSG],
       page: 1,
@@ -89,7 +88,7 @@ describe('SupportInboxPage', () => {
 
   it('does not let the viewer resolve a message they sent', async () => {
     supportApi.getSupportMessages.mockResolvedValue({
-      items: [{ ...OPEN_MSG, id: 2, senderEmployeeNumber: 801, senderName: 'Meg Manager' }],
+      items: [{ ...OPEN_MSG, id: 2, senderEmployeeNumber: 900, senderName: 'Dee Director' }],
       page: 1,
       pageSize: 100,
       totalCount: 1,
@@ -99,6 +98,15 @@ describe('SupportInboxPage', () => {
     await screen.findByText('Approve button does nothing')
     expect(screen.queryByRole('button', { name: /mark resolved/i })).not.toBeInTheDocument()
     expect(screen.getByText(/you sent this/i)).toBeInTheDocument()
+  })
+
+  it('hides the resolve action from anyone below Managing Director', async () => {
+    mockUser = { employeeNumber: 901, name: 'Mel Manager', role: 'Manager', rankLevel: 2 }
+    render(<SupportInboxPage />)
+
+    await screen.findByText('Approve button does nothing')
+    expect(screen.queryByRole('button', { name: /mark resolved/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /reopen/i })).not.toBeInTheDocument()
   })
 
   it('reveals session diagnostics on demand', async () => {

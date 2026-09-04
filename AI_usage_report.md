@@ -1493,3 +1493,13 @@ reporter can't change the status of a message they sent — `SetResolvedAsync` t
 this" badge in place of the resolve/reopen button on those rows. Another Manager+ still
 resolves it normally. +1 backend test (own → 400, other manager → 200), +1 frontend test.
 dotnet test 129 passed; vitest 112 passed.
+
+### 2026-09-04 (follow-up) — Only the Managing Director resolves support messages
+
+Review feedback. New `RequireManagingDirector` policy (`RankLevelRequirement(4)`);
+`PATCH /api/v1/support/messages/{id}/status` moved from `RequireManager` to it. Manager /
+Business Manager still view the inbox but the resolve/reopen button is hidden for them
+(they see a plain "Open" / "Resolved" status); shown only for `rankLevel >= 4`. The
+no-self-resolve guard stays. Tests reworked to use a Managing Director for the resolve path
+(+ Manager-403, + non-MD-hides-button). Known gap noted in the handoff: an MD's own message
+can't be resolved by anyone. dotnet test 130 passed; vitest 113 passed.

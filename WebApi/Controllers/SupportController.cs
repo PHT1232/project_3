@@ -9,9 +9,9 @@ namespace WebApi.Controllers;
 
 /// <summary>
 /// In-app support inbox (Help page "message the team"). Any authenticated user can send a
-/// message; Manager+ read and triage them. No email is sent — SMTP is on the Plan's [CUT]
-/// list; this is the in-app alternative (Option B of the contact-the-team decision).
-/// Thin: bind → service/query → result.
+/// message; Manager+ read them; only the Managing Director resolves/reopens them. No email is
+/// sent — SMTP is on the Plan's [CUT] list; this is the in-app alternative (Option B of the
+/// contact-the-team decision). Thin: bind → service/query → result.
 /// </summary>
 [ApiController]
 [Route("api/v1/support")]
@@ -60,9 +60,9 @@ public class SupportController(
         return match is null ? NotFound() : Ok(match);
     }
 
-    /// <summary>Resolve or reopen a message. Manager+ only.</summary>
+    /// <summary>Resolve or reopen a message. Managing Director only.</summary>
     [HttpPatch("messages/{id:int}/status")]
-    [Authorize(Policy = "RequireManager")]
+    [Authorize(Policy = "RequireManagingDirector")]
     public async Task<ActionResult<SupportMessageDto>> SetStatus(int id, [FromBody] SetSupportMessageStatusRequest request)
     {
         var actor = currentUserService.EmployeeNumber

@@ -42,7 +42,10 @@ No navigation properties — same pattern as `Notification` / `AiInteractionLog`
 | GET | `/api/v1/support/messages?status=&page=&pageSize=` | `RequireManager` | Triage list, newest-first |
 | GET | `/api/v1/support/messages/{id}` | `RequireManager` | One message |
 | GET | `/api/v1/support/messages/open-count` | `RequireManager` | Count still `New` (for a future badge) |
-| PATCH | `/api/v1/support/messages/{id}/status` | `RequireManager` | `{ resolved: bool }` — resolve / reopen. **400 if the actor is the message's own sender** — the reporter doesn't triage their own ticket. |
+| PATCH | `/api/v1/support/messages/{id}/status` | **`RequireManagingDirector`** | `{ resolved: bool }` — resolve / reopen. Rank ≥ 4 only. Also **400 if the actor is the message's own sender**. |
+
+`RequireManagingDirector` = `RankLevelRequirement(4)`, added alongside `RequireManager` in
+`Program.cs`. Manager / Business Manager can view the inbox but not resolve.
 
 Write side: `ISupportMessageService` (`Infrastructure/Services/SupportMessageService.cs`).
 Read side: `ISupportMessageQueries` (`Infrastructure/Queries/SupportMessageQueries.cs`).
@@ -56,10 +59,11 @@ Validation: `CreateSupportMessageCommandValidator` (FluentValidation → `Valida
   collapsible "session details we'll attach"). Success screen; API `detail` surfaced on error.
 - `pages/help/components/ContactCard.jsx` — "Message the team" opens the dialog; the email
   address is now just a plain fallback line; "Copy diagnostics" retained.
-- `pages/support/SupportInboxPage.jsx` — Manager+ triage. Open / Resolved / All filter, one
-  card per message, show/hide diagnostics, Mark resolved / Reopen. A message the viewer sent
-  themselves shows a "You sent this" badge instead of the action button (the server enforces
-  the same rule). Card skeleton while the list loads.
+- `pages/support/SupportInboxPage.jsx` — Manager+ can open it; Open / Resolved / All filter,
+  one card per message, show/hide diagnostics. The **Mark resolved / Reopen** button shows
+  only for the Managing Director (`rankLevel >= 4`); everyone else sees a plain status
+  ("Open" / "Resolved"). A message the viewer sent themselves shows "You sent this". Card
+  skeleton while the list loads.
 - Route `/support-inbox` sits inside `App.jsx`'s `requireManager` group; nav item in
   `navigation.js` with `minRankLevel: 2` (UX only — the server 403 is the real control).
 - `config/support.js` — `SUPPORT_EMAIL`, `SUPPORT_AREAS`, `buildDiagnostics(user)`.
@@ -82,6 +86,10 @@ Validation: `CreateSupportMessageCommandValidator` (FluentValidation → `Valida
    instructor for the SMTP add.
 3. Statuses are New / Resolved only — add assignment / priority / "notify sender on resolve"
    only if asked.
+6. **Resolve is Managing-Director-only** (per request). Combined with the no-self-resolve
+   rule, a message the MD sends themselves cannot be resolved by anyone. With a single MD who
+   is unlikely to file their own bug report this is acceptable; exempt the MD from the
+   self-rule if it becomes a problem.
 4. `open-count` endpoint exists but nothing shows a badge yet — wire it into the sidebar or
    dashboard if wanted.
 5. `SupportMessages` is net-new and not in the Plan's 12-table ERD (like `Notifications` /

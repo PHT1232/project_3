@@ -46,10 +46,10 @@ public class SupportMessageService(
         var message = await db.SupportMessages.FirstOrDefaultAsync(m => m.Id == id)
             ?? throw new NotFoundException($"Support message {id} not found.");
 
-        // The reporter doesn't triage their own ticket — someone else on the team closes it.
+        // The reporter doesn't triage their own ticket.
         if (message.SenderEmployeeNumber == actorEmployeeNumber)
         {
-            throw new ValidationException("You can't change the status of a message you sent — another manager needs to.");
+            throw new ValidationException("You can't change the status of a message you sent.");
         }
 
         if (resolved)

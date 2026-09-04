@@ -18,12 +18,13 @@ const FILTERS = [
 ]
 
 /**
- * Manager+ triage screen for messages sent from the Help page. Route-guarded as Manager+
- * client-side (nav hiding is UX only — the server 403 on `/api/v1/support/messages` is the
- * real control).
+ * Triage screen for messages sent from the Help page. Manager+ can view it (route-guarded
+ * client-side; the server 403 on `/api/v1/support/messages` is the real control); only the
+ * Managing Director sees the resolve/reopen action (server enforces it too).
  */
 export default function SupportInboxPage() {
   const { user } = useAuth()
+  const canResolve = (user?.rankLevel ?? 0) >= 4 // Managing Director only
   const [filter, setFilter] = useState('New')
   const [busyId, setBusyId] = useState(null)
 
@@ -86,6 +87,7 @@ export default function SupportInboxPage() {
               <MessageCard
                 message={m}
                 busy={busyId === m.id}
+                canResolve={canResolve}
                 sentByViewer={m.senderEmployeeNumber === user?.employeeNumber}
                 onToggle={() => toggle(m)}
               />
@@ -122,7 +124,7 @@ function SupportInboxSkeleton({ rows = 4 }) {
   )
 }
 
-function MessageCard({ message, busy, sentByViewer, onToggle }) {
+function MessageCard({ message, busy, canResolve, sentByViewer, onToggle }) {
   const [showDiag, setShowDiag] = useState(false)
   const resolved = message.status === 'Resolved'
 
@@ -142,7 +144,7 @@ function MessageCard({ message, busy, sentByViewer, onToggle }) {
         </div>
         {sentByViewer ? (
           <Badge tone="outline">You sent this</Badge>
-        ) : (
+        ) : canResolve ? (
           <Button
             size="sm"
             variant={resolved ? 'secondary' : 'primary'}
@@ -151,7 +153,9 @@ function MessageCard({ message, busy, sentByViewer, onToggle }) {
           >
             {busy ? '…' : resolved ? 'Reopen' : 'Mark resolved'}
           </Button>
-        )}
+        ) : !resolved ? (
+          <Badge tone="outline">Open</Badge>
+        ) : null}
       </div>
 
       <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-ink">{message.body}</p>

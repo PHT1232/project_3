@@ -22,6 +22,10 @@ public class SupportTests : IAsyncLifetime
             _factory.Services, 801, "Meg Manager", "meg.sup@hmt.test", "Manager", "Password1!");
         await TestUserFactory.CreateUserAsync(
             _factory.Services, 802, "Ed Engineer", "ed.sup@hmt.test", "Engineer", "Password1!", superiorEmployeeNumber: 801);
+        await TestUserFactory.CreateUserAsync(
+            _factory.Services, 804, "Dana Director", "dana.sup@hmt.test", "Managing Director", "Password1!");
+        await TestUserFactory.CreateUserAsync(
+            _factory.Services, 805, "Vic Director", "vic.sup@hmt.test", "Managing Director", "Password1!");
     }
 
     public Task DisposeAsync()
@@ -109,7 +113,28 @@ public class SupportTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Resolve_AsManager_FlipsStatusAndRecordsResolver()
+    public async Task Resolve_AsManagingDirector_FlipsStatusAndRecordsResolver()
+    {
+        var engineer = await AuthedClientAsync(802);
+        var created = await (await engineer.PostAsJsonAsync("/api/v1/support/messages", ValidMessage))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        var id = created.GetProperty("id").GetInt32();
+
+        var director = await AuthedClientAsync(804);
+
+        var resolved = await director.PatchAsJsonAsync($"/api/v1/support/messages/{id}/status", new { resolved = true });
+        resolved.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resolved.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("status").GetString().Should().Be("Resolved");
+        body.GetProperty("resolvedByName").GetString().Should().Be("Dana Director");
+        body.GetProperty("resolvedAtUtc").ValueKind.Should().NotBe(JsonValueKind.Null);
+
+        var openCount = await director.GetFromJsonAsync<int>("/api/v1/support/messages/open-count");
+        openCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Resolve_AsManager_Returns403()
     {
         var engineer = await AuthedClientAsync(802);
         var created = await (await engineer.PostAsJsonAsync("/api/v1/support/messages", ValidMessage))
@@ -117,35 +142,24 @@ public class SupportTests : IAsyncLifetime
         var id = created.GetProperty("id").GetInt32();
 
         var manager = await AuthedClientAsync(801);
-
-        var resolved = await manager.PatchAsJsonAsync($"/api/v1/support/messages/{id}/status", new { resolved = true });
-        resolved.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resolved.Content.ReadFromJsonAsync<JsonElement>();
-        body.GetProperty("status").GetString().Should().Be("Resolved");
-        body.GetProperty("resolvedByName").GetString().Should().Be("Meg Manager");
-        body.GetProperty("resolvedAtUtc").ValueKind.Should().NotBe(JsonValueKind.Null);
-
-        var openCount = await manager.GetFromJsonAsync<int>("/api/v1/support/messages/open-count");
-        openCount.Should().Be(0);
+        var res = await manager.PatchAsJsonAsync($"/api/v1/support/messages/{id}/status", new { resolved = true });
+        res.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
     [Fact]
-    public async Task Resolve_OwnMessage_Returns400_EvenForAManager()
+    public async Task Resolve_OwnMessage_Returns400_EvenForTheManagingDirector()
     {
-        var manager = await AuthedClientAsync(801);
-        var created = await (await manager.PostAsJsonAsync("/api/v1/support/messages", ValidMessage))
+        var director = await AuthedClientAsync(804);
+        var created = await (await director.PostAsJsonAsync("/api/v1/support/messages", ValidMessage))
             .Content.ReadFromJsonAsync<JsonElement>();
         var id = created.GetProperty("id").GetInt32();
 
-        var res = await manager.PatchAsJsonAsync($"/api/v1/support/messages/{id}/status", new { resolved = true });
+        var own = await director.PatchAsJsonAsync($"/api/v1/support/messages/{id}/status", new { resolved = true });
+        own.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
-        res.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-
-        // Another manager still can.
-        await TestUserFactory.CreateUserAsync(
-            _factory.Services, 803, "Sam Manager", "sam.sup@hmt.test", "Manager", "Password1!");
-        var other = await AuthedClientAsync(803);
-        var ok = await other.PatchAsJsonAsync($"/api/v1/support/messages/{id}/status", new { resolved = true });
+        // A different Managing Director can.
+        var otherDirector = await AuthedClientAsync(805);
+        var ok = await otherDirector.PatchAsJsonAsync($"/api/v1/support/messages/{id}/status", new { resolved = true });
         ok.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
