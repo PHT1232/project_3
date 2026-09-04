@@ -10,6 +10,8 @@ import { ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
 import { SkeletonTable } from '../../components/ui/Skeleton.jsx'
 import useAsync from '../../hooks/useAsync.js'
 import useSortableTable from '../../hooks/useSortableTable.js'
+import usePagination from '../../hooks/usePagination.js'
+import Pagination from '../../components/ui/Pagination.jsx'
 import SortableHeader from '../../components/ui/SortableHeader.jsx'
 import { getSuppliers, createSupplier, updateSupplier, deactivateSupplier } from '../../api/suppliers.js'
 
@@ -101,6 +103,7 @@ export default function SupplierManagement() {
     key: 'name',
     dir: 'asc',
   })
+  const { page, setPage, totalPages, total, pageRows } = usePagination(sortedSuppliers)
 
   function openCreate() {
     setFormState({ open: true, supplier: null, error: null })
@@ -184,7 +187,7 @@ export default function SupplierManagement() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-border">
-                {sortedSuppliers.map((supplier) => (
+                {pageRows.map((supplier) => (
                   <tr key={supplier.supplierId}>
                     <td className="px-4 py-3 font-medium text-ink">{supplier.name}</td>
                     <td className="px-4 py-3 text-ink-muted">{supplier.leadTimeDays} days</td>
@@ -214,6 +217,13 @@ export default function SupplierManagement() {
                 ))}
               </tbody>
             </table>
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              onPageChange={setPage}
+              noun="supplier"
+            />
           </div>
         )}
       </Card>

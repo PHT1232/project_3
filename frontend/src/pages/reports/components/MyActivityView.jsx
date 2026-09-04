@@ -4,6 +4,8 @@ import { formatCurrency, formatNumber } from '../../../lib/format.js'
 import LineChart from './charts/LineChart.jsx'
 import SortHeader from './SortHeader.jsx'
 import { nextSort, applySort } from '../tableSort.js'
+import Pagination from '../../../components/ui/Pagination.jsx'
+import usePagination from '../../../hooks/usePagination.js'
 
 /**
  * "My Requests" — always the signed-in user's own approved activity, regardless of role.
@@ -21,6 +23,7 @@ export default function MyActivityView({ report }) {
   const { rows, points, approvedCost } = report
   const [sort, setSort] = useState(null)
   const sorted = applySort(rows, sort, ACCESSORS)
+  const { page, setPage, totalPages, total, isOnPage } = usePagination(sorted)
   const onSort = (key) => setSort((current) => nextSort(current, key))
 
   const monthly = points.map((p) => ({ label: p.periodLabel, value: p.periodCost }))
@@ -45,8 +48,13 @@ export default function MyActivityView({ report }) {
             </tr>
           </thead>
           <tbody>
-            {sorted.map((row) => (
-              <tr key={row.itemId} className="border-b border-surface-border last:border-0">
+            {sorted.map((row, index) => (
+              <tr
+                key={row.itemId}
+                className={`border-b border-surface-border last:border-0 ${
+                  isOnPage(index) ? '' : 'hidden print:table-row'
+                }`}
+              >
                 <td className="px-4 py-3 font-medium text-ink">{row.itemName}</td>
                 <td className="px-4 py-3 text-ink-muted">{row.categoryName}</td>
                 <td className="px-4 py-3 text-right tabular-nums text-ink">
@@ -66,6 +74,7 @@ export default function MyActivityView({ report }) {
             </tr>
           </tfoot>
         </table>
+        <Pagination page={page} totalPages={totalPages} total={total} onPageChange={setPage} noun="request" />
       </div>
     </div>
   )

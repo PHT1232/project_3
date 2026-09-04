@@ -50,8 +50,8 @@ export function AuthProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const login = useCallback(async (employeeNumber, password) => {
-    const response = await loginRequest(employeeNumber, password)
+  const login = useCallback(async (identifier, password) => {
+    const response = await loginRequest(identifier, password)
     setStoredAccessToken(response.accessToken)
     setToken(response.accessToken)
     setUser(response.user)

@@ -1370,111 +1370,100 @@ page-map §14.
 **Validation:** `dotnet build Project.slnx` 0 errors; `dotnet test Project.slnx` 91 passed
 (incl. 4 new EligibilityTests); `npm run build` + `npm test` 91 passed.
 
-## 2026-09-04 — Help & support page (Plan T6.1)
+## 2026-09-04 — Sign in by email address as well as employee number
 
-**Task:** Build the Help page — static Q&A covering every feature, plus a way to email the
-dev team.
+**Task:** Add email login to the sign-in page, keeping employee-number login working.
 
-**What changed, by file:**
-- `frontend/src/pages/Help.jsx` — replaced the placeholder; composes the three cards.
-- `frontend/src/pages/help/faqData.js` (new) — 28 static Q&A entries across 8 areas
-  (Getting started, Requests, Tracking, Approvals, Budget & eligibility, Notifications,
-  Reports, Account). Exceeds T6.1's "≥15 covering every feature".
-- `frontend/src/pages/help/components/FaqList.jsx` (new) — searchable accordion (native
-  `<details>`), filters question + answer text and auto-expands matches, grouped by area.
-- `frontend/src/pages/help/components/ContactCard.jsx` (new) — `mailto:` hand-off to the
-  shared inbox (`antsconst84@gmail.com`): "Report a bug" / "Ask a question" open the user's
-  mail client with subject + body scaffold + a diagnostics block prefilled; "Copy
-  diagnostics" copies the same block.
-- `frontend/src/pages/help/components/SystemInfoCard.jsx` (new) — read-only build/session
-  panel (employee #, role, app version, build date).
-- `frontend/src/config/support.js` (new) — support email, area list, mailto/diagnostics builders.
-- `frontend/vite.config.js` — `define` injects `__APP_VERSION__` (git short SHA, safe
-  fallback) and `__BUILD_TIME__`.
-- `frontend/src/pages/help/Help.test.jsx` (new) — 8 tests: ≥15 entries, every area covered,
-  non-empty Q/A, page renders, search filters, no-match message, mailto target + subject,
-  system-info shows the user.
+**Tool:** Claude Code (Opus 5). Prompt summary: "can you add login by email to the login page?"
 
-**Assumptions / decisions (per the user's answers):**
-- **FAQ is a frontend module, not `GET /api/v1/help/faq`.** The Plan lists that endpoint as
-  `[SPEC]`; the user asked to keep it static "as of right now". Content is shaped as a flat
-  list so it can move behind the endpoint later with no page change. **Flagged deviation.**
-- **Email is `mailto:` only** — no server-side send (SMTP is `[CUT]`), no persistence. No
-  feedback section (dropped at the user's request).
-- **One shared support inbox**, not per-developer buttons — team members aren't named in the
-  repo (CLAUDE.md K6). Address lives in `config/support.js`.
+**Scope note — this goes beyond the Plan.** Plan §3.1 line 213 makes `EmployeeNumber` "primary
+key **and** login", and §4.2 / T1.2 / the M1 acceptance list all specify "employee number +
+password". Email as a second identifier is a user-requested addition, not something the Plan
+asks for; it is safe because Identity already holds `Email` unique (`RequireUniqueEmail = true`
+in Program.cs), so an address identifies exactly one account. Flagged here rather than merged
+silently (CLAUDE.md §5).
 
-**Left out of scope:** the `help/faq` endpoint; any feedback storage / Manager feedback view;
-glossary and changelog sections (suggested, not requested).
-
-**Validation:** `npx vitest run --pool=threads` **106 passed** (8 new); `npm run build`
-clean. Rendered in a headless browser signed in as an Engineer — screenshots shown to the
-user.
-
-## 2026-09-04 — In-app support inbox (Help page "message the team", Option B)
-
-**Task:** Replace the Help page's `mailto:` buttons (which do nothing on a machine with no
-mail client) with an in-app dialog that delivers straight to the team.
-
-**Approach:** Option B of the contact-the-team decision — store messages in a new table and
-give Manager+ an in-app triage screen. **No SMTP** (email/SMTP is on the Plan's `[CUT]`
-list; a server-side sender would be a scope breach). Works with the network unplugged.
+**Design:** one input labelled "Employee number or email". `frontend/src/api/auth.js` decides the
+wire shape — all digits → `{employeeNumber}`, anything else → `{email}` — so the page and
+`AuthContext` stay unaware of the contract. The server accepts exactly one identifier.
 
 **What changed, by file:**
-- `frontend/src/pages/requests/NewRequestPage.jsx` — removed the `mt-1` class from `#stock-filter`; added a Stock column showing `quantityAvailable` followed by `available` for each picker row.
-- `frontend/src/pages/requests/NewRequestPage.test.jsx` — asserts available-stock text for the picker item.
-- `docs/development/request-pages-implementation-handoff.md` — documented compact select spacing and the quantity-available table column.
+- `Application/DTOs/Auth/LoginRequest.cs` — now `(int? EmployeeNumber, string? Email, string Password)`. Both identifiers optional at the type level so the 16 existing callers that send `employeeNumber` are untouched.
+- `Application/Validators/Auth/LoginRequestValidator.cs` — new. Exactly one identifier (XOR), password non-empty. Deliberately **no** format or range checks — see the correction below.
+- `Application/Interfaces/Auth/IAccountStore.cs` — `+ VerifyCredentialsByEmailAsync`.
+- `Infrastructure/Identity/IdentityAccountAdapter.cs` — both lookups now funnel into one private `VerifyAsync`, so the email path cannot drift from the employee-number path: same `IsActive` gate, same `CheckPasswordSignInAsync(lockoutOnFailure: true)`, same generic failure. Email lookup uses `FindByEmailAsync`, which matches on Identity's `NormalizedEmail` and is therefore case- and whitespace-insensitive for free.
+- `Application/Services/Auth/AuthService.cs` — validates, then branches on which identifier is present. Constructor gained `IValidator<LoginRequest>`.
+- `WebApi/Controllers/AuthController.cs` — 401 detail changed from "Employee number or password is incorrect." to "Those sign-in details are incorrect." so it names neither identifier.
+- `frontend/src/api/auth.js` — `login(identifier, password)` picks the wire shape.
+- `frontend/src/contexts/AuthContext.jsx` — parameter renamed `employeeNumber` → `identifier` (it was never used as a number).
+- `frontend/src/pages/Login.jsx` — single `identifier` field, `type="text"`, placeholder `101 or you@hmt.local`; separate messages for 400 (malformed request) and 401 (generic).
+- Tests: `AuthServiceTests` (+3), `AuthTests` integration (+6), `Login.test.jsx` (+2), new `frontend/src/api/auth.test.js` (4).
 
-**No API, backend, database, migration, authorization, stock-filter behavior, or request-state changes.** The displayed value is already supplied by `GET /api/v1/items`.
+**A mistake made and corrected during this task, worth recording.** The first version of
+`LoginRequestValidator` enforced the Plan's 1–1000 employee-number range and an email-format
+check. That broke the pre-existing contract test
+`Login_UnknownEmployeeNumber_ReturnsSameGeneric401AsWrongPassword`: employee number `999999`
+started returning **400** where it had returned the generic **401**. That is a real information
+leak, not just a failing test — a 400/401 split tells an attacker which identifiers are even
+worth trying. Both rules were removed. The rule now is: a request is rejected with 400 only when
+it is structurally unanswerable (no identifier, both identifiers, or no password); anything that
+merely *cannot match an account* returns the same generic 401 as a wrong password.
 
-**Validation:** `npx vitest run src/pages/requests/NewRequestPage.test.jsx --pool=threads` — 8/8 passed. `npm run build` in `frontend/` — passed.
+**No database, migration, authorization-policy, token or request-state changes.** Lockout,
+`IsActive` enforcement and JWT contents are untouched.
 
-**Out of scope:** stock reservations, quantity validation against live stock, and stock-threshold changes.
+**Validation actually run (2026-09-04):**
+- `dotnet build Project.slnx` — 0 errors. `dotnet test Project.slnx` — **133/133** (Application.UnitTests 53, WebApi.IntegrationTests 80).
+- `npx vitest run --pool=threads` — **104/104** across 18 files. `npm run build` — passed.
+- Live API on `.\SQLEXPRESS`: login by email → 200; `"  AI.Tester@HMT.Local  "` (case + whitespace) → 200; employee number 901 → 200; unregistered email → 401 "Those sign-in details are incorrect."; both identifiers at once → 400.
+- Browser: signed in as `ai.tester@hmt.local` → dashboard "Welcome back, Ai Tester"; wrong password → the generic alert, still on `/login`; `901` → dashboard. (The Browser pane's viewport collapsed to 0×0 partway through, so the last two checks were driven through the DOM rather than by clicking.)
 
-## 2026-09-04 — Restrict Item Management and User Management to Business Manager+
+**Known issue / follow-up for the reviewer:** an unregistered email returns without a password
+hash being computed, while a registered one does — a timing side-channel that could in principle
+be used to enumerate addresses. The employee-number path has had exactly the same shape since
+M1, so this is not a regression, and closing it means always hashing against a dummy. Worth a
+decision, not silently ignoring. Auth changes need **2 reviewers** (CLAUDE.md §5).
 
-**Task:** Apply the user-requested access override: Engineer and Manager cannot access Item Management or User Management; Business Manager and Managing Director can. Inventory and Suppliers remain Manager+.
+## 2026-09-04 — Pagination on the remaining large tables (12 rows per page)
 
-**What changed:**
-- `WebApi/Program.cs`: added `RequireBusinessManager` with existing `RankLevelRequirement(3)`.
-- `WebApi/Controllers/ManagerCatalogueController.cs`: item and category management now require `RequireBusinessManager`.
-- `WebApi/Controllers/UsersController.cs`: list, create, update, and status-change APIs now require `RequireBusinessManager`; subordinate lookup remains self-or-Manager+.
-- `frontend/src/routes/ProtectedRoute.jsx`: accepts `minimumRankLevel` while retaining existing `requireManager` compatibility.
-- `frontend/src/App.jsx` and `frontend/src/navigation.js`: Item Management and User Management require/show at rank 3; Inventory and Suppliers remain rank 2.
-- `Tests/WebApi.IntegrationTests/{UsersTests,CatalogueTests}.cs`: Business Manager success fixtures and Manager 403 coverage.
-- `frontend/src/routes/ProtectedRoute.test.jsx`: Manager redirect and Business Manager rendering coverage.
-- `docs/development/business-manager-management-access-handoff.md`: architecture, API matrix, tests, exclusions, and reviewer follow-up.
+**Task:** "Make other tabs that have large table have next page, similar to that in catalogue.
+Keep 12 items per page."
 
-**Assumption / override:** This intentionally overrides the prior Plan baseline that used Manager+ for Item Management and User Management. It was explicitly requested; it must be reconciled into the Plan revision history by the team.
+**Tool:** Claude Code (Opus 5).
 
-**APIs changed:** No routes added or removed. Authorization for `POST/PUT/PATCH /api/v1/items`, category management APIs, and `GET/POST/PUT/PATCH /api/v1/users` now requires rank 3. `GET /api/v1/users/{empNo}/subordinates` is unchanged.
+**What changed, by file:**
+- `frontend/src/hooks/usePagination.js` — **new.** Client-side pagination for a table that already holds all its rows. Exposes `pageRows` (the slice) and `isOnPage(index)`; `DEFAULT_PAGE_SIZE = 12`. Resets to page 1 when the row count changes, and clamps so the page is never past the end.
+- `frontend/src/components/ui/Pagination.jsx` — **new.** The footer, lifted verbatim from the Catalogue page's wording and markup ("Page 1 of 4 · 40 items" + Previous/Next), so every table now reads the same. Carries `data-print-hide`. Takes an optional `noun`/`nounPlural`.
+- `frontend/src/pages/inventory/InventoryPage.jsx` — paginates `visibleRows` (sorted + filtered) via `pageRows`; footer under the table.
+- `frontend/src/pages/manager/ItemManagement.jsx` — same, on `sortedItems`.
+- `frontend/src/pages/manager/SupplierManagement.jsx` — same, on `sortedSuppliers`, `noun="supplier"`.
+- `frontend/src/pages/reports/components/{CostByItemView,ItemHeadcountView,TeamExpenditureView,InventoryValuationView,MyActivityView}.jsx` — paginated via `isOnPage` (see below). Nouns: team / request / item.
+- Tests: `frontend/src/hooks/usePagination.test.js` (7), `frontend/src/components/ui/Pagination.test.jsx` (5).
 
-**DB changes:** None. No migration.
+**Why the Reports tabs are paginated differently — the one real design decision.** The Reports
+page has a Print button that prints the live DOM (`window.print()` over `[data-print-region]`).
+If those tables rendered only the current slice, printing a cost report would silently emit page
+1 and nothing else — a data-integrity problem in a manager report, not a cosmetic one. So the
+report views keep **every** row in the DOM and hide the off-page ones with Tailwind's
+`hidden print:table-row`; the print stylesheet re-shows them. Verified in the browser: the
+generated rule `.print\:table-row { display: table-row }` sits at stylesheet index 375 against
+`.hidden` at 99, so it wins the cascade inside `@media print`. The `<tfoot>` totals were already
+computed over the full row set and are untouched, and CSV export reads `filteredRows` on the
+page, so neither shows a per-page number.
 
-**Validation actually run:** `dotnet test Project.slnx --no-restore` — 89/89 passed; existing `NU1903` warning for `SQLitePCLRaw.lib.e_sqlite3` 2.1.11. `npx vitest run src/routes/ProtectedRoute.test.jsx --pool=threads` — 6/6 passed. `npm run build` — passed. React Router emitted non-failing future-flag warnings.
+**Deliberately not paginated:**
+- `CumulativeCostView` — its two tables are one row per period (~12 max) and a fixed top-5.
+- Dashboard "Recent Requests", and the line-item tables inside the request/approval/supplier-request modals — all small and bounded by design.
+- Catalogue (15/page), My Requests (15), Approvals (20), User Management (20), New Request picker (5) — already paginated, and left at their existing sizes rather than being retuned to 12 as an unrequested change. **They are now inconsistent with the new tables; say the word and I will unify them.**
 
-**Out of scope:** No access change for Inventory, Suppliers, catalogue reads, or subordinate lookup. No role data or Identity schema changes.
+**No backend, API, database or authorization changes.** Pagination is client-side over data the
+pages already fetch, exactly as the Catalogue does; no endpoint contracts were touched.
 
-## 2026-09-04 — Prevent Business Managers from managing peer or superior accounts
+**Validation actually run (2026-09-04):**
+- `npm run build` — passed. `npx vitest run --pool=threads` — **116/116** across 20 files (was 104/18).
+- Browser, signed in as the Managing Director: Inventory "Page 1 of 4 · 40 items", 12 rows, Next → page 2 starting at "Highlighter Set, 6 Colours"; Item Management "Page 1 of 4 · 40 items"; Suppliers "Page 1 of 1 · 7 suppliers"; Reports → Inventory Valuation 40 rows in the DOM / 12 on screen / 28 hidden, footer "Page 1 of 4 · 40 items", `<tfoot>` still "Total Stock Value $30,135.28" over all 40. Every report tab rendered without error.
 
-**Task:** Enforce the requested row-level User Management rule: a Business Manager cannot perform actions on Business Manager or Managing Director accounts.
-
-**What changed:**
-- `Application/Services/Users/UserManagementService.cs`: injects `ICurrentUserService`; Business Managers are denied update/status actions for target rank 3 or 4 and denied creating or assigning rank 3/4 roles.
-- `Application/Interfaces/Users/IUserStore.cs` and `Infrastructure/Identity/IdentityUserStore.cs`: added `GetRoleRankLevelAsync`, resolved from ASP.NET Core Identity `ApplicationRole.RankLevel`.
-- `Application/Exceptions/ForbiddenException.cs` and `WebApi/Middleware/ExceptionHandlingMiddleware.cs`: domain authorization failures become RFC 7807 HTTP `403 Forbidden`.
-- `Tests/Application.UnitTests/Users/UserManagementServiceTests.cs`: Business Manager peer-management unit coverage and current-user fixture support.
-- `Tests/WebApi.IntegrationTests/UsersTests.cs`: HTTP 403 coverage for create Business Manager, update Business Manager, and change Managing Director status.
-- `docs/development/business-manager-management-access-handoff.md`: updated access matrix, architecture, tests, and validation result.
-
-**Behavior:** Business Managers can manage Engineer/Manager accounts only. They cannot create or promote accounts to Business Manager/Managing Director, modify Business Manager/Managing Director accounts including themselves, or change their active status. Managing Director behavior is unchanged.
-
-**Assumption:** “Actions” covers create, update/role assignment, and active-status changes exposed by User Management. The list API remains available to Business Manager because it is required to locate/manage lower-rank accounts; no sensitive data beyond the existing user list is added.
-
-**APIs changed:** No routes changed. Existing `POST /api/v1/users`, `PUT /api/v1/users/{empNo}`, and `PATCH /api/v1/users/{empNo}/status` can now return `403` for these row-level cases.
-
-**DB changes:** None. No migration.
-
-**Validation actually run:** `dotnet test Project.slnx --no-restore` — 93/93 passed; existing `NU1903` warning for `SQLitePCLRaw.lib.e_sqlite3` 2.1.11. `npx vitest run src/routes/ProtectedRoute.test.jsx --pool=threads` — 6/6 passed. `npm run build` — passed; non-failing React Router future-flag warnings.
-
-**Out of scope:** No restriction on Managing Director, no changes to Inventory/Suppliers/Catalogue, no UI-specific disabling because server-side enforcement is authoritative.
+**Known limitation:** the page resets when the row *count* changes, which covers filtering and
+searching. A filter that happens to leave the count identical keeps the current page number; the
+clamp still guarantees it is in range. Catalogue solves this by resetting on its specific filter
+state, which the shared hook cannot see.
