@@ -28,6 +28,24 @@ public class RequestsTests : IAsyncLifetime
         // 603: Another Engineer whose superior is null/nobody
         await TestUserFactory.CreateUserAsync(
             _factory.Services, 603, "Other Engineer", "other.req@hmt.test", "Engineer", "Password1!");
+
+        // A self-contained reporting line for the hierarchy-visibility tests:
+        //   615 Managing Director
+        //   └── 610 Business Manager
+        //       ├── 611 Manager ──── 613 Engineer
+        //       └── 612 Manager ──── 614 Engineer
+        await TestUserFactory.CreateUserAsync(
+            _factory.Services, 615, "Dita Director", "dita.req@hmt.test", "Managing Director", "Password1!");
+        await TestUserFactory.CreateUserAsync(
+            _factory.Services, 610, "Bianca BizMgr", "bianca.req@hmt.test", "Business Manager", "Password1!", superiorEmployeeNumber: 615);
+        await TestUserFactory.CreateUserAsync(
+            _factory.Services, 611, "Milo Manager", "milo.req@hmt.test", "Manager", "Password1!", superiorEmployeeNumber: 610);
+        await TestUserFactory.CreateUserAsync(
+            _factory.Services, 612, "Petra Manager", "petra.req@hmt.test", "Manager", "Password1!", superiorEmployeeNumber: 610);
+        await TestUserFactory.CreateUserAsync(
+            _factory.Services, 613, "Ravi Engineer", "ravi.req@hmt.test", "Engineer", "Password1!", superiorEmployeeNumber: 611);
+        await TestUserFactory.CreateUserAsync(
+            _factory.Services, 614, "Sara Engineer", "sara.req@hmt.test", "Engineer", "Password1!", superiorEmployeeNumber: 612);
     }
 
     public Task DisposeAsync()
@@ -192,6 +210,96 @@ public class RequestsTests : IAsyncLifetime
         // 603 tries to read 602's request -> 404 (does not leak existence)
         var res603 = await client603.GetAsync($"/api/v1/requests/{requestId}");
         res603.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task GetVisible_Manager_SeesOwnSubordinatesRequests_ButNotAPeersOrSuperiors()
+    {
+        var (category, supplier) = await CatalogueTestData.SeedCategoryAndSupplierAsync(_factory.Services);
+        var item = await CatalogueTestData.SeedItemAsync(_factory.Services, category.Id, supplier.Id, minRankLevelToRequest: 1);
+
+        var subordinate = await AuthedClientAsync(613, "Password1!");  // reports to Manager 611
+        var peerEngineer = await AuthedClientAsync(614, "Password1!");  // reports to Manager 612
+        var peerManager = await AuthedClientAsync(612, "Password1!");
+        var superior = await AuthedClientAsync(610, "Password1!");      // Business Manager over 611
+
+        await CreateRequestAsync(subordinate, item.Id, 1);
+        await CreateRequestAsync(peerEngineer, item.Id, 1);
+        await CreateRequestAsync(peerManager, item.Id, 1);
+        await CreateRequestAsync(superior, item.Id, 1);
+
+        var manager611 = await AuthedClientAsync(611, "Password1!");
+        var visible = await manager611.GetFromJsonAsync<JsonElement>("/api/v1/requests?page=1&pageSize=50");
+
+        var requestorIds = visible.GetProperty("items").EnumerateArray()
+            .Select(r => r.GetProperty("requestorEmployeeNumber").GetInt32())
+            .ToHashSet();
+
+        requestorIds.Should().Contain(613, "an engineer who reports to 611");
+        requestorIds.Should().NotContain(614, "an engineer who reports to a peer manager");
+        requestorIds.Should().NotContain(612, "a peer manager");
+        requestorIds.Should().NotContain(610, "the manager's own superior");
+    }
+
+    [Fact]
+    public async Task GetVisible_BusinessManager_SeesRequestsTwoLevelsDown()
+    {
+        var (category, supplier) = await CatalogueTestData.SeedCategoryAndSupplierAsync(_factory.Services);
+        var item = await CatalogueTestData.SeedItemAsync(_factory.Services, category.Id, supplier.Id, minRankLevelToRequest: 1);
+
+        var deepEngineer = await AuthedClientAsync(614, "Password1!"); // 614 → 612 → 610
+        await CreateRequestAsync(deepEngineer, item.Id, 1);
+
+        var businessManager610 = await AuthedClientAsync(610, "Password1!");
+        var visible = await businessManager610.GetFromJsonAsync<JsonElement>("/api/v1/requests?page=1&pageSize=50");
+
+        var requestorIds = visible.GetProperty("items").EnumerateArray()
+            .Select(r => r.GetProperty("requestorEmployeeNumber").GetInt32())
+            .ToHashSet();
+
+        requestorIds.Should().Contain(614);
+    }
+
+    [Fact]
+    public async Task GetById_Manager_CannotSeeAPeerManagersRequest_Returns404()
+    {
+        var (category, supplier) = await CatalogueTestData.SeedCategoryAndSupplierAsync(_factory.Services);
+        var item = await CatalogueTestData.SeedItemAsync(_factory.Services, category.Id, supplier.Id, minRankLevelToRequest: 1);
+
+        var peerManager = await AuthedClientAsync(612, "Password1!");
+        var requestId = await CreateRequestAsync(peerManager, item.Id, 1);
+
+        var manager611 = await AuthedClientAsync(611, "Password1!");
+        var res = await manager611.GetAsync($"/api/v1/requests/{requestId}");
+
+        res.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task GetById_ManagingDirector_SeesAnyRequest()
+    {
+        var (category, supplier) = await CatalogueTestData.SeedCategoryAndSupplierAsync(_factory.Services);
+        var item = await CatalogueTestData.SeedItemAsync(_factory.Services, category.Id, supplier.Id, minRankLevelToRequest: 1);
+
+        var engineer = await AuthedClientAsync(602, "Password1!"); // reports to 601, outside MD 615's line
+        var requestId = await CreateRequestAsync(engineer, item.Id, 1);
+
+        var director615 = await AuthedClientAsync(615, "Password1!");
+        var res = await director615.GetAsync($"/api/v1/requests/{requestId}");
+
+        res.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    private static async Task<int> CreateRequestAsync(HttpClient client, int itemId, int quantity)
+    {
+        var res = await client.PostAsJsonAsync("/api/v1/requests", new
+        {
+            items = new[] { new { itemId, quantity } }
+        });
+        res.StatusCode.Should().Be(HttpStatusCode.Created,
+            "create failed: {0}", await res.Content.ReadAsStringAsync());
+        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
+        return body.GetProperty("requestId").GetInt32();
     }
 
     private async Task<HttpClient> AuthedClientAsync(int employeeNumber, string password)

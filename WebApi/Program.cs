@@ -190,6 +190,7 @@ try
     builder.Services.AddScoped<IInventoryService, InventoryService>();
     builder.Services.AddScoped<ISupplierRequestQueries, SupplierRequestQueries>();
     builder.Services.AddScoped<ISupplierRequestService, SupplierRequestService>();
+    builder.Services.AddScoped<IHierarchyQueries, HierarchyQueries>();
     builder.Services.AddScoped<IRequestQueries, RequestQueries>();
     builder.Services.AddScoped<IRequestService, RequestService>();
     builder.Services.AddScoped<IReportQueries, ReportQueries>();

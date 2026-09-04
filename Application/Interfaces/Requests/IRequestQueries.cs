@@ -5,16 +5,17 @@ using Application.DTOs.Requests;
 
 /// <summary>
 /// Query service for browsing and filtering stationery requests.
-/// All queries enforce ownership/eligibility checks:
-/// - Requestors see only their own requests (unless they are an approver).
-/// - Approvers see only requests they must approve (their subordinates' requests).
-/// - Managers see all requests (for reports, M5).
+/// Row-level visibility follows the reporting line (Plan §6, TC-15):
+/// - Everyone sees their own requests, and any request pending their own approval.
+/// - Manager / Business Manager also see every request raised by someone in their reporting
+///   sub-tree (reports, and their reports, to any depth) — never a peer's or a superior's.
+/// - Managing Director sees all requests.
 /// </summary>
 public interface IRequestQueries
 {
     /// <summary>
-    /// Paginated list of requests the caller can see (requestor's own, or those pending
-    /// their approval, or all if Manager+).
+    /// Paginated list of requests visible to the caller (own, pending their approval, or
+    /// raised anywhere in their reporting sub-tree; unrestricted for the Managing Director).
     /// </summary>
     Task<PagedResult<RequestDto>> GetVisibleAsync(
         int page,
@@ -24,8 +25,9 @@ public interface IRequestQueries
     );
 
     /// <summary>
-    /// Single request by ID, with full history and line items. Returns null if not found.
-    /// Caller must own it or be its approver or be a Manager+, or 404 is thrown.
+    /// Single request by ID, with full history and line items. Returns null when it does not
+    /// exist or is not visible to the caller (own / approver / inside their sub-tree) — the
+    /// caller cannot tell the two apart, so existence is not leaked.
     /// </summary>
     Task<RequestDto?> GetByIdAsync(int requestId, int visibleToEmployeeNumber);
 
@@ -41,7 +43,8 @@ public interface IRequestQueries
 
     /// <summary>
     /// Requests by requestor (for dashboards showing "my requests").
-    /// Caller must be the requestor or a Manager+, or 404 is thrown.
+    /// Caller must be the requestor, or have that requestor inside their reporting sub-tree,
+    /// otherwise an empty page is returned.
     /// </summary>
     Task<PagedResult<RequestDto>> GetByRequestorAsync(
         int requestorEmployeeNumber,

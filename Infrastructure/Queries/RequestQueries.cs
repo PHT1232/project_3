@@ -1,22 +1,26 @@
 using Application.DTOs.Common;
 using Application.DTOs.Requests;
 using Application.Interfaces.Requests;
+using Application.Interfaces.Users;
 using Microsoft.EntityFrameworkCore;
 
 namespace Infrastructure.Queries;
 
 /// <summary>
 /// Query service for browsing and filtering stationery requests.
-/// 
-/// All queries enforce ownership/eligibility checks:
-/// - Requestors see only their own requests (unless they are an approver for others).
-/// - Approvers see requests they must approve (their subordinates' requests).
-/// - Managers see all requests.
-/// 
+///
+/// Row-level visibility follows the reporting line (CLAUDE.md #9, Plan §6, TC-15):
+/// - Everyone sees their own requests, and any request pending their own approval.
+/// - Manager / Business Manager additionally see every request raised by someone in their
+///   reporting sub-tree (their reports, and their reports' reports, to any depth) — never a
+///   peer's or a superior's.
+/// - Managing Director sees all requests.
+/// The sub-tree is resolved by <see cref="IHierarchyQueries"/>.
+///
 /// Loads entities via AsNoTracking + full includes for efficiency in read-only scenarios.
 /// Maps to DTOs in-memory for consistency across database providers.
 /// </summary>
-public class RequestQueries(DataContext db) : IRequestQueries
+public class RequestQueries(DataContext db, IHierarchyQueries hierarchy) : IRequestQueries
 {
     public async Task<PagedResult<RequestDto>> GetVisibleAsync(
         int page,
@@ -24,19 +28,15 @@ public class RequestQueries(DataContext db) : IRequestQueries
         string? statusFilter,
         int visibleToEmployeeNumber)
     {
-        // Load the user to determine visibility scope
-        var user = await db.Users
-            .AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Id == visibleToEmployeeNumber)
-            ?? throw new ApplicationException($"User {visibleToEmployeeNumber} not found.");
+        var scope = await hierarchy.GetVisibleRequestorScopeAsync(visibleToEmployeeNumber);
 
-        // Determine visibility: Manager+ sees all, others see their own + those they approve
         IQueryable<Core.Entities.Request> query = db.Requests.AsNoTracking();
 
-        if (user.RankLevel < 2) // Engineer or below (not Manager or above)
+        if (scope is not null) // null == Managing Director, no row filter
         {
+            var scopedRequestorIds = scope.ToArray();
             query = query.Where(r =>
-                r.RequestorEmployeeNumber == visibleToEmployeeNumber
+                scopedRequestorIds.Contains(r.RequestorEmployeeNumber)
                 || r.ApproverEmployeeNumber == visibleToEmployeeNumber);
         }
 
@@ -73,15 +73,7 @@ public class RequestQueries(DataContext db) : IRequestQueries
 
     public async Task<RequestDto?> GetByIdAsync(int requestId, int visibleToEmployeeNumber)
     {
-        // Load the user for visibility check
-        var user = await db.Users
-            .AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Id == visibleToEmployeeNumber);
-
-        if (user is null)
-        {
-            return null;
-        }
+        var scope = await hierarchy.GetVisibleRequestorScopeAsync(visibleToEmployeeNumber);
 
         // Load full request with navigation properties
         var request = await db.Requests
@@ -96,10 +88,12 @@ public class RequestQueries(DataContext db) : IRequestQueries
             return null;
         }
 
-        // Visibility check: requestor, approver, or Manager+
+        // Visibility: own request, one pending my approval, or one raised inside my sub-tree
+        // (null scope == Managing Director).
         var canSee = request.RequestorEmployeeNumber == visibleToEmployeeNumber
             || request.ApproverEmployeeNumber == visibleToEmployeeNumber
-            || user.RankLevel >= 2;
+            || scope is null
+            || scope.Contains(request.RequestorEmployeeNumber);
 
         if (!canSee)
         {
@@ -229,17 +223,13 @@ public class RequestQueries(DataContext db) : IRequestQueries
         int visibleToEmployeeNumber,
         string? statusFilter = null)
     {
-        // Requestor visibility: only they can see their own requests, unless caller is Manager+
-        var caller = await db.Users
-            .AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Id == visibleToEmployeeNumber);
+        // The caller may list a person's requests if it is their own list, or the person sits
+        // inside the caller's reporting sub-tree (null scope == Managing Director).
+        var scope = await hierarchy.GetVisibleRequestorScopeAsync(visibleToEmployeeNumber);
 
-        if (caller is null)
-        {
-            return new PagedResult<RequestDto>([], page, pageSize, 0);
-        }
-
-        if (caller.Id != requestorEmployeeNumber && caller.RankLevel < 2)
+        if (visibleToEmployeeNumber != requestorEmployeeNumber
+            && scope is not null
+            && !scope.Contains(requestorEmployeeNumber))
         {
             return new PagedResult<RequestDto>([], page, pageSize, 0);
         }
@@ -278,23 +268,15 @@ public class RequestQueries(DataContext db) : IRequestQueries
 
     public async Task<Dictionary<string, int>> GetStatusSummaryForDashboardAsync(int employeeNumber)
     {
-        // Load the user to determine visibility scope
-        var user = await db.Users
-            .AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Id == employeeNumber);
+        var scope = await hierarchy.GetVisibleRequestorScopeAsync(employeeNumber);
 
-        if (user is null)
-        {
-            return new Dictionary<string, int>();
-        }
-
-        // Build the query based on visibility (Manager+ see all, others see their own + those they approve)
         IQueryable<Core.Entities.Request> query = db.Requests.AsNoTracking();
 
-        if (user.RankLevel < 2)
+        if (scope is not null) // null == Managing Director, no row filter
         {
+            var scopedRequestorIds = scope.ToArray();
             query = query.Where(r =>
-                r.RequestorEmployeeNumber == employeeNumber
+                scopedRequestorIds.Contains(r.RequestorEmployeeNumber)
                 || r.ApproverEmployeeNumber == employeeNumber);
         }
 
