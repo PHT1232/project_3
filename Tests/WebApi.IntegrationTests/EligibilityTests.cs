@@ -4,6 +4,7 @@ using System.Text.Json;
 using Core.Entities;
 using FluentAssertions;
 using Infrastructure;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace WebApi.IntegrationTests;
@@ -79,16 +80,44 @@ public class EligibilityTests : IAsyncLifetime
         body.GetProperty("remainingThisMonth").GetDecimal().Should().Be(0m);
     }
 
+    /// <summary>
+    /// Seeds a request carrying a single line worth <paramref name="total"/>.
+    ///
+    /// The line is not decoration: month-to-date spend is summed from RequestItems, not from
+    /// Request.TotalEstimatedCost, so that a partial approval charges what was granted rather
+    /// than what was asked for. A request with no lines cannot exist through the API either —
+    /// CreateRequestCommandValidator requires at least one — so seeding one without lines would
+    /// be testing a state the system cannot produce.
+    /// </summary>
     private async Task SeedRequestAsync(int requestor, string status, decimal total, DateTime createdAtUtc)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DataContext>();
+
+        var item = await db.StationeryItems.FirstOrDefaultAsync();
+        if (item is null)
+        {
+            var (category, supplier) = await CatalogueTestData.SeedCategoryAndSupplierAsync(_factory.Services);
+            item = await CatalogueTestData.SeedItemAsync(
+                _factory.Services, category.Id, supplier.Id, minRankLevelToRequest: 1);
+        }
+
         db.Requests.Add(new Request
         {
             RequestorEmployeeNumber = requestor,
             Status = status,
             TotalEstimatedCost = total,
             CreatedAtUtc = createdAtUtc,
+            Items =
+            [
+                new RequestItem
+                {
+                    ItemId = item.Id,
+                    Quantity = 1,
+                    UnitCostSnapshot = total,
+                    LineTotal = total,
+                },
+            ],
         });
         await db.SaveChangesAsync();
     }

@@ -1761,3 +1761,70 @@ genuinely guard the fix.
 **Validation:** `npx vitest run --pool=threads` — **140 passed** (23 files, +2 new).
 `npm run build` clean. Rendered in a headless browser: typing into the field and clicking the
 eye reveals the text and swaps the icon to `EyeOff`.
+
+## 2026-09-04 — Partial approvals cost what was granted; error boundary; 401 handling
+
+**Task:** Fix the red and orange findings from the full audit — partial approvals over-charging
+budget and over-reporting spend, no React error boundary, and no 401 handling.
+
+**What changed, by file:**
+
+*Money (the red one).* Stock already moved by `ApprovedQuantity` (audit C8), but the budget
+charged `Request.TotalEstimatedCost` and every report summed `RequestItems.LineTotal` — both the
+**requested** figure. Ask for 100, be granted 10, and you were charged for 100. Harmless while
+budgets were display-only; a real lockout once C7 started hard-blocking submissions at 422.
+- `Infrastructure/Queries/EligibilityQueries.cs` — month-to-date spend now sums
+  `(ApprovedQuantity ?? Quantity) * UnitCostSnapshot` over `RequestItems` instead of the request
+  header. The coalesce reads correctly in all three cases: a Pending request has no decision, so
+  the full ask is still held; a decided one charges what was granted; a request decided before
+  `ApprovedQuantity` existed falls back to the requested figure, which for those rows *is* what
+  was granted.
+- `Infrastructure/Queries/ReportQueries.cs` — same expression in `ScopedFlatLinesAsync`, the one
+  projection every report aggregates over, so all five reports are fixed at once. `Quantity` now
+  reports units granted on the same basis.
+- `Tests/WebApi.IntegrationTests/PartialApprovalSpendTests.cs` — **new**, 4 tests: budget charges
+  the approved quantity not the requested one; budget freed by a partial approval is immediately
+  usable again (this was a 422 before); rejected lines cost nothing; cost reports count the
+  approved quantity.
+- `Tests/WebApi.IntegrationTests/EligibilityTests.cs` — `SeedRequestAsync` now seeds a real
+  `RequestItem`. It previously created header-only requests, which the API cannot produce
+  (`CreateRequestCommandValidator` requires ≥1 line) and which summed to zero once spend was
+  read from lines. Fixing the fixture, not the query.
+
+*Error boundary.*
+- `frontend/src/components/ErrorBoundary.jsx` — **new**. A render exception unmounted the whole
+  tree to a blank white page with no way back but a manual refresh. Now shows a recoverable
+  screen with Reload / Go to Dashboard, logs the component stack, and prints the stack inline in
+  dev only.
+- `frontend/src/main.jsx` — wraps `BrowserRouter` + `AuthProvider`, so a throw in the router or
+  the auth provider is caught too.
+- `frontend/src/components/ErrorBoundary.test.jsx` — **new**, 3 tests.
+
+*401 handling.*
+- `frontend/src/api/client.js` — response interceptor: a 401 clears the dead token and redirects
+  to `/login?expired=1`. Tokens last 8 hours, so mid-session expiry is routine; previously every
+  widget on the page rendered its own error and the user was left guessing.
+- `frontend/src/pages/Login.jsx` — shows "Your session expired" on that flag, so the bounce reads
+  as an explanation rather than an unexplained logout.
+- `frontend/src/api/client.test.js` — **new**, 4 tests.
+
+**Assumptions made where the request was ambiguous:**
+- **"Spend" means granted, not requested.** The Plan does not say which; stock already used
+  granted, so this makes all three consumers agree rather than picking a new convention.
+- **A Pending request still holds its full requested value** against the allowance. It is money
+  spoken for and the approver has not cut anything yet.
+- **The 401 redirect excludes `/auth/login`** — a wrong password there is a normal 401 the form
+  must show, not a reason to bounce the page.
+- **The boundary offers a reload, not a `setState` reset.** Whatever state produced the bad
+  render is still there, so re-rendering the same tree would throw again.
+
+**Deliberately left out of scope:**
+- Back-filling `ApprovedQuantity` on the 94 legacy decided requests — the fallback already reads
+  them correctly and a data migration would be guessing.
+- The remaining yellow/green audit items (tracked `bin`/`obj`, org-chart enumeration by any
+  Manager, stale `CLAUDE.md` §1, react-router CVE, supplier-arrival race).
+
+**Validation:** `dotnet build` 0 errors. `dotnet test Project.slnx` — **222 passed**
+(86 unit + 136 integration, +4 new); the 2 skips are the migration tests, whose probe fix is on
+`fix/goods-arrival-detail-and-migration-tests`. `npx vitest run --pool=threads` — **154 passed**
+(26 files, +7 new). `npm run build` clean.

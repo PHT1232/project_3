@@ -19,6 +19,10 @@ export default function Login() {
 
   const redirectTo = location.state?.from?.pathname ?? '/'
 
+  // Set by the axios 401 interceptor when it drops a dead session, so the bounce back here reads
+  // as an explanation rather than an unexplained logout.
+  const sessionExpired = new URLSearchParams(location.search).get('expired') === '1'
+
   async function handleSubmit(event) {
     event.preventDefault()
     setError(null)
@@ -104,6 +108,12 @@ export default function Login() {
                 </button>
               </div>
             </div>
+
+            {!error && sessionExpired && (
+              <p role="status" className="text-sm text-ink-muted">
+                Your session expired. Sign in again to pick up where you left off.
+              </p>
+            )}
 
             {error && (
               <p role="alert" className="text-sm text-status-danger">
