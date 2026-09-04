@@ -8,7 +8,9 @@ import client from './client.js'
 // --- Requestor / Visibility endpoints ---
 
 /**
- * Get visible requests (caller's own + subordinates if approver, or all if Manager+).
+ * Get visible requests: the caller's own, any pending their approval, and (for a Manager /
+ * Business Manager) every request raised inside their reporting sub-tree. The Managing
+ * Director sees all. Scoping is enforced server-side.
  */
 export async function getRequests({ page = 1, pageSize = 20, status } = {}) {
   return (await client.get('/requests', { params: { page, pageSize, status: status || undefined } })).data
