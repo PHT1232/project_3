@@ -1484,3 +1484,12 @@ the centred spinner (`LoadingState`), matching the other list pages. Added a pag
 The **Help page fetches nothing** (static FAQ + auth-context reads), so it has no loading
 state to replace — a skeleton there would never render. It would only gain one if the FAQ
 moves to `GET /api/v1/help/faq` (deferred).
+
+### 2026-09-04 (follow-up) — Sender can't resolve their own support message
+
+Review feedback: it's odd that the person who sent a message could also close it. Now the
+reporter can't change the status of a message they sent — `SetResolvedAsync` throws
+`ValidationException` (→ 400) when `actor == sender`, and the Support Inbox shows a "You sent
+this" badge in place of the resolve/reopen button on those rows. Another Manager+ still
+resolves it normally. +1 backend test (own → 400, other manager → 200), +1 frontend test.
+dotnet test 129 passed; vitest 112 passed.

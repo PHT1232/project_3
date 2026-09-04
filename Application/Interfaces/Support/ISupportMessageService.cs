@@ -13,7 +13,9 @@ public interface ISupportMessageService
 
     /// <summary>
     /// Flip a message between New and Resolved. <paramref name="actorEmployeeNumber"/> is
-    /// recorded as the resolver. Throws if the id does not exist.
+    /// recorded as the resolver. Throws <see cref="Application.Exceptions.NotFoundException"/>
+    /// if the id does not exist, and <see cref="FluentValidation.ValidationException"/> if the
+    /// actor is the message's own sender (the reporter doesn't triage their own ticket).
     /// </summary>
     Task<SupportMessageDto> SetResolvedAsync(int id, bool resolved, int actorEmployeeNumber);
 }

@@ -130,6 +130,26 @@ public class SupportTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Resolve_OwnMessage_Returns400_EvenForAManager()
+    {
+        var manager = await AuthedClientAsync(801);
+        var created = await (await manager.PostAsJsonAsync("/api/v1/support/messages", ValidMessage))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        var id = created.GetProperty("id").GetInt32();
+
+        var res = await manager.PatchAsJsonAsync($"/api/v1/support/messages/{id}/status", new { resolved = true });
+
+        res.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        // Another manager still can.
+        await TestUserFactory.CreateUserAsync(
+            _factory.Services, 803, "Sam Manager", "sam.sup@hmt.test", "Manager", "Password1!");
+        var other = await AuthedClientAsync(803);
+        var ok = await other.PatchAsJsonAsync($"/api/v1/support/messages/{id}/status", new { resolved = true });
+        ok.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
     public async Task Resolve_AsEngineer_Returns403()
     {
         var engineer = await AuthedClientAsync(802);

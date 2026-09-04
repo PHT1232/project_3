@@ -6,6 +6,14 @@ import SupportInboxPage from './SupportInboxPage.jsx'
 import * as supportApi from '../../api/support.js'
 
 vi.mock('../../api/support.js')
+vi.mock('../../contexts/AuthContext.jsx', () => ({
+  useAuth: () => ({
+    user: { employeeNumber: 801, name: 'Meg Manager', role: 'Manager', rankLevel: 2 },
+    token: 'mock-token',
+    login: vi.fn(),
+    logout: vi.fn(),
+  }),
+}))
 
 const OPEN_MSG = {
   id: 1,
@@ -77,6 +85,20 @@ describe('SupportInboxPage', () => {
         expect.objectContaining({ status: 'Resolved' }),
       ),
     )
+  })
+
+  it('does not let the viewer resolve a message they sent', async () => {
+    supportApi.getSupportMessages.mockResolvedValue({
+      items: [{ ...OPEN_MSG, id: 2, senderEmployeeNumber: 801, senderName: 'Meg Manager' }],
+      page: 1,
+      pageSize: 100,
+      totalCount: 1,
+    })
+    render(<SupportInboxPage />)
+
+    await screen.findByText('Approve button does nothing')
+    expect(screen.queryByRole('button', { name: /mark resolved/i })).not.toBeInTheDocument()
+    expect(screen.getByText(/you sent this/i)).toBeInTheDocument()
   })
 
   it('reveals session diagnostics on demand', async () => {

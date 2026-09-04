@@ -7,6 +7,7 @@ import Badge from '../../components/ui/Badge.jsx'
 import { ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
 import { Skeleton, SkeletonText } from '../../components/ui/Skeleton.jsx'
 import useAsync from '../../hooks/useAsync.js'
+import { useAuth } from '../../contexts/AuthContext.jsx'
 import { formatDate } from '../../lib/format.js'
 import { getSupportMessages, setSupportMessageResolved } from '../../api/support.js'
 
@@ -22,6 +23,7 @@ const FILTERS = [
  * real control).
  */
 export default function SupportInboxPage() {
+  const { user } = useAuth()
   const [filter, setFilter] = useState('New')
   const [busyId, setBusyId] = useState(null)
 
@@ -81,7 +83,12 @@ export default function SupportInboxPage() {
         <ul className="space-y-3">
           {messages.map((m) => (
             <li key={m.id}>
-              <MessageCard message={m} busy={busyId === m.id} onToggle={() => toggle(m)} />
+              <MessageCard
+                message={m}
+                busy={busyId === m.id}
+                sentByViewer={m.senderEmployeeNumber === user?.employeeNumber}
+                onToggle={() => toggle(m)}
+              />
             </li>
           ))}
         </ul>
@@ -115,7 +122,7 @@ function SupportInboxSkeleton({ rows = 4 }) {
   )
 }
 
-function MessageCard({ message, busy, onToggle }) {
+function MessageCard({ message, busy, sentByViewer, onToggle }) {
   const [showDiag, setShowDiag] = useState(false)
   const resolved = message.status === 'Resolved'
 
@@ -133,14 +140,18 @@ function MessageCard({ message, busy, onToggle }) {
             {resolved && message.resolvedByName ? ` · resolved by ${message.resolvedByName}` : ''}
           </p>
         </div>
-        <Button
-          size="sm"
-          variant={resolved ? 'secondary' : 'primary'}
-          disabled={busy}
-          onClick={onToggle}
-        >
-          {busy ? '…' : resolved ? 'Reopen' : 'Mark resolved'}
-        </Button>
+        {sentByViewer ? (
+          <Badge tone="outline">You sent this</Badge>
+        ) : (
+          <Button
+            size="sm"
+            variant={resolved ? 'secondary' : 'primary'}
+            disabled={busy}
+            onClick={onToggle}
+          >
+            {busy ? '…' : resolved ? 'Reopen' : 'Mark resolved'}
+          </Button>
+        )}
       </div>
 
       <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-ink">{message.body}</p>
