@@ -1467,3 +1467,69 @@ pages already fetch, exactly as the Catalogue does; no endpoint contracts were t
 searching. A filter that happens to leave the count identical keeps the current page number; the
 clamp still guarantees it is in range. Catalogue solves this by resetting on its specific filter
 state, which the shared hook cannot see.
+
+**Task:** Apply the user-requested access override: Engineer and Manager cannot access Item Management or User Management; Business Manager and Managing Director can. Inventory and Suppliers remain Manager+.
+
+**What changed:**
+- `WebApi/Program.cs`: added `RequireBusinessManager` with existing `RankLevelRequirement(3)`.
+- `WebApi/Controllers/ManagerCatalogueController.cs`: item and category management now require `RequireBusinessManager`.
+- `WebApi/Controllers/UsersController.cs`: list, create, update, and status-change APIs now require `RequireBusinessManager`; subordinate lookup remains self-or-Manager+.
+- `frontend/src/routes/ProtectedRoute.jsx`: accepts `minimumRankLevel` while retaining existing `requireManager` compatibility.
+- `frontend/src/App.jsx` and `frontend/src/navigation.js`: Item Management and User Management require/show at rank 3; Inventory and Suppliers remain rank 2.
+- `Tests/WebApi.IntegrationTests/{UsersTests,CatalogueTests}.cs`: Business Manager success fixtures and Manager 403 coverage.
+- `frontend/src/routes/ProtectedRoute.test.jsx`: Manager redirect and Business Manager rendering coverage.
+- `docs/development/business-manager-management-access-handoff.md`: architecture, API matrix, tests, exclusions, and reviewer follow-up.
+
+**Assumption / override:** This intentionally overrides the prior Plan baseline that used Manager+ for Item Management and User Management. It was explicitly requested; it must be reconciled into the Plan revision history by the team.
+
+**APIs changed:** No routes added or removed. Authorization for `POST/PUT/PATCH /api/v1/items`, category management APIs, and `GET/POST/PUT/PATCH /api/v1/users` now requires rank 3. `GET /api/v1/users/{empNo}/subordinates` is unchanged.
+
+**DB changes:** None. No migration.
+
+**Validation actually run:** `dotnet test Project.slnx --no-restore` — 89/89 passed; existing `NU1903` warning for `SQLitePCLRaw.lib.e_sqlite3` 2.1.11. `npx vitest run src/routes/ProtectedRoute.test.jsx --pool=threads` — 6/6 passed. `npm run build` — passed. React Router emitted non-failing future-flag warnings.
+
+**Out of scope:** No access change for Inventory, Suppliers, catalogue reads, or subordinate lookup. No role data or Identity schema changes.
+
+## 2026-09-04 — Prevent Business Managers from managing peer or superior accounts
+
+**Task:** Enforce the requested row-level User Management rule: a Business Manager cannot perform actions on Business Manager or Managing Director accounts.
+
+**What changed:**
+- `Application/Services/Users/UserManagementService.cs`: injects `ICurrentUserService`; Business Managers are denied update/status actions for target rank 3 or 4 and denied creating or assigning rank 3/4 roles.
+- `Application/Interfaces/Users/IUserStore.cs` and `Infrastructure/Identity/IdentityUserStore.cs`: added `GetRoleRankLevelAsync`, resolved from ASP.NET Core Identity `ApplicationRole.RankLevel`.
+- `Application/Exceptions/ForbiddenException.cs` and `WebApi/Middleware/ExceptionHandlingMiddleware.cs`: domain authorization failures become RFC 7807 HTTP `403 Forbidden`.
+- `Tests/Application.UnitTests/Users/UserManagementServiceTests.cs`: Business Manager peer-management unit coverage and current-user fixture support.
+- `Tests/WebApi.IntegrationTests/UsersTests.cs`: HTTP 403 coverage for create Business Manager, update Business Manager, and change Managing Director status.
+- `docs/development/business-manager-management-access-handoff.md`: updated access matrix, architecture, tests, and validation result.
+
+**Behavior:** Business Managers can manage Engineer/Manager accounts only. They cannot create or promote accounts to Business Manager/Managing Director, modify Business Manager/Managing Director accounts including themselves, or change their active status. Managing Director behavior is unchanged.
+
+**Assumption:** “Actions” covers create, update/role assignment, and active-status changes exposed by User Management. The list API remains available to Business Manager because it is required to locate/manage lower-rank accounts; no sensitive data beyond the existing user list is added.
+
+**APIs changed:** No routes changed. Existing `POST /api/v1/users`, `PUT /api/v1/users/{empNo}`, and `PATCH /api/v1/users/{empNo}/status` can now return `403` for these row-level cases.
+
+**DB changes:** None. No migration.
+
+**Validation actually run:** `dotnet test Project.slnx --no-restore` — 93/93 passed; existing `NU1903` warning for `SQLitePCLRaw.lib.e_sqlite3` 2.1.11. `npx vitest run src/routes/ProtectedRoute.test.jsx --pool=threads` — 6/6 passed. `npm run build` — passed; non-failing React Router future-flag warnings.
+
+**Out of scope:** No restriction on Managing Director, no changes to Inventory/Suppliers/Catalogue, no UI-specific disabling because server-side enforcement is authoritative.
+
+## 2026-09-04 — Register Managing Director authorization policy
+
+**Task:** Repair Jenkins Support integration-test failures caused by an endpoint policy name not registered in the ASP.NET Core authorization composition root.
+
+**What changed:**
+- `WebApi/Program.cs`: registered `RequireManagingDirector` with the existing `RankLevelRequirement(4)` and `RankLevelHandler` mechanism.
+- `docs/development/support-inbox.md`: documented the root cause, intended endpoint behavior, no-DB-impact scope, and pending validation.
+
+**Root cause and behavior:** `SupportController` applies `[Authorize(Policy = "RequireManagingDirector")]` to `PATCH /api/v1/support/messages/{id}/status`, but the named policy was absent. ASP.NET Core threw `InvalidOperationException` before executing the action, producing 500. Registration lets authorization return the intended 403 for lower ranks and permits rank 4 requests to reach existing business validation.
+
+**Assumption:** Rank level 4 remains the established Managing Director threshold. This uses the existing rank-based policy pattern rather than a new role-name check.
+
+**APIs changed:** No route or request/response contract change. The existing PATCH route no longer fails with 500 due to missing policy registration.
+
+**DB changes:** None. No migration.
+
+**Validation actually run:** `dotnet test Tests/WebApi.IntegrationTests/WebApi.IntegrationTests.csproj --no-restore --filter FullyQualifiedName~SupportTests` — 9/9 passed. `dotnet test Project.slnx --no-restore` — 140/140 passed. Both reported the existing `NU1903` warning for `SQLitePCLRaw.lib.e_sqlite3` 2.1.11.
+
+**Out of scope:** No changes to Support service logic, role data, frontend behavior, or the existing self-resolution rule.
