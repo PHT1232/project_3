@@ -165,6 +165,10 @@ try
     builder.Services.AddAuthorizationBuilder()
         .AddPolicy("RequireManager", policy => policy.Requirements.Add(new RankLevelRequirement(2)))
         .AddPolicy("RequireBusinessManager", policy => policy.Requirements.Add(new RankLevelRequirement(3)))
+        // Referenced by SupportController's resolve endpoint (Plan roles: MD = RankLevel 4).
+        // Was missing — an unregistered policy name makes the authorization middleware throw,
+        // so every call to that endpoint returned 500 (SupportTests.Resolve_* were failing).
+        .AddPolicy("RequireManagingDirector", policy => policy.Requirements.Add(new RankLevelRequirement(4)))
         .AddPolicy("RequireApprover", policy => policy.Requirements.Add(new ApproverRequirement()));
 
     builder.Services.AddSingleton<IAuthorizationHandler, RankLevelHandler>();

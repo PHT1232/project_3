@@ -1578,3 +1578,15 @@ The migration was **regenerated** as `20260904033743_AddDraftStatusAndLineDecisi
 after `AddSupportMessages` in the snapshot chain (the dev DB was first rolled back to
 `AddRoleBudgetThresholds` with `dotnet ef database update`), and the hand-written data-fix SQL
 was re-added. Post-merge validation is recorded below.
+
+**Post-merge validation actually run (2026-09-04):**
+- `dotnet build` — 0 errors. `npx vitest run --pool=threads` — **137/137** across 23 files (their
+  Help/Support/Dashboard tests included).
+- `dotnet test Project.slnx` — first run **4 failures, all pre-existing on `origin/khang`**, not
+  caused by the merge: `SupportTests.Resolve_*` returned 500 because `SupportController` uses
+  `[Authorize(Policy = "RequireManagingDirector")]` and that policy was never registered in
+  `Program.cs` (an unregistered policy name makes the authorization middleware throw). Verified by
+  grepping `origin/khang:WebApi/Program.cs` directly. Fixed in a separate follow-up commit with one
+  line — `.AddPolicy("RequireManagingDirector", … RankLevelRequirement(4))`, matching the
+  `RequireManager`(2) / `RequireBusinessManager`(3) entries beside it — because pushing a branch
+  with four red tests helps nobody. After the fix: **160/160** (54 unit + 106 integration).
