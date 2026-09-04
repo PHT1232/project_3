@@ -6,18 +6,11 @@ import Button from '../../../components/ui/Button.jsx'
 import { formatCurrency, formatDate } from '../../../lib/format.js'
 import RequestStatusBadge from './RequestStatusBadge.jsx'
 
-/**
- * Checks if a request in Pending status has already been submitted for approval.
- * Submission writes a status history row with FromStatus="Pending" and ToStatus="Pending".
- */
-export function isRequestSubmitted(request) {
-  if (!request) return false
-  if (request.status !== 'Pending') return true
-  return Boolean(
-    request.statusHistory?.some(
-      (h) => h.fromStatus === 'Pending' && h.toStatus === 'Pending',
-    ),
-  )
+/** Human label for a line's approver decision (RequestItemDto.decision). */
+const DECISION_LABEL = {
+  approved: 'Approved',
+  rejected: 'Rejected',
+  modified: 'Qty changed',
 }
 
 export default function RequestDetailModal({
@@ -32,9 +25,11 @@ export default function RequestDetailModal({
 }) {
   if (!open || !request) return null
 
-  const isSubmitted = isRequestSubmitted(request)
+  const isDraft = request.status === 'Draft'
   const isPending = request.status === 'Pending'
   const isApprovedOrPartial = request.status === 'Approved' || request.status === 'PartiallyApproved'
+  // The approver's per-line outcome is only present once the request has been decided.
+  const hasDecisions = request.items?.some((item) => item.decision != null)
 
   return (
     <Modal
@@ -49,7 +44,7 @@ export default function RequestDetailModal({
       footer={
         <div className="flex w-full flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            {isPending && !isSubmitted && onDelete && (
+            {isDraft && onDelete && (
               <Button
                 variant="danger"
                 size="sm"
@@ -60,7 +55,7 @@ export default function RequestDetailModal({
                 Delete Draft
               </Button>
             )}
-            {isPending && isSubmitted && onWithdraw && (
+            {isPending && onWithdraw && (
               <Button
                 variant="secondary"
                 size="sm"
@@ -88,7 +83,7 @@ export default function RequestDetailModal({
             <Button variant="secondary" onClick={onClose} disabled={isActioning}>
               Close
             </Button>
-            {isPending && !isSubmitted && onSubmit && (
+            {isDraft && onSubmit && (
               <Button
                 variant="primary"
                 disabled={isActioning}
@@ -157,6 +152,12 @@ export default function RequestDetailModal({
                   <th className="px-3 py-2 font-semibold">Category</th>
                   <th className="px-3 py-2 font-semibold">Supplier</th>
                   <th className="px-3 py-2 text-right font-semibold">Qty</th>
+                  {hasDecisions && (
+                    <>
+                      <th className="px-3 py-2 font-semibold">Decision</th>
+                      <th className="px-3 py-2 text-right font-semibold">Approved qty</th>
+                    </>
+                  )}
                   <th className="px-3 py-2 text-right font-semibold">Unit Price</th>
                   <th className="px-3 py-2 text-right font-semibold">Total</th>
                 </tr>
@@ -168,6 +169,18 @@ export default function RequestDetailModal({
                     <td className="px-3 py-2.5 text-ink-muted">{item.categoryName ?? '—'}</td>
                     <td className="px-3 py-2.5 text-ink-muted">{item.supplierName ?? '—'}</td>
                     <td className="px-3 py-2.5 text-right font-mono text-ink">{item.quantity}</td>
+                    {hasDecisions && (
+                      <>
+                        <td
+                          className={`px-3 py-2.5 ${item.decision === 'rejected' ? 'text-status-danger' : 'text-ink-muted'}`}
+                        >
+                          {DECISION_LABEL[item.decision] ?? '—'}
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-mono text-ink">
+                          {item.approvedQuantity ?? '—'}
+                        </td>
+                      </>
+                    )}
                     <td className="px-3 py-2.5 text-right font-mono text-ink-muted">{formatCurrency(item.unitCostSnapshot)}</td>
                     <td className="px-3 py-2.5 text-right font-mono font-medium text-ink">{formatCurrency(item.lineTotal)}</td>
                   </tr>
@@ -175,7 +188,7 @@ export default function RequestDetailModal({
               </tbody>
               <tfoot>
                 <tr className="border-t border-surface-border bg-surface-muted/40 font-semibold text-ink">
-                  <td colSpan={5} className="px-3 py-2.5 text-right">
+                  <td colSpan={hasDecisions ? 7 : 5} className="px-3 py-2.5 text-right">
                     Total Estimated Cost:
                   </td>
                   <td className="px-3 py-2.5 text-right font-mono text-base text-brand-700">

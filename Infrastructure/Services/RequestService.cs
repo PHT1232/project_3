@@ -31,7 +31,8 @@ public class RequestService(
     IValidator<CreateRequestCommand> createValidator,
     IValidator<ApproveRequestCommand> approveValidator,
     IValidator<WithdrawRequestCommand> withdrawValidator,
-    IValidator<RequestCancellationCommand> requestCancelValidator) : IRequestService
+    IValidator<RequestCancellationCommand> requestCancelValidator,
+    IValidator<ApproveCancellationCommand> approveCancelValidator) : IRequestService
 {
     public async Task<RequestDto> CreateAsync(CreateRequestCommand command, int requestorEmployeeNumber)
     {
@@ -121,12 +122,14 @@ public class RequestService(
             });
         }
 
-        // Create request in Pending status
+        // Create request as a Draft (Plan §3.6: [*] --> Draft). It is invisible to the approver
+        // until SubmitAsync moves it to Pending. Before 2026-09-04 requests were born Pending,
+        // so "Save as Draft" put them straight into the approver's queue (audit finding C1).
         var request = new Request
         {
             RequestorEmployeeNumber = requestorEmployeeNumber,
             ApproverEmployeeNumber = approverEmployeeNumber,
-            Status = "Pending",
+            Status = "Draft",
             TotalEstimatedCost = totalCost,
             RequiredByDate = command.RequiredByDate,
             CreatedAtUtc = DateTime.UtcNow,
@@ -137,7 +140,7 @@ public class RequestService(
                 new()
                 {
                     FromStatus = null,
-                    ToStatus = "Pending",
+                    ToStatus = "Draft",
                     ActorEmployeeNumber = requestorEmployeeNumber,
                     Comment = "Request created",
                     CreatedAtUtc = DateTime.UtcNow
@@ -171,16 +174,17 @@ public class RequestService(
             throw new ConflictException("Request was modified. Please refresh and try again.");
         }
 
-        // Only allow submit from Pending status
-        if (request.Status != "Pending")
+        // Draft --> Pending is the only legal submit transition (Plan §3.6). It used to be
+        // Pending --> Pending, a no-op that only wrote a history row — see CreateAsync.
+        if (request.Status != "Draft")
         {
             throw new ConflictException($"Cannot submit a request in {request.Status} status.");
         }
 
-        // Add status history and update RowVersion
+        request.Status = "Pending";
         request.StatusHistory.Add(new RequestStatusHistory
         {
-            FromStatus = "Pending",
+            FromStatus = "Draft",
             ToStatus = "Pending",
             ActorEmployeeNumber = submitterEmployeeNumber,
             Comment = "Request submitted for approval",
@@ -222,19 +226,53 @@ public class RequestService(
             throw new ConflictException("Request was modified. Please refresh and try again.");
         }
 
-        // Validate line decisions match the request items
+        // Every line gets exactly one decision, matched by RequestItemId — not by position.
         if (command.LineDecisions.Count != request.Items.Count)
         {
             throw new ConflictException("Line decision count does not match request items.");
         }
 
-        // Determine overall status based on decisions
-        var approvedCount = command.LineDecisions.Count(d => d.Decision == "approved");
-        var rejectedCount = command.LineDecisions.Count(d => d.Decision == "rejected");
-        var modifiedCount = command.LineDecisions.Count(d => d.Decision == "modified");
+        var linesById = request.Items.ToDictionary(i => i.Id);
+        var decidedIds = new HashSet<int>();
 
-        var newStatus = approvedCount == command.LineDecisions.Count ? "Approved"
-            : rejectedCount == command.LineDecisions.Count ? "Rejected"
+        // Persist each decision onto its line (audit finding C2: these used to be counted and
+        // then discarded, so a PartiallyApproved request could not say which lines were granted).
+        // ApprovedQuantity is the figure any later stock issue must use, never Quantity.
+        foreach (var decision in command.LineDecisions)
+        {
+            if (!linesById.TryGetValue(decision.RequestItemId, out var line))
+            {
+                throw new ConflictException($"Line {decision.RequestItemId} does not belong to request {request.Id}.");
+            }
+
+            if (!decidedIds.Add(decision.RequestItemId))
+            {
+                throw new ConflictException($"Line {decision.RequestItemId} was decided more than once.");
+            }
+
+            var kind = decision.Decision.ToLowerInvariant();
+            line.Decision = kind;
+            line.ApprovedQuantity = kind switch
+            {
+                "approved" => line.Quantity,
+                "rejected" => 0,
+                "modified" => decision.ModifiedQuantity
+                    ?? throw new ConflictException($"Line {line.Id} is marked modified but has no quantity."),
+                _ => throw new ConflictException($"Unknown decision '{decision.Decision}' for line {line.Id}."),
+            };
+        }
+
+        // Header status (Plan §3.6): everything granted as asked -> Approved; nothing granted ->
+        // Rejected; anything else (a rejected line OR a reduced quantity) -> PartiallyApproved.
+        // The old rule only looked at approved/rejected counts, so an all-"modified" request
+        // came out PartiallyApproved with no rejected line to explain why — now it does so
+        // deliberately, because a reduced quantity is by definition not a full approval.
+        var lineCount = request.Items.Count;
+        var approvedAsAskedCount = request.Items.Count(i => i.Decision == "approved");
+        var rejectedCount = request.Items.Count(i => i.Decision == "rejected");
+
+        var newStatus = approvedAsAskedCount == lineCount ? "Approved"
+            : rejectedCount == lineCount ? "Rejected"
             : "PartiallyApproved";
 
         request.Status = newStatus;
@@ -363,8 +401,17 @@ public class RequestService(
     public async Task<RequestDto> ApproveCancellationAsync(
         int requestId, Guid rowVersion, int approverEmployeeNumber, bool approved, string? reason)
     {
+        // The validator existed but was never injected, so this path ran unvalidated (audit C6).
+        await approveCancelValidator.ValidateAndThrowAsync(
+            new ApproveCancellationCommand(requestId, rowVersion, approved, reason));
+
+        // StatusHistory MUST be loaded: a refusal reverts to the status the request held before
+        // CancellationPending, and that is read from history below. Without this Include the
+        // list was empty and every refusal fell back to "Approved" — wrong for a
+        // PartiallyApproved request (audit finding C6).
         var request = await db.Requests
             .Include(r => r.Items)
+            .Include(r => r.StatusHistory)
             .FirstOrDefaultAsync(r => r.Id == requestId)
             ?? throw new NotFoundException($"Request {requestId} not found.");
 
@@ -386,10 +433,20 @@ public class RequestService(
             throw new ConflictException("Request was modified. Please refresh and try again.");
         }
 
-        var newStatus = approved ? "Cancelled" : request.StatusHistory
-            .Where(h => h.ToStatus != "CancellationPending" && h.ToStatus != "Withdrawn")
-            .OrderByDescending(h => h.CreatedAtUtc)
-            .FirstOrDefault()?.ToStatus ?? "Approved";
+        // On refusal, revert to exactly where the request was when cancellation was requested:
+        // the FromStatus of the most recent transition INTO CancellationPending (Approved or
+        // PartiallyApproved — Plan §3.6). Read from the audit row itself rather than inferred
+        // from "the last status that wasn't X", which is fragile once more states exist.
+        var newStatus = approved
+            ? "Cancelled"
+            : request.StatusHistory
+                .Where(h => h.ToStatus == "CancellationPending" && h.FromStatus != null)
+                .OrderByDescending(h => h.CreatedAtUtc)
+                .ThenByDescending(h => h.Id)
+                .Select(h => h.FromStatus)
+                .FirstOrDefault()
+              ?? throw new ConflictException(
+                  $"Request {requestId} has no recorded transition into CancellationPending; cannot revert.");
 
         request.Status = newStatus;
         request.RowVersion = Guid.NewGuid();
@@ -415,7 +472,7 @@ public class RequestService(
             ?? throw new NotFoundException("Request not found after cancellation decision.");
     }
 
-    public async Task<bool> DeletePendingAsync(int requestId, int requestorEmployeeNumber)
+    public async Task<bool> DeleteDraftAsync(int requestId, int requestorEmployeeNumber)
     {
         var request = await db.Requests
             .FirstOrDefaultAsync(r => r.Id == requestId)
@@ -427,8 +484,11 @@ public class RequestService(
             throw new NotFoundException("Request not accessible.");
         }
 
-        // Only pending (not yet submitted) can be deleted
-        if (request.Status != "Pending")
+        // Draft is the ONLY deletable state (Plan §3.6 "Draft --> [*] : Delete draft"; "Never
+        // DELETE a request. Status transitions only."). This used to allow Pending, which —
+        // with Pending also meaning "submitted" — let a requestor erase a request already in
+        // the approver's queue, cascade-deleting its audit history (audit finding C4).
+        if (request.Status != "Draft")
         {
             return false;
         }

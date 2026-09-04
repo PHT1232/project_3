@@ -41,7 +41,16 @@ public class RequestItemConfiguration : IEntityTypeConfiguration<RequestItem>
             .HasPrecision(18, 2)
             .IsRequired();
 
-        // Table name
-        builder.ToTable("RequestItems");
+        // Approver's per-line outcome (audit finding C2). Both nullable: null = not yet decided.
+        builder.Property(ri => ri.Decision)
+            .HasMaxLength(20);
+
+        builder.Property(ri => ri.ApprovedQuantity);
+
+        // Table name with the same value set ApproveRequestCommandValidator accepts
+        builder.ToTable("RequestItems", t =>
+            t.HasCheckConstraint(
+                "CK_RequestItems_Decision",
+                "[Decision] IS NULL OR [Decision] IN ('approved', 'rejected', 'modified')"));
     }
 }

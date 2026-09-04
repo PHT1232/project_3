@@ -7,6 +7,21 @@
       "runtimeArgs": ["run", "dev"],
       "cwd": "frontend",
       "port": 5173
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": [
+        "run",
+        "--no-launch-profile",
+        "--environment", "ASPNETCORE_ENVIRONMENT=Development",
+        "--urls", "http://localhost:5263",
+        "--",
+        "--ConnectionStrings:DefaultConnection=Server=.\\SQLEXPRESS;Database=StationeryManagementSystem.Dev;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True",
+        "--Elasticsearch:Uri="
+      ],
+      "cwd": "WebApi",
+      "port": 5263
     }
   ]
 }

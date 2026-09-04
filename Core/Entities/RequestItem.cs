@@ -37,4 +37,20 @@ public class RequestItem
 
     /// <summary>Quantity × UnitCostSnapshot (stored, not computed — keep in sync).</summary>
     public decimal LineTotal { get; set; }
+
+    /// <summary>
+    /// The approver's decision on this line: "approved", "rejected" or "modified" (Plan §3.6 /
+    /// ApproveRequestCommand.LineDecision). Null until the request has been decided. Written
+    /// only by RequestService.ApproveAsync — before this column existed, per-line decisions were
+    /// accepted by the API and then discarded, so a PartiallyApproved request could not say
+    /// which of its lines were approved (audit finding C2).
+    /// </summary>
+    public string? Decision { get; set; }
+
+    /// <summary>
+    /// Quantity the approver actually granted: equals <see cref="Quantity"/> when approved,
+    /// 0 when rejected, the approver's figure when modified. Null until decided. This — not
+    /// <see cref="Quantity"/> — is the number a future stock issue must use.
+    /// </summary>
+    public int? ApprovedQuantity { get; set; }
 }

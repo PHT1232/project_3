@@ -32,8 +32,8 @@ public interface IRequestQueries
     Task<RequestDto?> GetByIdAsync(int requestId, int visibleToEmployeeNumber);
 
     /// <summary>
-    /// Requests pending the caller's approval (Submitted status, with the caller as approver).
-    /// Returns only distinct statuses (not history rows).
+    /// Requests awaiting the caller's decision as approver: Pending (approve / reject) and
+    /// CancellationPending (approve / refuse the cancellation). Drafts are never included.
     /// </summary>
     Task<PagedResult<RequestDto>> GetPendingApprovalsAsync(
         int page,

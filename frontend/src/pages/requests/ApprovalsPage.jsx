@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ClipboardCheck } from 'lucide-react'
+import { ClipboardCheck, Undo2 } from 'lucide-react'
 
 import PageHeader from '../../components/layout/PageHeader.jsx'
 import Card from '../../components/ui/Card.jsx'
@@ -12,24 +12,27 @@ import { getPendingApprovals } from '../../api/requests.js'
 
 import RequestStatusBadge from './components/RequestStatusBadge.jsx'
 import RequestReviewModal from './components/RequestReviewModal.jsx'
+import CancellationDecisionModal from './components/CancellationDecisionModal.jsx'
 
 const PAGE_SIZE = 20
 
 /**
- * Approver's pending-request queue. Plan §3.6/§4.2, wireframe docs/Wireframe/Approvals.png.
+ * Approver's decision queue. Plan §3.6/§4.2, wireframe docs/Wireframe/Approvals.png.
+ *
+ * Two kinds of row, told apart by status:
+ *   Pending             → "Review" opens the per-line approve / reject / modify modal.
+ *   CancellationPending → "Decide" opens the approve / refuse-cancellation modal.
+ * GET /approvals/pending returns both (it used to return Pending only, which left cancellation
+ * requests unreachable — audit finding C5).
  *
  * The wireframe's "Department" column/filter has no backing field on RequestDto or a Plan
  * concept behind it (same K5 status as Catalogue's unimplemented filters) — omitted here
  * rather than invented.
- *
- * Cancellation-approval (POST /approvals/{id}/cancel-approval) is not wired: the only list
- * endpoint, GET /approvals/pending, filters to Status == "Pending" only, so there is currently
- * no way for this page to discover which requests are awaiting a cancellation decision. See
- * docs/development/request-approval-frontend-implementation-plan.md.
  */
 export default function ApprovalsPage() {
   const [page, setPage] = useState(1)
   const [reviewing, setReviewing] = useState(null)
+  const [decidingCancellation, setDecidingCancellation] = useState(null)
 
   const { data, error, loading, reload } = useAsync(
     () => getPendingApprovals({ page, pageSize: PAGE_SIZE }),
@@ -59,7 +62,7 @@ export default function ApprovalsPage() {
         {!loading && !error && requests.length === 0 && (
           <EmptyState
             title="Nothing pending"
-            description="No requests are currently waiting on your approval."
+            description="No requests or cancellation requests are currently waiting on your decision."
           />
         )}
         {!loading && !error && requests.length > 0 && (
@@ -91,10 +94,26 @@ export default function ApprovalsPage() {
                         <RequestStatusBadge status={request.status} />
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <Button size="sm" onClick={() => setReviewing(request)}>
-                          <ClipboardCheck className="h-4 w-4" aria-hidden="true" />
-                          Review
-                        </Button>
+                        {request.status === 'CancellationPending' ? (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setDecidingCancellation(request)}
+                            aria-label={`Decide cancellation of request #${request.requestId}`}
+                          >
+                            <Undo2 className="h-4 w-4" aria-hidden="true" />
+                            Decide
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            onClick={() => setReviewing(request)}
+                            aria-label={`Review request #${request.requestId}`}
+                          >
+                            <ClipboardCheck className="h-4 w-4" aria-hidden="true" />
+                            Review
+                          </Button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -128,6 +147,13 @@ export default function ApprovalsPage() {
         open={Boolean(reviewing)}
         request={reviewing}
         onClose={() => setReviewing(null)}
+        onSuccess={reload}
+      />
+
+      <CancellationDecisionModal
+        open={Boolean(decidingCancellation)}
+        request={decidingCancellation}
+        onClose={() => setDecidingCancellation(null)}
         onSuccess={reload}
       />
     </>

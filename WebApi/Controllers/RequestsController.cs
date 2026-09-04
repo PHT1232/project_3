@@ -69,7 +69,7 @@ public class RequestsController(
     }
 
     /// <summary>
-    /// Create a new stationery request in Pending status.
+    /// Create a new stationery request in Draft status (not yet visible to the approver).
     /// </summary>
     [HttpPost]
     public async Task<ActionResult<RequestDto>> Create([FromBody] CreateRequestCommand command)
@@ -82,7 +82,7 @@ public class RequestsController(
     }
 
     /// <summary>
-    /// Submit a pending request for approval.
+    /// Submit a Draft request for approval (Draft → Pending).
     /// </summary>
     [HttpPost("{id:int}/submit")]
     public async Task<ActionResult<RequestDto>> Submit(int id, [FromBody] SubmitRequestCommand command)
@@ -136,16 +136,17 @@ public class RequestsController(
     }
 
     /// <summary>
-    /// Delete a Pending request that has not been submitted.
+    /// Delete a Draft request. Draft is the only deletable state — a submitted request is
+    /// transitioned (withdraw / cancel), never deleted (Plan §3.6).
     /// </summary>
     [HttpDelete("{id:int}")]
-    public async Task<IActionResult> DeletePending(int id)
+    public async Task<IActionResult> DeleteDraft(int id)
     {
         var actor = currentUserService.EmployeeNumber
             ?? throw new InvalidOperationException("Authenticated request missing employee number claim.");
 
-        var deleted = await requestService.DeletePendingAsync(id, actor);
-        return deleted ? NoContent() : BadRequest(new { error = "Only unsubmitted Pending requests can be deleted." });
+        var deleted = await requestService.DeleteDraftAsync(id, actor);
+        return deleted ? NoContent() : BadRequest(new { error = "Only Draft requests can be deleted. Withdraw a submitted request instead." });
     }
 
     /// <summary>

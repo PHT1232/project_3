@@ -1,7 +1,6 @@
 
 using Application.DTOs.Common;
 using Application.DTOs.Requests;
-using Application.Exceptions;
 using Application.Interfaces.Auth;
 using Application.Interfaces.Requests;
 using Microsoft.AspNetCore.Authorization;
@@ -11,9 +10,12 @@ namespace WebApi.Controllers;
 
 /// <summary>
 /// Request approval workflow endpoints (Plan §3.6/§4.2).
-/// 
-/// Approver-only actions: view pending requests, approve/reject, decide on cancellations.
-/// Most endpoints also available to Manager+ for reporting and administration.
+///
+/// Approver-only actions: view the decision queue, approve/reject, decide on cancellations.
+/// Thin by rule (CLAUDE.md #2): no try/catch here — ExceptionHandlingMiddleware maps
+/// ValidationException → 400, NotFoundException → 404, ConflictException → 409 as RFC 7807
+/// ProblemDetails, the same shape every other controller returns. This class used to catch
+/// everything itself and turned a validation failure into a 500 (found while fixing audit C6).
 /// </summary>
 [ApiController]
 [Route("api/v1/approvals")]
@@ -36,18 +38,8 @@ public class ApprovalsController(
         var approverEmployeeNumber = currentUserService.EmployeeNumber
             ?? throw new InvalidOperationException("Authenticated request missing employee number.");
 
-        try
-        {
-            var result = await requestQueries.GetPendingApprovalsAsync(page, pageSize, approverEmployeeNumber);
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            return Problem(
-                statusCode: StatusCodes.Status500InternalServerError,
-                title: "Failed to retrieve pending approvals",
-                detail: ex.Message);
-        }
+        var result = await requestQueries.GetPendingApprovalsAsync(page, pageSize, approverEmployeeNumber);
+        return Ok(result);
     }
 
     /// <summary>
@@ -67,26 +59,8 @@ public class ApprovalsController(
         var approverEmployeeNumber = currentUserService.EmployeeNumber
             ?? throw new InvalidOperationException("Authenticated request missing employee number.");
 
-        try
-        {
-            var result = await requestService.ApproveAsync(command, approverEmployeeNumber);
-            return Ok(result);
-        }
-        catch (NotFoundException ex)
-        {
-            return NotFound(new { error = ex.Message });
-        }
-        catch (ConflictException ex)
-        {
-            return Conflict(new { error = ex.Message });
-        }
-        catch (Exception ex)
-        {
-            return Problem(
-                statusCode: StatusCodes.Status500InternalServerError,
-                title: "Failed to approve request",
-                detail: ex.Message);
-        }
+        var result = await requestService.ApproveAsync(command, approverEmployeeNumber);
+        return Ok(result);
     }
 
     /// <summary>
@@ -106,30 +80,12 @@ public class ApprovalsController(
         var approverEmployeeNumber = currentUserService.EmployeeNumber
             ?? throw new InvalidOperationException("Authenticated request missing employee number.");
 
-        try
-        {
-            var result = await requestService.ApproveCancellationAsync(
-                command.RequestId,
-                command.RowVersion,
-                approverEmployeeNumber,
-                command.Approved,
-                command.Reason);
-            return Ok(result);
-        }
-        catch (NotFoundException ex)
-        {
-            return NotFound(new { error = ex.Message });
-        }
-        catch (ConflictException ex)
-        {
-            return Conflict(new { error = ex.Message });
-        }
-        catch (Exception ex)
-        {
-            return Problem(
-                statusCode: StatusCodes.Status500InternalServerError,
-                title: "Failed to respond to cancellation",
-                detail: ex.Message);
-        }
+        var result = await requestService.ApproveCancellationAsync(
+            command.RequestId,
+            command.RowVersion,
+            approverEmployeeNumber,
+            command.Approved,
+            command.Reason);
+        return Ok(result);
     }
 }

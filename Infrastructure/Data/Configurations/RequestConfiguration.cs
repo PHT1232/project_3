@@ -25,7 +25,7 @@ public class RequestConfiguration : IEntityTypeConfiguration<Request>
         builder.Property(r => r.Status)
             .IsRequired()
             .HasMaxLength(50)
-            .HasDefaultValue("Pending");
+            .HasDefaultValue("Draft");
 
         builder.Property(r => r.TotalEstimatedCost)
             .HasPrecision(18, 2)
@@ -61,7 +61,7 @@ public class RequestConfiguration : IEntityTypeConfiguration<Request>
         builder.ToTable("Requests", t =>
             t.HasCheckConstraint(
                 "CK_Requests_Status",
-                "[Status] IN ('Pending', 'Approved', 'PartiallyApproved', 'Rejected', 'Withdrawn', 'CancellationPending', 'Cancelled', 'Fulfilled')"
+                "[Status] IN ('Draft', 'Pending', 'Approved', 'PartiallyApproved', 'Rejected', 'Withdrawn', 'CancellationPending', 'Cancelled', 'Fulfilled')"
             )
         );
     }

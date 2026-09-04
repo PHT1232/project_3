@@ -27,7 +27,7 @@ const SAMPLE_REQUESTS = [
     requestorName: 'Arthur Dent',
     approverEmployeeNumber: 10,
     approverName: 'Ford Prefect',
-    status: 'Pending',
+    status: 'Draft',
     totalEstimatedCost: 25.0,
     requiredByDate: '2026-09-05T00:00:00Z',
     decisionComment: null,
@@ -45,6 +45,8 @@ const SAMPLE_REQUESTS = [
         quantity: 5,
         unitCostSnapshot: 5.0,
         lineTotal: 25.0,
+        decision: null,
+        approvedQuantity: null,
       },
     ],
     statusHistory: [
@@ -52,7 +54,7 @@ const SAMPLE_REQUESTS = [
         historyId: 1,
         requestId: 101,
         fromStatus: null,
-        toStatus: 'Pending',
+        toStatus: 'Draft',
         actorEmployeeNumber: 42,
         actorName: 'Arthur Dent',
         comment: 'Request created',
@@ -79,7 +81,7 @@ const SAMPLE_REQUESTS = [
         historyId: 2,
         requestId: 102,
         fromStatus: null,
-        toStatus: 'Pending',
+        toStatus: 'Draft',
         actorEmployeeNumber: 42,
         actorName: 'Arthur Dent',
         comment: 'Request created',
@@ -88,7 +90,7 @@ const SAMPLE_REQUESTS = [
       {
         historyId: 3,
         requestId: 102,
-        fromStatus: 'Pending',
+        fromStatus: 'Draft',
         toStatus: 'Pending',
         actorEmployeeNumber: 42,
         actorName: 'Arthur Dent',
@@ -154,12 +156,15 @@ describe('MyRequestsPage', () => {
     expect(screen.getByText('#102')).toBeInTheDocument()
     expect(screen.getByText('#103')).toBeInTheDocument()
 
-    // 101 is unsubmitted Pending -> has Submit button and Delete button
+    // 101 is a Draft -> has Submit button and Delete button, never Withdraw
     expect(screen.getByRole('button', { name: /submit request #101/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /delete draft request #101/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /withdraw request #101/i })).not.toBeInTheDocument()
 
-    // 102 is submitted Pending -> has Withdraw button
+    // 102 is Pending (submitted) -> has Withdraw button, never Submit or Delete
     expect(screen.getByRole('button', { name: /withdraw request #102/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /submit request #102/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /delete draft request #102/i })).not.toBeInTheDocument()
 
     // 103 is Approved -> has Cancel button
     expect(screen.getByRole('button', { name: /request cancellation for #103/i })).toBeInTheDocument()
@@ -182,7 +187,26 @@ describe('MyRequestsPage', () => {
     expect(screen.getByText('Stationery Corp')).toBeInTheDocument()
   })
 
-  it('submits an unsubmitted request from the table action', async () => {
+  it('deletes a draft from the table action', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    requestsApi.getMyRequests.mockResolvedValue({
+      items: SAMPLE_REQUESTS,
+      page: 1,
+      pageSize: 15,
+      totalCount: 3,
+    })
+    requestsApi.deleteDraftRequest.mockResolvedValue(undefined)
+
+    renderMyRequestsPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: /delete draft request #101/i }))
+
+    await waitFor(() => {
+      expect(requestsApi.deleteDraftRequest).toHaveBeenCalledWith(101)
+    })
+  })
+
+  it('submits a draft from the table action', async () => {
     requestsApi.getMyRequests.mockResolvedValue({
       items: SAMPLE_REQUESTS,
       page: 1,

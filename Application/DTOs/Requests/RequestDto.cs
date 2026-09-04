@@ -24,6 +24,8 @@ public sealed record RequestDto(
 /// <summary>
 /// Single line in a request. Snapshot of item name, supplier, and unit cost at the time
 /// of request submission — subsequent catalogue price changes do not affect this history.
+/// <paramref name="Decision"/> / <paramref name="ApprovedQuantity"/> are null until the approver
+/// has decided the request (Core.Entities.RequestItem).
 /// </summary>
 public sealed record RequestItemDto(
     int RequestItemId,
@@ -34,7 +36,9 @@ public sealed record RequestItemDto(
     string? SupplierName,
     int Quantity,
     decimal UnitCostSnapshot,
-    decimal LineTotal
+    decimal LineTotal,
+    string? Decision,
+    int? ApprovedQuantity
 );
 
 /// <summary>

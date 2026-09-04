@@ -1468,68 +1468,125 @@ searching. A filter that happens to leave the count identical keeps the current 
 clamp still guarantees it is in range. Catalogue solves this by resetting on its specific filter
 state, which the shared hook cannot see.
 
-**Task:** Apply the user-requested access override: Engineer and Manager cannot access Item Management or User Management; Business Manager and Managing Director can. Inventory and Suppliers remain Manager+.
+## 2026-09-04 — Deep audit, then fixes for the five CRITICAL findings (C1–C5)
 
-**What changed:**
-- `WebApi/Program.cs`: added `RequireBusinessManager` with existing `RankLevelRequirement(3)`.
-- `WebApi/Controllers/ManagerCatalogueController.cs`: item and category management now require `RequireBusinessManager`.
-- `WebApi/Controllers/UsersController.cs`: list, create, update, and status-change APIs now require `RequireBusinessManager`; subordinate lookup remains self-or-Manager+.
-- `frontend/src/routes/ProtectedRoute.jsx`: accepts `minimumRankLevel` while retaining existing `requireManager` compatibility.
-- `frontend/src/App.jsx` and `frontend/src/navigation.js`: Item Management and User Management require/show at rank 3; Inventory and Suppliers remain rank 2.
-- `Tests/WebApi.IntegrationTests/{UsersTests,CatalogueTests}.cs`: Business Manager success fixtures and Manager 403 coverage.
-- `frontend/src/routes/ProtectedRoute.test.jsx`: Manager redirect and Business Manager rendering coverage.
-- `docs/development/business-manager-management-access-handoff.md`: architecture, API matrix, tests, exclusions, and reviewer follow-up.
+**Task:** (1) "Perform a DEEP SCAN of the ENTIRE project … UNDERSTAND → TRACE → COMPARE →
+IDENTIFY → REPORT", no code changes. (2) "Fix only confirmed CRITICAL priority implementation
+issues. Do not change project requirements. Do not fix 'Potential Logical Issues' without
+confirmation. After each fix: Run → Test → Verify affected workflow → Continue."
 
-**Assumption / override:** This intentionally overrides the prior Plan baseline that used Manager+ for Item Management and User Management. It was explicitly requested; it must be reconciled into the Plan revision history by the team.
+**Tool:** Claude Code (Fable 5.1).
 
-**APIs changed:** No routes added or removed. Authorization for `POST/PUT/PATCH /api/v1/items`, category management APIs, and `GET/POST/PUT/PATCH /api/v1/users` now requires rank 3. `GET /api/v1/users/{empNo}/subordinates` is unchanged.
+### Part 1 — the audit (no code changed)
 
-**DB changes:** None. No migration.
+Every C# source file, every frontend page/API module, all 7 migrations, the Plan (§3.4, §3.6,
+§4.2, §5.2, §7, §10, §14), CLAUDE.md, AI_INSTRUCTION.md, StationerySchema.sql and the 18
+handoffs in `docs/development/` were read; build and both test suites were run. Written up as
+**`PROJECT_AUDIT.md`** (repo root) and an interactive report. Nine confirmed logical errors
+(C1–C9), seven potential issues (P1–P7, need a team decision), eight missing features. Headline:
+CLAUDE.md §1 is a week stale — requests, approvals, notifications, reports, supplier orders, role
+budgets and the AI assistant all exist — but the approval workflow was structurally wrong in ways
+no test caught, because the tests were written from the implementation, not from Plan §3.6.
 
-**Validation actually run:** `dotnet test Project.slnx --no-restore` — 89/89 passed; existing `NU1903` warning for `SQLitePCLRaw.lib.e_sqlite3` 2.1.11. `npx vitest run src/routes/ProtectedRoute.test.jsx --pool=threads` — 6/6 passed. `npm run build` — passed. React Router emitted non-failing future-flag warnings.
+### Part 2 — the fixes (CRITICAL only; C6–C9 and every P-item deliberately left untouched)
 
-**Out of scope:** No access change for Inventory, Suppliers, catalogue reads, or subordinate lookup. No role data or Identity schema changes.
+| ID | Was | Now |
+|---|---|---|
+| **C3** | `RequestQueries` gated Manager+ visibility on `ApplicationUser.RankLevel`, a column nothing writes (always 1). | Rank resolved by the `AspNetUserRoles → AspNetRoles.RankLevel` join, same as `ReportQueries`/`RequestService`. One private helper, four call sites. |
+| **C1** | No `Draft` status; requests were born `Pending`, so "Save as Draft" landed in the approver's queue. The UI faked drafts by pattern-matching history. | Real `Draft` status (Plan §3.6). Create → `Draft`; submit → `Draft → Pending` + notification; approver queue never sees a Draft. UI reads the status, no inference. |
+| **C2** | `ApproveAsync` counted per-line decisions and discarded them; `ModifiedQuantity` dropped; `RequestItem` had nowhere to store it. | `RequestItems.Decision` + `ApprovedQuantity` (new columns), written per line, matched by `RequestItemId` (unknown/duplicate id → 409). Header status: all approved-as-asked → `Approved`; all rejected → `Rejected`; anything else (incl. a reduced qty) → `PartiallyApproved`. Requested `Quantity`/`LineTotal` are never rewritten. |
+| **C4** | `DELETE /requests/{id}` removed any `Pending` request — including submitted ones — cascade-deleting its history. | `DeleteDraftAsync`: `Draft` is the only deletable state. Submitted → 400 "Withdraw a submitted request instead." |
+| **C5** | `CancellationPending` was a dead end: `GET /approvals/pending` returned `Pending` only and no page called `/cancel-approval`. | Queue now returns `Pending` + `CancellationPending`; `ApprovalsPage` shows "Decide" on those rows, opening the new `CancellationDecisionModal` (approve / refuse, shows the requestor's reason). |
 
-## 2026-09-04 — Prevent Business Managers from managing peer or superior accounts
+**What changed, by file:**
+- `Core/Entities/RequestItem.cs` — `Decision` (string?, ≤20) and `ApprovedQuantity` (int?). `Core/Entities/Request.cs` — default status `Draft`; doc lists `Draft`.
+- `Infrastructure/Data/Configurations/RequestItemConfiguration.cs` — the two columns + `CK_RequestItems_Decision`. `RequestConfiguration.cs` — `Draft` added to `CK_Requests_Status`, default `Draft`.
+- `Infrastructure/Data/Migrations/20260904033743_AddDraftStatusAndLineDecisions.*` — **new migration** (generated with `dotnet ef`, then hand-edited to add a data fix: existing `Pending` rows with no `Pending→Pending` submit marker become `Draft`, with the reverse in `Down`). This is the one open-migration PR — announce it.
+- `Infrastructure/Services/RequestService.cs` — `CreateAsync` (Draft), `SubmitAsync` (Draft→Pending), `ApproveAsync` (persist decisions, new status rule), `DeletePendingAsync` → `DeleteDraftAsync`.
+- `Infrastructure/Queries/RequestQueries.cs` — `GetRankLevelAsync` helper (C3); `GetPendingApprovalsAsync` includes `CancellationPending`; DTO mapping carries the two new fields.
+- `Application/Interfaces/Requests/{IRequestService,IRequestQueries}.cs`, `Application/DTOs/Requests/{RequestDto,SubmitRequestCommand}.cs` — signatures/docs; `RequestItemDto` gains `Decision`, `ApprovedQuantity`.
+- `WebApi/Controllers/RequestsController.cs` — `DeleteDraft`, doc strings.
+- `frontend/src/api/requests.js` — `deletePendingRequest` → `deleteDraftRequest`; docs.
+- `frontend/src/pages/requests/MyRequestsPage.jsx` — Draft filter option; Submit/Delete on `Draft`, Withdraw on `Pending`; `isRequestSubmitted` removed.
+- `frontend/src/pages/requests/components/RequestDetailModal.jsx` — same; shows Decision / Approved qty columns once a request is decided.
+- `frontend/src/pages/requests/components/RequestStatusBadge.jsx` — Draft badge. `NewRequestPage.jsx` — draft success wording.
+- `frontend/src/pages/requests/ApprovalsPage.jsx` + **new** `components/CancellationDecisionModal.jsx` (C5).
+- `.claude/launch.json` — `api` entry (SQLEXPRESS connection string passed as a CLI config arg; checked-in appsettings untouched).
+- Tests: `Tests/WebApi.IntegrationTests/RequestsTests.cs` (+7, 3 renamed), `MyRequestsPage.test.jsx` (+1, fixtures now Draft/Pending), `ApprovalsPage.test.jsx` (+1).
 
-**Task:** Enforce the requested row-level User Management rule: a Business Manager cannot perform actions on Business Manager or Managing Director accounts.
+**APIs changed:** `POST /requests` now returns `status: "Draft"`. `POST /requests/{id}/submit` requires `Draft` (409 otherwise). `DELETE /requests/{id}` requires `Draft` (400 otherwise). `GET /approvals/pending` also returns `CancellationPending` rows. `POST /approvals/{id}/approve` rejects a decision whose `requestItemId` is not on the request (409). `RequestItemDto` gains `decision`, `approvedQuantity`. No new endpoints.
 
-**What changed:**
-- `Application/Services/Users/UserManagementService.cs`: injects `ICurrentUserService`; Business Managers are denied update/status actions for target rank 3 or 4 and denied creating or assigning rank 3/4 roles.
-- `Application/Interfaces/Users/IUserStore.cs` and `Infrastructure/Identity/IdentityUserStore.cs`: added `GetRoleRankLevelAsync`, resolved from ASP.NET Core Identity `ApplicationRole.RankLevel`.
-- `Application/Exceptions/ForbiddenException.cs` and `WebApi/Middleware/ExceptionHandlingMiddleware.cs`: domain authorization failures become RFC 7807 HTTP `403 Forbidden`.
-- `Tests/Application.UnitTests/Users/UserManagementServiceTests.cs`: Business Manager peer-management unit coverage and current-user fixture support.
-- `Tests/WebApi.IntegrationTests/UsersTests.cs`: HTTP 403 coverage for create Business Manager, update Business Manager, and change Managing Director status.
-- `docs/development/business-manager-management-access-handoff.md`: updated access matrix, architecture, tests, and validation result.
+**DB changes:** one migration — see above. Applied to this machine's SQLEXPRESS dev database at startup; `__EFMigrationsHistory` shows it on top; the data fix converted 7 rows to `Draft` and left 8 genuinely submitted rows `Pending`.
 
-**Behavior:** Business Managers can manage Engineer/Manager accounts only. They cannot create or promote accounts to Business Manager/Managing Director, modify Business Manager/Managing Director accounts including themselves, or change their active status. Managing Director behavior is unchanged.
+**Validation actually run (2026-09-04):**
+- `dotnet build Project.slnx` — 0 errors. `dotnet test Project.slnx` — **140/140** (53 unit + 87 integration; was 133).
+- `npx vitest run --pool=threads` — **118/118** across 20 files (was 116).
+- **Live, in the browser against the real API + SQL Server** (users 902 Engineer → 901 Manager): New Request → "Save as Draft" → My Requests shows `Draft` with Submit + Delete, no Withdraw → approver's `GET /approvals/pending` is **empty** → Submit → `Pending`, Withdraw only → approver's queue shows #20 → requestor's `DELETE` → **400**, request still readable → approver Review, "Modify qty" 10→4 → `PartiallyApproved`; DB row: `Decision=modified, ApprovedQuantity=4, Quantity=10` → requestor requests cancellation → approver's queue shows `Cancellation Pending` with **Decide** → Approve cancellation → `Cancelled`. History: 5 rows (Draft, Pending, PartiallyApproved, CancellationPending, Cancelled); notifications: 2 rows per trigger event. Two 502s in the browser console predate the run (from the API restarts while getting the launch config right) — the fixed flow produced only 200s.
 
-**Assumption:** “Actions” covers create, update/role assignment, and active-status changes exposed by User Management. The list API remains available to Business Manager because it is required to locate/manage lower-rank accounts; no sensitive data beyond the existing user list is added.
+**Assumptions / decisions:**
+- Adding `Draft` follows Plan §3.6 as written. The Plan's contingency (line 1659, "remove the Draft state — submit directly") was *not* what the code did: the UI kept a "Save as Draft" button while the server had no such state, which is the worst of both. Choosing the Plan's primary design, not the contingency, is a restoration of the requirement — not a change to it.
+- All-`modified` decisions → `PartiallyApproved` (a reduced quantity is by definition not a full approval). The old rule produced the same status but by accident.
+- `TotalEstimatedCost` still reflects the *requested* total (it is the cost snapshot, CLAUDE.md #8). An "approved total" is derivable from `ApprovedQuantity × UnitCostSnapshot` but no column was added — that needs a team decision on what Reports should sum.
 
-**APIs changed:** No routes changed. Existing `POST /api/v1/users`, `PUT /api/v1/users/{empNo}`, and `PATCH /api/v1/users/{empNo}/status` can now return `403` for these row-level cases.
+**Deliberately left out of scope (all still open, see PROJECT_AUDIT.md):**
+- **C6** — `ApproveCancellationAsync` omits `.Include(r => r.StatusHistory)`, so *refusing* a cancellation always reverts to `Approved`, even for a `PartiallyApproved` request; its validator is never injected. **C5 makes this path reachable from the UI for the first time.** It is a two-line fix; it was rated High, not Critical, so it was not touched. Recommend doing it next.
+- **C7** budget enforcement, **C8** stock issue on approval / stock guard / `Fulfilled`, **C9** blank category/supplier on request lines, the missing `RequestStateMachine` class, and P1–P7.
 
-**DB changes:** None. No migration.
+**Shared files touched:** `frontend/src/api/requests.js`, `.claude/launch.json`. No route/nav changes.
 
-**Validation actually run:** `dotnet test Project.slnx --no-restore` — 93/93 passed; existing `NU1903` warning for `SQLitePCLRaw.lib.e_sqlite3` 2.1.11. `npx vitest run src/routes/ProtectedRoute.test.jsx --pool=threads` — 6/6 passed. `npm run build` — passed; non-failing React Router future-flag warnings.
+## 2026-09-04 — C6: refusing a cancellation now reverts to the right status
 
-**Out of scope:** No restriction on Managing Director, no changes to Inventory/Suppliers/Catalogue, no UI-specific disabling because server-side enforcement is authoritative.
+**Task:** "Fix C6 as well, same Run → Test → Verify loop."
 
-## 2026-09-04 — Register Managing Director authorization policy
+**Tool:** Claude Code (Fable 5.1).
 
-**Task:** Repair Jenkins Support integration-test failures caused by an endpoint policy name not registered in the ASP.NET Core authorization composition root.
+**What was wrong.** `RequestService.ApproveCancellationAsync` loaded the request with
+`.Include(r => r.Items)` only, then searched `request.StatusHistory` for the status to revert to
+on refusal. The list was always empty, so the `?? "Approved"` fallback fired every time — a
+`PartiallyApproved` request whose cancellation was refused silently became `Approved`. Also
+`ApproveCancellationCommandValidator` existed but was never injected, so the path ran
+unvalidated. Both became user-reachable once C5 gave the approver a "Decide" button.
 
-**What changed:**
-- `WebApi/Program.cs`: registered `RequireManagingDirector` with the existing `RankLevelRequirement(4)` and `RankLevelHandler` mechanism.
-- `docs/development/support-inbox.md`: documented the root cause, intended endpoint behavior, no-DB-impact scope, and pending validation.
+**What changed, by file:**
+- `Infrastructure/Services/RequestService.cs` — inject `IValidator<ApproveCancellationCommand>` and call it; `.Include(r => r.StatusHistory)`; on refusal revert to the `FromStatus` of the most recent transition *into* `CancellationPending` (read from the audit row, not inferred from "last status that wasn't X"); throw 409 if no such row exists rather than guess.
+- `WebApi/Controllers/ApprovalController.cs` — **removed the three `try/catch` blocks.** Found while testing: the controller's `catch (Exception)` turned the validator's 400 into a 500 `Problem(...)`. CLAUDE.md #2 says controllers carry zero try/catch because `ExceptionHandlingMiddleware` already maps Validation/NotFound/Conflict to 400/404/409 ProblemDetails; every other controller already works that way. Error shape from these three endpoints is now consistent with the rest of the API (the frontend's `detail ?? error` fallback chain handles both).
+- `Tests/WebApi.IntegrationTests/RequestsTests.cs` — `RefuseCancellation_PartiallyApprovedRequest_RevertsToPartiallyApproved`, `ApproveCancellation_ReasonOver500Chars_Returns400` (the latter failed with 500 until the controller change).
+- `docs/development/critical-fixes-request-workflow-handoff.md`, `PROJECT_AUDIT.md` — updated to C1–C6 fixed.
 
-**Root cause and behavior:** `SupportController` applies `[Authorize(Policy = "RequireManagingDirector")]` to `PATCH /api/v1/support/messages/{id}/status`, but the named policy was absent. ASP.NET Core threw `InvalidOperationException` before executing the action, producing 500. Registration lets authorization return the intended 403 for lower ranks and permits rank 4 requests to reach existing business validation.
+**No DB, migration, frontend or route changes.**
 
-**Assumption:** Rank level 4 remains the established Managing Director threshold. This uses the existing rank-based policy pattern rather than a new role-name check.
+**Validation actually run (2026-09-04):**
+- `dotnet build` — 0 errors (after stopping the running API, which locked `WebApi/bin`). `dotnet test Project.slnx` — **142/142** (53 unit + 89 integration; was 140).
+- Frontend untouched; suite still 118/118 from the previous entry.
+- **Live, in the browser against SQL Server:** request #21 taken to `PartiallyApproved` (qty 10 → 3) with a cancellation pending via the API; then as approver 901 in the UI: Approvals → "Decide" → comment → **Refuse cancellation** → `POST /approvals/21/cancel-approval` 200 → queue empty. DB: `Requests.Status = PartiallyApproved`, `RequestItems.ApprovedQuantity = 3` untouched, last history row `CancellationPending → PartiallyApproved` by 901 with the comment. Before the fix the same action produced `Approved`.
 
-**APIs changed:** No route or request/response contract change. The existing PATCH route no longer fails with 500 due to missing policy registration.
+**Assumptions / decisions:** reverting to the `FromStatus` of the *most recent* entry into `CancellationPending` (by time, then id) is the only reading consistent with Plan §3.6 ("CancellationPending → Approved: superior rejects cancellation" for a request that was Approved — and, by the same rule, PartiallyApproved for one that was). The 409-instead-of-guess on a missing history row is defensive; it cannot be hit through the API because `RequestCancellationAsync` always writes that row in the same save.
 
-**DB changes:** None. No migration.
+**Still open:** C7, C8, C9, the `RequestStateMachine` class, P1–P7 — see `PROJECT_AUDIT.md`.
 
-**Validation actually run:** `dotnet test Tests/WebApi.IntegrationTests/WebApi.IntegrationTests.csproj --no-restore --filter FullyQualifiedName~SupportTests` — 9/9 passed. `dotnet test Project.slnx --no-restore` — 140/140 passed. Both reported the existing `NU1903` warning for `SQLitePCLRaw.lib.e_sqlite3` 2.1.11.
+**Merge note (same day, on "commit and push"):** `origin/khang` had moved 17 commits ahead
+(Help page, support inbox, dashboard quick-link, sub-tree request visibility, BM restrictions,
+and migration `20260903181104_AddSupportMessages`). Merged with `--no-ff`. Two conflicts:
+- `RequestQueries.cs` — their commit `5f31a29` had already replaced the `ApplicationUser.RankLevel`
+  reads with `IHierarchyQueries` sub-tree scoping, a stricter and correct fix for C3. **Their
+  version was kept**; this branch's `GetRankLevelAsync` helper and the C3 regression test
+  (`GetById_UnrelatedManager_SeesRequest_RankComesFromRole`, which asserted a peer manager can see
+  any request — false under the sub-tree rule) were dropped. Only the C5 queue filter and the two
+  DTO fields were re-applied.
+- `RequestsTests.cs` — took their hierarchy users; all other tests merged cleanly.
+The migration was **regenerated** as `20260904033743_AddDraftStatusAndLineDecisions` so it sits
+after `AddSupportMessages` in the snapshot chain (the dev DB was first rolled back to
+`AddRoleBudgetThresholds` with `dotnet ef database update`), and the hand-written data-fix SQL
+was re-added. Post-merge validation is recorded below.
 
-**Out of scope:** No changes to Support service logic, role data, frontend behavior, or the existing self-resolution rule.
+**Post-merge validation actually run (2026-09-04):**
+- `dotnet build` — 0 errors. `npx vitest run --pool=threads` — **137/137** across 23 files (their
+  Help/Support/Dashboard tests included).
+- `dotnet test Project.slnx` — first run **4 failures, all pre-existing on `origin/khang`**, not
+  caused by the merge: `SupportTests.Resolve_*` returned 500 because `SupportController` uses
+  `[Authorize(Policy = "RequireManagingDirector")]` and that policy was never registered in
+  `Program.cs` (an unregistered policy name makes the authorization middleware throw). Verified by
+  grepping `origin/khang:WebApi/Program.cs` directly. Fixed in a separate follow-up commit with one
+  line — `.AddPolicy("RequireManagingDirector", … RankLevelRequirement(4))`, matching the
+  `RequireManager`(2) / `RequireBusinessManager`(3) entries beside it — because pushing a branch
+  with four red tests helps nobody. After the fix: **160/160** (54 unit + 106 integration).

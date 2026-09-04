@@ -129,7 +129,9 @@ public class RequestQueries(DataContext db, IHierarchyQueries hierarchy) : IRequ
                     supplierName,
                     i.Quantity,
                     i.UnitCostSnapshot,
-                    i.LineTotal
+                    i.LineTotal,
+                    i.Decision,
+                    i.ApprovedQuantity
                 );
             })
             .ToList();
@@ -188,10 +190,14 @@ public class RequestQueries(DataContext db, IHierarchyQueries hierarchy) : IRequ
         int pageSize,
         int approverEmployeeNumber)
     {
-        // Get requests in Pending status where the caller is the approver
+        // Everything waiting on THIS approver's decision: Pending (approve / reject) and
+        // CancellationPending (approve / refuse the cancellation — Plan §3.6). Filtering to
+        // Pending alone left CancellationPending requests with no way to be found by the one
+        // person who can resolve them (audit finding C5). Drafts never appear here.
         var query = db.Requests
             .AsNoTracking()
-            .Where(r => r.Status == "Pending" && r.ApproverEmployeeNumber == approverEmployeeNumber);
+            .Where(r => (r.Status == "Pending" || r.Status == "CancellationPending")
+                        && r.ApproverEmployeeNumber == approverEmployeeNumber);
 
         var totalCount = await query.CountAsync();
 
