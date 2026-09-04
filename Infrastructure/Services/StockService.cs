@@ -19,11 +19,35 @@ public class StockService(DataContext db, IInventoryQueries inventoryQueries) : 
     public Task<InventoryRowDto> IssueAsync(int itemId, int quantity, int actorEmployeeNumber, string reference, Guid expectedRowVersion) =>
         ApplyAsync(itemId, -Math.Abs(quantity), StockTransactionType.Issue, reference, null, actorEmployeeNumber, expectedRowVersion);
 
-    public Task<InventoryRowDto> ReceiveAsync(int itemId, int quantity, int? supplierId, string? reference, int actorEmployeeNumber, Guid expectedRowVersion) =>
-        ApplyAsync(itemId, Math.Abs(quantity), StockTransactionType.Receipt, reference, supplierId, actorEmployeeNumber, expectedRowVersion);
-
     public Task<InventoryRowDto> AdjustAsync(int itemId, int changeQuantity, string reason, int actorEmployeeNumber, Guid expectedRowVersion) =>
         ApplyAsync(itemId, changeQuantity, StockTransactionType.Adjustment, reason, null, actorEmployeeNumber, expectedRowVersion);
+
+    /// <inheritdoc />
+    public async Task StageReceiptAsync(
+        int itemId, int quantity, int? supplierId, string? reference, int actorEmployeeNumber)
+    {
+        var item = await db.StationeryItems.FirstOrDefaultAsync(i => i.Id == itemId)
+            ?? throw new NotFoundException($"Item {itemId} not found.");
+
+        var change = Math.Abs(quantity);
+
+        item.QuantityAvailable += change;
+        item.RowVersion = Guid.NewGuid();
+
+        db.StockTransactions.Add(new StockTransaction
+        {
+            ItemId = itemId,
+            TxType = StockTransactionType.Receipt,
+            ChangeQuantity = change,
+            UnitCostSnapshot = item.UnitCost,
+            Reference = reference,
+            SupplierId = supplierId,
+            CreatedByEmployeeNumber = actorEmployeeNumber,
+        });
+
+        // No SaveChangesAsync — see IStockService.StageReceiptAsync. A receipt only ever adds,
+        // so the balance cannot go negative and there is nothing to check here.
+    }
 
     private async Task<InventoryRowDto> ApplyAsync(
         int itemId,

@@ -21,6 +21,9 @@ public class SupplierRequestsTests : IAsyncLifetime
             _factory.Services, 501, "Mona Manager", "mona.sr@hmt.test", "Manager", "Password1!");
         await TestUserFactory.CreateUserAsync(
             _factory.Services, 502, "Eddie Engineer", "eddie.sr@hmt.test", "Engineer", "Password1!");
+        // Only this role may confirm that goods physically arrived.
+        await TestUserFactory.CreateUserAsync(
+            _factory.Services, 503, "Bruno BizMgr", "bruno.sr@hmt.test", "Business Manager", "Password1!");
     }
 
     public Task DisposeAsync()
@@ -299,6 +302,154 @@ public class SupplierRequestsTests : IAsyncLifetime
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         body.GetProperty("totalCount").GetInt32().Should().Be(1);
         body.GetProperty("items")[0].GetProperty("items")[0].GetProperty("quantity").GetInt32().Should().Be(8);
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Goods-arrival confirmation. Ordering never moves stock; only a Business Manager confirming
+    // a physical delivery does, and only once.
+    // ---------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task NewOrder_IsPendingArrival_AndStockIsUnchanged()
+    {
+        var (category, supplier) = await CatalogueTestData.SeedCategoryAndSupplierAsync(_factory.Services);
+        var item = await CatalogueTestData.SeedItemAsync(_factory.Services, category.Id, supplier.Id, 1, quantityAvailable: 50);
+
+        var client = await AuthedClientAsync(501, "Password1!");
+
+        var created = await (await client.PostAsJsonAsync("/api/v1/supplier-requests", new
+        {
+            items = new[] { new { itemId = item.Id, quantity = 30, supplierId = (int?)null } },
+        })).Content.ReadFromJsonAsync<JsonElement>();
+
+        created[0].GetProperty("status").GetString().Should().Be("PendingArrival");
+        created[0].GetProperty("receivedAtUtc").ValueKind.Should().Be(JsonValueKind.Null);
+
+        (await QuantityAsync(item.Id)).Should().Be(50, "the goods have not arrived yet");
+    }
+
+    [Fact]
+    public async Task ConfirmArrival_AsBusinessManager_MarksReceivedAndRaisesStockOnce()
+    {
+        var (category, supplier) = await CatalogueTestData.SeedCategoryAndSupplierAsync(_factory.Services);
+        var itemA = await CatalogueTestData.SeedItemAsync(_factory.Services, category.Id, supplier.Id, 1, quantityAvailable: 50);
+        var itemB = await CatalogueTestData.SeedItemAsync(_factory.Services, category.Id, supplier.Id, 1, quantityAvailable: 5);
+
+        var manager = await AuthedClientAsync(501, "Password1!");
+        var orderId = await CreateOrderAsync(manager, (itemA.Id, 30), (itemB.Id, 7));
+
+        var businessManager = await AuthedClientAsync(503, "Password1!");
+        var response = await businessManager.PostAsync($"/api/v1/supplier-requests/{orderId}/confirm-arrival", null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("status").GetString().Should().Be("Received");
+        body.GetProperty("receivedByEmployeeNumber").GetInt32().Should().Be(503);
+        body.GetProperty("receivedAtUtc").ValueKind.Should().NotBe(JsonValueKind.Null);
+
+        // Every line moves, and only by its own quantity.
+        (await QuantityAsync(itemA.Id)).Should().Be(80);
+        (await QuantityAsync(itemB.Id)).Should().Be(12);
+
+        // One Receipt ledger row per line — the balance is never changed without one.
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DataContext>();
+        var rows = await db.StockTransactions.AsNoTracking()
+            .Where(t => t.ItemId == itemA.Id || t.ItemId == itemB.Id)
+            .ToListAsync();
+
+        rows.Should().HaveCount(2);
+        rows.Should().OnlyContain(t => t.TxType == Core.Entities.StockTransactionType.Receipt);
+        rows.Should().OnlyContain(t => t.CreatedByEmployeeNumber == 503);
+        rows.Should().OnlyContain(t => t.Reference == $"Supplier order #{orderId}");
+    }
+
+    [Fact]
+    public async Task ConfirmArrival_Twice_Returns409_AndDoesNotRaiseStockAgain()
+    {
+        var (category, supplier) = await CatalogueTestData.SeedCategoryAndSupplierAsync(_factory.Services);
+        var item = await CatalogueTestData.SeedItemAsync(_factory.Services, category.Id, supplier.Id, 1, quantityAvailable: 50);
+
+        var manager = await AuthedClientAsync(501, "Password1!");
+        var orderId = await CreateOrderAsync(manager, (item.Id, 30));
+
+        var businessManager = await AuthedClientAsync(503, "Password1!");
+
+        var first = await businessManager.PostAsync($"/api/v1/supplier-requests/{orderId}/confirm-arrival", null);
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await QuantityAsync(item.Id)).Should().Be(80);
+
+        var second = await businessManager.PostAsync($"/api/v1/supplier-requests/{orderId}/confirm-arrival", null);
+        second.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        (await QuantityAsync(item.Id)).Should().Be(80, "a repeated confirmation must not add the stock twice");
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DataContext>();
+        (await db.StockTransactions.CountAsync(t => t.ItemId == item.Id)).Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData(501)] // Manager — may raise an order, may not certify it arrived
+    [InlineData(502)] // Engineer
+    public async Task ConfirmArrival_AsUnauthorisedRole_Returns403_AndStockIsUnchanged(int employeeNumber)
+    {
+        var (category, supplier) = await CatalogueTestData.SeedCategoryAndSupplierAsync(_factory.Services);
+        var item = await CatalogueTestData.SeedItemAsync(_factory.Services, category.Id, supplier.Id, 1, quantityAvailable: 50);
+
+        var manager = await AuthedClientAsync(501, "Password1!");
+        var orderId = await CreateOrderAsync(manager, (item.Id, 30));
+
+        var client = await AuthedClientAsync(employeeNumber, "Password1!");
+        var response = await client.PostAsync($"/api/v1/supplier-requests/{orderId}/confirm-arrival", null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await QuantityAsync(item.Id)).Should().Be(50);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DataContext>();
+        var order = await db.SupplierRequests.AsNoTracking().FirstAsync(r => r.Id == orderId);
+        order.Status.Should().Be("PendingArrival");
+    }
+
+    [Fact]
+    public async Task ConfirmArrival_Unauthenticated_Returns401()
+    {
+        var response = await _factory.CreateClient()
+            .PostAsync("/api/v1/supplier-requests/1/confirm-arrival", null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task ConfirmArrival_UnknownOrder_Returns404()
+    {
+        var businessManager = await AuthedClientAsync(503, "Password1!");
+
+        var response = await businessManager.PostAsync("/api/v1/supplier-requests/999999/confirm-arrival", null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    /// <summary>Creates an order as the given client and returns its id.</summary>
+    private static async Task<int> CreateOrderAsync(HttpClient client, params (int ItemId, int Quantity)[] lines)
+    {
+        var response = await client.PostAsJsonAsync("/api/v1/supplier-requests", new
+        {
+            items = lines.Select(l => new { itemId = l.ItemId, quantity = l.Quantity, supplierId = (int?)null }),
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetArrayLength().Should().Be(1, "these tests order from a single supplier");
+        return body[0].GetProperty("supplierRequestId").GetInt32();
+    }
+
+    private async Task<int> QuantityAsync(int itemId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DataContext>();
+        return (await db.StationeryItems.AsNoTracking().FirstAsync(i => i.Id == itemId)).QuantityAvailable;
     }
 
     private async Task<int> SeedSupplierAsync(string name)

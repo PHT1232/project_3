@@ -11,7 +11,12 @@ public sealed record SupplierRequestDto(
     decimal TotalCost,
     DateTime CreatedAtUtc,
     int CreatedByEmployeeNumber,
-    IReadOnlyList<SupplierRequestLineDto> Items);
+    IReadOnlyList<SupplierRequestLineDto> Items,
+    /// <summary>"PendingArrival" until a Business Manager confirms arrival, then "Received".</summary>
+    string Status,
+    DateTime? ReceivedAtUtc,
+    int? ReceivedByEmployeeNumber,
+    string? ReceivedByName);
 
 public sealed record SupplierRequestLineDto(
     int ItemId,

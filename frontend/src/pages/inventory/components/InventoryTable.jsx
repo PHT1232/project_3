@@ -5,7 +5,7 @@ import { formatNumber } from '../../../lib/format.js'
 import SortableHeader from '../../../components/ui/SortableHeader.jsx'
 import StockStatusBadge from './StockStatusBadge.jsx'
 
-function RowMenu({ row, onAdjust, onReceive }) {
+function RowMenu({ row, onAdjust }) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -34,16 +34,8 @@ function RowMenu({ row, onAdjust, onReceive }) {
             >
               Adjust stock
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false)
-                onReceive(row)
-              }}
-              className="block w-full px-3 py-2 text-left text-sm text-ink hover:bg-surface-muted"
-            >
-              Receive goods
-            </button>
+            {/* "Receive goods" was removed on 2026-09-04 — stock only enters through a Business
+                Manager confirming a supplier order's arrival (Supplier Orders, page header). */}
           </div>
         </>
       )}
@@ -65,7 +57,6 @@ export default function InventoryTable({
   onToggle,
   onToggleAll,
   onAdjust,
-  onReceive,
   headerProps,
 }) {
   const allSelected = rows.length > 0 && rows.every((row) => selectedIds.includes(row.itemId))
@@ -140,7 +131,7 @@ export default function InventoryTable({
                   <StockStatusBadge status={row.status} />
                 </td>
                 <td className="px-4 py-3">
-                  <RowMenu row={row} onAdjust={onAdjust} onReceive={onReceive} />
+                  <RowMenu row={row} onAdjust={onAdjust} />
                 </td>
               </tr>
             )

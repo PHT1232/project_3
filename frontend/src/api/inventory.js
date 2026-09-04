@@ -24,9 +24,9 @@ export async function adjustStock(itemId, { changeQuantity, reason, rowVersion }
   return (await client.post(`/inventory/${itemId}/adjust`, { changeQuantity, reason, rowVersion })).data
 }
 
-export async function receiveGoods(itemId, { quantity, supplierId, reference, rowVersion }) {
-  return (await client.post(`/inventory/${itemId}/receive`, { quantity, supplierId, reference, rowVersion })).data
-}
+// receiveGoods() was removed on 2026-09-04 together with POST /inventory/{itemId}/receive.
+// Stock only rises when a Business Manager confirms a supplier order actually arrived —
+// see confirmSupplierRequestArrival() in api/supplierRequests.js.
 
 export async function getTransactionHistory(itemId) {
   return (await client.get(`/inventory/${itemId}/transactions`)).data
