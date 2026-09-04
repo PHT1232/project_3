@@ -204,7 +204,7 @@ export default function NewRequestPage() {
         await submitRequest(created.requestId, created.rowVersion)
         setSuccessMessage(`Request #${created.requestId} submitted for approval successfully!`)
       } else {
-        setSuccessMessage(`Request #${created.requestId} saved as draft (Pending).`)
+        setSuccessMessage(`Request #${created.requestId} saved as a draft. Submit it from My Requests when you're ready.`)
       }
 
       // Redirect to my requests after short delay

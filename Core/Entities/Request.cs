@@ -33,8 +33,11 @@ public class Request
     public int? ApproverEmployeeNumber { get; set; }
 
     /// <summary>
-    /// Status values from the approval workflow diagram:
-    /// - Pending: just submitted, awaiting approver decision
+    /// Status values (Plan §3.6 state machine):
+    /// - Draft: created but not yet submitted — invisible to the approver, editable, the only
+    ///   deletable state. (Added 2026-09-04; before that requests were born Pending, so "Save
+    ///   as Draft" put them straight into the approver's queue — audit finding C1.)
+    /// - Pending: submitted, awaiting approver decision
     /// - Approved: approver approved (all lines approved)
     /// - PartiallyApproved: approver approved some lines, rejected others
     /// - Rejected: approver rejected all lines
@@ -45,7 +48,7 @@ public class Request
     ///
     /// The single source of truth; never UPDATE directly, only via RequestStateMachine.Transition().
     /// </summary>
-    public string Status { get; set; } = "Pending";
+    public string Status { get; set; } = "Draft";
 
     /// <summary>
     /// Sum of the line totals, snapshotted at submission (CLAUDE.md principle #8).

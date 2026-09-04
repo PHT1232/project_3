@@ -18,22 +18,40 @@ namespace Infrastructure.Queries;
 /// </summary>
 public class RequestQueries(DataContext db) : IRequestQueries
 {
+    /// <summary>
+    /// Rank comes from the assigned Identity role (AspNetUserRoles → AspNetRoles.RankLevel),
+    /// never from ApplicationUser.RankLevel — that column is not written by the real
+    /// user-creation path (IdentityUserStore) and is 1 for every user, which made every
+    /// "Manager+ sees all" branch below dead code. Same join as ReportQueries.ResolveScopeAsync
+    /// and RequestService.CreateAsync, so all three agree with what /auth/me reports.
+    /// Returns 0 when the user has no role (or does not exist).
+    /// </summary>
+    private async Task<int> GetRankLevelAsync(int employeeNumber) =>
+        await (
+            from ur in db.UserRoles
+            join r in db.Roles on ur.RoleId equals r.Id
+            where ur.UserId == employeeNumber
+            select (int?)r.RankLevel
+        ).FirstOrDefaultAsync() ?? 0;
+
     public async Task<PagedResult<RequestDto>> GetVisibleAsync(
         int page,
         int pageSize,
         string? statusFilter,
         int visibleToEmployeeNumber)
     {
-        // Load the user to determine visibility scope
-        var user = await db.Users
-            .AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Id == visibleToEmployeeNumber)
-            ?? throw new ApplicationException($"User {visibleToEmployeeNumber} not found.");
+        var userExists = await db.Users.AsNoTracking().AnyAsync(u => u.Id == visibleToEmployeeNumber);
+        if (!userExists)
+        {
+            throw new ApplicationException($"User {visibleToEmployeeNumber} not found.");
+        }
+
+        var rankLevel = await GetRankLevelAsync(visibleToEmployeeNumber);
 
         // Determine visibility: Manager+ sees all, others see their own + those they approve
         IQueryable<Core.Entities.Request> query = db.Requests.AsNoTracking();
 
-        if (user.RankLevel < 2) // Engineer or below (not Manager or above)
+        if (rankLevel < 2) // Engineer or below (not Manager or above)
         {
             query = query.Where(r =>
                 r.RequestorEmployeeNumber == visibleToEmployeeNumber
@@ -74,14 +92,13 @@ public class RequestQueries(DataContext db) : IRequestQueries
     public async Task<RequestDto?> GetByIdAsync(int requestId, int visibleToEmployeeNumber)
     {
         // Load the user for visibility check
-        var user = await db.Users
-            .AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Id == visibleToEmployeeNumber);
-
-        if (user is null)
+        var userExists = await db.Users.AsNoTracking().AnyAsync(u => u.Id == visibleToEmployeeNumber);
+        if (!userExists)
         {
             return null;
         }
+
+        var rankLevel = await GetRankLevelAsync(visibleToEmployeeNumber);
 
         // Load full request with navigation properties
         var request = await db.Requests
@@ -99,7 +116,7 @@ public class RequestQueries(DataContext db) : IRequestQueries
         // Visibility check: requestor, approver, or Manager+
         var canSee = request.RequestorEmployeeNumber == visibleToEmployeeNumber
             || request.ApproverEmployeeNumber == visibleToEmployeeNumber
-            || user.RankLevel >= 2;
+            || rankLevel >= 2;
 
         if (!canSee)
         {
@@ -135,7 +152,9 @@ public class RequestQueries(DataContext db) : IRequestQueries
                     supplierName,
                     i.Quantity,
                     i.UnitCostSnapshot,
-                    i.LineTotal
+                    i.LineTotal,
+                    i.Decision,
+                    i.ApprovedQuantity
                 );
             })
             .ToList();
@@ -194,10 +213,14 @@ public class RequestQueries(DataContext db) : IRequestQueries
         int pageSize,
         int approverEmployeeNumber)
     {
-        // Get requests in Pending status where the caller is the approver
+        // Everything waiting on THIS approver's decision: Pending (approve / reject) and
+        // CancellationPending (approve / refuse the cancellation — Plan §3.6). Filtering to
+        // Pending alone left CancellationPending requests with no way to be found by the one
+        // person who can resolve them (audit finding C5). Drafts never appear here.
         var query = db.Requests
             .AsNoTracking()
-            .Where(r => r.Status == "Pending" && r.ApproverEmployeeNumber == approverEmployeeNumber);
+            .Where(r => (r.Status == "Pending" || r.Status == "CancellationPending")
+                        && r.ApproverEmployeeNumber == approverEmployeeNumber);
 
         var totalCount = await query.CountAsync();
 
@@ -230,16 +253,14 @@ public class RequestQueries(DataContext db) : IRequestQueries
         string? statusFilter = null)
     {
         // Requestor visibility: only they can see their own requests, unless caller is Manager+
-        var caller = await db.Users
-            .AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Id == visibleToEmployeeNumber);
-
-        if (caller is null)
+        var callerExists = await db.Users.AsNoTracking().AnyAsync(u => u.Id == visibleToEmployeeNumber);
+        if (!callerExists)
         {
             return new PagedResult<RequestDto>([], page, pageSize, 0);
         }
 
-        if (caller.Id != requestorEmployeeNumber && caller.RankLevel < 2)
+        if (visibleToEmployeeNumber != requestorEmployeeNumber
+            && await GetRankLevelAsync(visibleToEmployeeNumber) < 2)
         {
             return new PagedResult<RequestDto>([], page, pageSize, 0);
         }
@@ -279,11 +300,8 @@ public class RequestQueries(DataContext db) : IRequestQueries
     public async Task<Dictionary<string, int>> GetStatusSummaryForDashboardAsync(int employeeNumber)
     {
         // Load the user to determine visibility scope
-        var user = await db.Users
-            .AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Id == employeeNumber);
-
-        if (user is null)
+        var userExists = await db.Users.AsNoTracking().AnyAsync(u => u.Id == employeeNumber);
+        if (!userExists)
         {
             return new Dictionary<string, int>();
         }
@@ -291,7 +309,7 @@ public class RequestQueries(DataContext db) : IRequestQueries
         // Build the query based on visibility (Manager+ see all, others see their own + those they approve)
         IQueryable<Core.Entities.Request> query = db.Requests.AsNoTracking();
 
-        if (user.RankLevel < 2)
+        if (await GetRankLevelAsync(employeeNumber) < 2)
         {
             query = query.Where(r =>
                 r.RequestorEmployeeNumber == employeeNumber

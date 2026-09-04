@@ -30,9 +30,31 @@ const SAMPLE_REQUEST = {
       quantity: 2,
       unitCostSnapshot: 6.25,
       lineTotal: 12.5,
+      decision: null,
+      approvedQuantity: null,
     },
   ],
   statusHistory: [],
+}
+
+const CANCELLATION_REQUEST = {
+  ...SAMPLE_REQUEST,
+  requestId: 2,
+  status: 'CancellationPending',
+  rowVersion: 'v7',
+  items: [{ ...SAMPLE_REQUEST.items[0], requestItemId: 2, decision: 'approved', approvedQuantity: 2 }],
+  statusHistory: [
+    {
+      historyId: 9,
+      requestId: 2,
+      fromStatus: 'Approved',
+      toStatus: 'CancellationPending',
+      actorEmployeeNumber: 202,
+      actorName: 'Eve Engineer',
+      comment: 'Ordered the wrong colour',
+      createdAtUtc: '2026-08-29T00:00:00Z',
+    },
+  ],
 }
 
 describe('ApprovalsPage', () => {
@@ -86,6 +108,37 @@ describe('ApprovalsPage', () => {
         rowVersion: 'v1',
         lineDecisions: [{ requestItemId: 1, decision: 'approved', modifiedQuantity: null }],
         comment: null,
+      }),
+    )
+  })
+
+  it('lets the approver decide a cancellation request', async () => {
+    requestsApi.getPendingApprovals.mockResolvedValue({
+      items: [SAMPLE_REQUEST, CANCELLATION_REQUEST],
+      page: 1,
+      pageSize: 20,
+      totalCount: 2,
+    })
+    requestsApi.approveCancellation.mockResolvedValue({ ...CANCELLATION_REQUEST, status: 'Cancelled' })
+
+    render(<ApprovalsPage />)
+    expect(await screen.findAllByText('Eve Engineer')).toHaveLength(2)
+
+    // A CancellationPending row gets "Decide", not "Review"
+    expect(screen.getByRole('button', { name: /review request #1/i })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /decide cancellation of request #2/i }))
+
+    expect(await screen.findByText(/cancellation request for #2/i)).toBeInTheDocument()
+    expect(screen.getByText('Ordered the wrong colour')).toBeInTheDocument()
+
+    await userEvent.type(screen.getByRole('textbox', { name: /your comment/i }), 'Fine by me')
+    await userEvent.click(screen.getByRole('button', { name: /approve cancellation of request #2/i }))
+
+    await waitFor(() =>
+      expect(requestsApi.approveCancellation).toHaveBeenCalledWith(2, {
+        rowVersion: 'v7',
+        approved: true,
+        reason: 'Fine by me',
       }),
     )
   })

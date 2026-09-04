@@ -8,16 +8,17 @@ import Button from '../../components/ui/Button.jsx'
 import { ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
 import { SkeletonTable } from '../../components/ui/Skeleton.jsx'
 import useAsync from '../../hooks/useAsync.js'
-import { getMyRequests, submitRequest, withdrawRequest, requestCancellation, deletePendingRequest } from '../../api/requests.js'
+import { getMyRequests, submitRequest, withdrawRequest, requestCancellation, deleteDraftRequest } from '../../api/requests.js'
 import { formatCurrency, formatDate } from '../../lib/format.js'
 import RequestStatusBadge from './components/RequestStatusBadge.jsx'
-import RequestDetailModal, { isRequestSubmitted } from './components/RequestDetailModal.jsx'
+import RequestDetailModal from './components/RequestDetailModal.jsx'
 import CancellationModal from './components/CancellationModal.jsx'
 
 const PAGE_SIZE = 15
 
 const STATUS_OPTIONS = [
   { value: '', label: 'All Statuses' },
+  { value: 'Draft', label: 'Draft' },
   { value: 'Pending', label: 'Pending' },
   { value: 'Approved', label: 'Approved' },
   { value: 'PartiallyApproved', label: 'Partially Approved' },
@@ -51,7 +52,7 @@ export default function MyRequestsPage() {
     setActionSuccess(null)
   }
 
-  async function handleSubmitPending(request) {
+  async function handleSubmitDraft(request) {
     if (!request) return
     setIsActioning(true)
     clearMessages()
@@ -87,14 +88,14 @@ export default function MyRequestsPage() {
     }
   }
 
-  async function handleDeletePending(request) {
+  async function handleDeleteDraft(request) {
     if (!request) return
     if (!window.confirm(`Are you sure you want to delete draft request #${request.requestId}?`)) return
 
     setIsActioning(true)
     clearMessages()
     try {
-      await deletePendingRequest(request.requestId)
+      await deleteDraftRequest(request.requestId)
       setActionSuccess(`Draft request #${request.requestId} deleted.`)
       setSelectedRequest(null)
       reload()
@@ -240,7 +241,10 @@ export default function MyRequestsPage() {
                 </thead>
                 <tbody className="divide-y divide-surface-border">
                   {requests.map((req) => {
-                    const isSubmitted = isRequestSubmitted(req)
+                    // Draft = saved, not yet sent (submit / delete). Pending = sent, awaiting the
+                    // approver (withdraw). The server owns this distinction now — it used to be
+                    // inferred here from status history, which the server never checked.
+                    const isDraft = req.status === 'Draft'
                     const isPending = req.status === 'Pending'
                     const isApprovedOrPartial = req.status === 'Approved' || req.status === 'PartiallyApproved'
 
@@ -279,12 +283,12 @@ export default function MyRequestsPage() {
                               View
                             </Button>
 
-                            {isPending && !isSubmitted && (
+                            {isDraft && (
                               <Button
                                 size="sm"
                                 variant="primary"
                                 disabled={isActioning}
-                                onClick={() => handleSubmitPending(req)}
+                                onClick={() => handleSubmitDraft(req)}
                                 aria-label={`Submit request #${req.requestId}`}
                               >
                                 <Send className="h-4 w-4" aria-hidden="true" />
@@ -292,7 +296,7 @@ export default function MyRequestsPage() {
                               </Button>
                             )}
 
-                            {isPending && isSubmitted && (
+                            {isPending && (
                               <Button
                                 size="sm"
                                 variant="secondary"
@@ -318,11 +322,11 @@ export default function MyRequestsPage() {
                               </Button>
                             )}
 
-                            {isPending && !isSubmitted && (
+                            {isDraft && (
                               <button
                                 type="button"
                                 disabled={isActioning}
-                                onClick={() => handleDeletePending(req)}
+                                onClick={() => handleDeleteDraft(req)}
                                 aria-label={`Delete draft request #${req.requestId}`}
                                 className="rounded p-1 text-ink-muted hover:bg-surface-muted hover:text-status-danger"
                               >
@@ -371,13 +375,13 @@ export default function MyRequestsPage() {
         open={Boolean(selectedRequest)}
         request={selectedRequest}
         onClose={() => setSelectedRequest(null)}
-        onSubmit={handleSubmitPending}
+        onSubmit={handleSubmitDraft}
         onWithdraw={handleWithdraw}
         onRequestCancellation={(req) => {
           setSelectedRequest(null)
           setCancellationTarget(req)
         }}
-        onDelete={handleDeletePending}
+        onDelete={handleDeleteDraft}
         isActioning={isActioning}
       />
 

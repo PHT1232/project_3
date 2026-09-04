@@ -29,7 +29,8 @@ export async function getRequest(requestId) {
 }
 
 /**
- * Create a new stationery request (status: Pending).
+ * Create a new stationery request. It is saved as a Draft — invisible to the approver until
+ * submitRequest() moves it to Pending (Plan §3.6).
  * @param {Object} payload - { items: [{ itemId, quantity }], requiredByDate?: string }
  */
 export async function createRequest({ items, requiredByDate }) {
@@ -37,7 +38,7 @@ export async function createRequest({ items, requiredByDate }) {
 }
 
 /**
- * Submit an unsubmitted Pending request for approval.
+ * Submit a Draft request for approval (Draft → Pending). Notifies the approver.
  */
 export async function submitRequest(requestId, rowVersion) {
   return (await client.post(`/requests/${requestId}/submit`, { requestId, rowVersion })).data
@@ -64,9 +65,10 @@ export async function requestCancellation(requestId, rowVersion, reason) {
 }
 
 /**
- * Delete an unsubmitted Pending request.
+ * Delete a Draft request. Draft is the only deletable state — a submitted request is never
+ * deleted, only transitioned (Plan §3.6).
  */
-export async function deletePendingRequest(requestId) {
+export async function deleteDraftRequest(requestId) {
   return (await client.delete(`/requests/${requestId}`)).data
 }
 
@@ -80,7 +82,8 @@ export async function getRequestSummary() {
 // --- Approver endpoints ---
 
 /**
- * Get requests pending the current user's approval.
+ * Get requests awaiting the current user's decision: Pending (approve / reject) and
+ * CancellationPending (approve / refuse the cancellation).
  */
 export async function getPendingApprovals({ page = 1, pageSize = 20 } = {}) {
   return (await client.get('/approvals/pending', { params: { page, pageSize } })).data

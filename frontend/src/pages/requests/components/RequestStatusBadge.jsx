@@ -5,6 +5,7 @@ import Badge from '../../../components/ui/Badge.jsx'
  * Infrastructure/Services/RequestService.cs — Status is a free-text string, not an enum column.
  */
 const STATUS_STYLE = {
+  Draft: { tone: 'outline', label: 'Draft' },
   Pending: { tone: 'muted', label: 'Pending' },
   Approved: { tone: 'plain', label: 'Approved' },
   PartiallyApproved: { tone: 'plain', label: 'Partially Approved' },
