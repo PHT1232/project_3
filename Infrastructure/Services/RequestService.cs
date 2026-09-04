@@ -1,6 +1,7 @@
 using Application.DTOs.Common;
 using Application.DTOs.Requests;
 using Application.Exceptions;
+using Application.Interfaces.Inventory;
 using Application.Interfaces.Notifications;
 using Application.Interfaces.Requests;
 using Application.Interfaces.Users;
@@ -30,6 +31,7 @@ public class RequestService(
     IRequestQueries queries,
     INotificationService notificationService,
     IEligibilityQueries eligibilityQueries,
+    IStockService stockService,
     IValidator<CreateRequestCommand> createValidator,
     IValidator<ApproveRequestCommand> approveValidator,
     IValidator<WithdrawRequestCommand> withdrawValidator,
@@ -229,8 +231,9 @@ public class RequestService(
     {
         await approveValidator.ValidateAndThrowAsync(command);
 
+        // Items.Item is needed for the stock guard below — balances and names for the message.
         var request = await db.Requests
-            .Include(r => r.Items)
+            .Include(r => r.Items).ThenInclude(i => i.Item)
             .FirstOrDefaultAsync(r => r.Id == command.RequestId)
             ?? throw new NotFoundException($"Request {command.RequestId} not found.");
 
@@ -300,6 +303,46 @@ public class RequestService(
         var newStatus = approvedAsAskedCount == lineCount ? "Approved"
             : rejectedCount == lineCount ? "Rejected"
             : "PartiallyApproved";
+
+        // Stock moves here (Plan §3.6: "Pending -> Approved ... Stock >= quantity for every
+        // line ... Decrement stock + write Issue transactions + notify both — one DB
+        // transaction"). Until now nothing checked or moved stock at all and IStockService's
+        // issue path had no callers, so approvals could commit more stock than existed
+        // (audit finding C8).
+        //
+        // Two passes on purpose: verify every line first so an under-stocked request is refused
+        // before anything has been staged, and the approver gets one clear message naming the
+        // item rather than a failure part-way through the basket.
+        if (newStatus != "Rejected")
+        {
+            var toIssue = request.Items
+                .Where(i => i.ApprovedQuantity is > 0)
+                .Select(i => (Line: i, Quantity: i.ApprovedQuantity!.Value))
+                .ToList();
+
+            var short_ = toIssue
+                .Where(x => (x.Line.Item?.QuantityAvailable ?? 0) < x.Quantity)
+                .Select(x => $"'{x.Line.Item?.ItemName}' has {x.Line.Item?.QuantityAvailable ?? 0} in stock, {x.Quantity} approved")
+                .ToList();
+
+            if (short_.Count > 0)
+            {
+                throw new BusinessRuleException(
+                    $"Cannot approve — not enough stock: {string.Join("; ", short_)}.");
+            }
+
+            foreach (var (line, quantity) in toIssue)
+            {
+                // ApprovedQuantity, never Quantity: a reduced line issues what was granted.
+                await stockService.StageRequestMovementAsync(
+                    line.ItemId,
+                    -quantity,
+                    StockTransactionType.Issue,
+                    request.Id,
+                    $"Request #{request.Id}",
+                    approverEmployeeNumber);
+            }
+        }
 
         request.Status = newStatus;
         request.DecisionComment = command.Comment;
@@ -436,7 +479,7 @@ public class RequestService(
         // list was empty and every refusal fell back to "Approved" — wrong for a
         // PartiallyApproved request (audit finding C6).
         var request = await db.Requests
-            .Include(r => r.Items)
+            .Include(r => r.Items).ThenInclude(i => i.Item)
             .Include(r => r.StatusHistory)
             .FirstOrDefaultAsync(r => r.Id == requestId)
             ?? throw new NotFoundException($"Request {requestId} not found.");
@@ -473,6 +516,26 @@ public class RequestService(
                 .FirstOrDefault()
               ?? throw new ConflictException(
                   $"Request {requestId} has no recorded transition into CancellationPending; cannot revert.");
+
+        // Approving the cancellation gives the stock back (Plan §3.6: "CancellationPending ->
+        // Cancelled ... Restore stock + write Adjustment transactions + notify both"). Adjustment
+        // rather than Receipt because nothing physically arrived — this reverses a movement.
+        // Guarded on ApprovedQuantity: only lines that actually issued stock can restore any, so
+        // a rejected line and a request cancelled from a status that never moved stock both
+        // correctly restore nothing.
+        if (approved)
+        {
+            foreach (var line in request.Items.Where(i => i.ApprovedQuantity is > 0))
+            {
+                await stockService.StageRequestMovementAsync(
+                    line.ItemId,
+                    line.ApprovedQuantity!.Value,
+                    StockTransactionType.Adjustment,
+                    request.Id,
+                    $"Cancellation of Request #{request.Id}",
+                    approverEmployeeNumber);
+            }
+        }
 
         request.Status = newStatus;
         request.RowVersion = Guid.NewGuid();

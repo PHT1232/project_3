@@ -25,6 +25,42 @@ public class StockService(DataContext db, IInventoryQueries inventoryQueries) : 
     public Task<InventoryRowDto> AdjustAsync(int itemId, int changeQuantity, string reason, int actorEmployeeNumber, Guid expectedRowVersion) =>
         ApplyAsync(itemId, changeQuantity, StockTransactionType.Adjustment, reason, null, actorEmployeeNumber, expectedRowVersion);
 
+    public async Task StageRequestMovementAsync(
+        int itemId,
+        int changeQuantity,
+        StockTransactionType txType,
+        int requestId,
+        string reference,
+        int actorEmployeeNumber)
+    {
+        // Tracked, not AsNoTracking: the balance change has to be part of the caller's pending
+        // unit of work so it commits with the request's status change (Plan §3.6).
+        var item = await db.StationeryItems.FirstOrDefaultAsync(i => i.Id == itemId)
+            ?? throw new NotFoundException($"Item {itemId} not found.");
+
+        if (item.QuantityAvailable + changeQuantity < 0)
+        {
+            throw new BusinessRuleException(
+                $"'{item.ItemName}' has {item.QuantityAvailable} in stock; this needs {Math.Abs(changeQuantity)}.");
+        }
+
+        item.QuantityAvailable += changeQuantity;
+        item.RowVersion = Guid.NewGuid();
+
+        db.StockTransactions.Add(new StockTransaction
+        {
+            ItemId = itemId,
+            TxType = txType,
+            ChangeQuantity = changeQuantity,
+            UnitCostSnapshot = item.UnitCost,
+            Reference = reference,
+            RequestId = requestId,
+            CreatedByEmployeeNumber = actorEmployeeNumber,
+        });
+
+        // Deliberately no SaveChangesAsync — see IStockService.StageRequestMovementAsync.
+    }
+
     private async Task<InventoryRowDto> ApplyAsync(
         int itemId,
         int changeQuantity,

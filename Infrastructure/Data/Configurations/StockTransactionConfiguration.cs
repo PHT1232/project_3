@@ -27,6 +27,17 @@ public class StockTransactionConfiguration : IEntityTypeConfiguration<StockTrans
             .HasForeignKey(t => t.SupplierId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // Set null rather than Restrict: the ledger is append-only truth and must survive the
+        // one request deletion the system allows (a Draft — which by definition never moved
+        // stock, so in practice this never fires). No navigation property on the Request side;
+        // nothing needs to walk from a request to its ledger rows.
+        builder.HasOne<Request>()
+            .WithMany()
+            .HasForeignKey(t => t.RequestId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        builder.HasIndex(t => t.RequestId);
+
         // No navigation property on StockTransaction to ApplicationUser — Core.StockTransaction
         // only has the scalar CreatedByEmployeeNumber FK (see that entity's doc comment / K8).
         builder.HasOne<ApplicationUser>()

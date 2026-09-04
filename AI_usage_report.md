@@ -1639,3 +1639,69 @@ Dashboard tile and never enforced, so an Engineer with a 500 allowance could sub
 **Validation:** `dotnet build` 0 errors. `dotnet test Project.slnx` — **167 passed**
 (54 unit + 113 integration; was 160, +7 new). `npx vitest run --pool=threads` — **138 passed**
 (+1 new). `npm run build` clean.
+
+## 2026-09-05 — Audit C8: stock moves on approval, is restored on cancellation
+
+**Task:** Fix `PROJECT_AUDIT.md` finding C8 — approval never checked or moved stock
+(`IStockService.IssueAsync` had zero callers), cancellation never gave it back, and the
+`Fulfilled` status was unreachable yet still counted.
+
+**What changed, by file:**
+- `Core/Entities/StockTransaction.cs` — nullable `RequestId`, so an `Issue` row says which
+  request took the stock instead of only a free-text `Reference`.
+- `Application/Interfaces/Inventory/IStockService.cs` +
+  `Infrastructure/Services/StockService.cs` — new `StageRequestMovementAsync`: applies the
+  balance change and adds the ledger row **without saving**, so the caller commits it in the
+  same `SaveChangesAsync` as the status change (Plan §3.6 "one DB transaction").
+- `Infrastructure/Services/RequestService.cs` — ctor takes `IStockService`. `ApproveAsync`
+  loads `Items.Item`, verifies **every** line has stock (422 naming each short item) and only
+  then stages one `Issue` per line at `-ApprovedQuantity`. `ApproveCancellationAsync` stages
+  one `Adjustment` per line at `+ApprovedQuantity` when the cancellation is approved.
+- `Infrastructure/Data/Configurations/StockTransactionConfiguration.cs` — FK + index on
+  `RequestId`, `OnDelete(SetNull)`.
+- `Infrastructure/Data/Configurations/RequestConfiguration.cs`,
+  `Queries/ReportQueries.cs`, `Queries/EligibilityQueries.cs`, `Data/DbSeeder.cs`,
+  `frontend/.../MyRequestsPage.jsx`, `.../RequestStatusBadge.jsx` — `Fulfilled` removed from
+  the CHECK constraint, both status sets, the dead demo seeder, the filter and the badge map.
+- `Infrastructure/Data/Migrations/20260904043931_AddStockIssueOnApproval.*` — **new**:
+  `RequestId` column/index/FK, narrowed `CK_Requests_Status`, and a hand-written
+  `UPDATE Requests SET Status='Approved' WHERE Status='Fulfilled'` that must run before the
+  constraint goes back on.
+- `Tests/WebApi.IntegrationTests/ApprovalStockTests.cs` — **new**, 7 tests (see Validation).
+- `docs/development/stock-on-approval.md` — **new** handoff. `PROJECT_AUDIT.md` — status
+  header updated: all nine confirmed errors now closed.
+- Doc-comment cleanups referencing `Fulfilled` in `Request.cs`, `IRequestService.cs`,
+  `IReportQueries.cs`, `CostByItemReportDto.cs`, `api/reports.js`, `faqData.js`.
+
+**Assumptions made where the request was ambiguous:**
+- **`Fulfilled` removed**, confirmed with the user. Plan §3.6 has no transition into it —
+  approval is what moves the stock — so it was unreachable by construction. Reintroducing it
+  needs a real fulfilment step, not just the enum value.
+- **One `SaveChangesAsync`, no explicit `BeginTransactionAsync`.** EF wraps a single
+  `SaveChanges` in one transaction, which satisfies Plan §3.6 and keeps the SQLite test
+  provider working. Chosen over an explicit transaction, which the plan offered as the
+  alternative.
+- **No item row-version check on the staged path.** The approval already gated on the
+  *request's* row version; re-checking each item's would fail approvals because an unrelated
+  goods receipt touched the item. Flagged as reviewer follow-up 4 with the concurrency
+  reasoning.
+- **`Adjustment`, not `Receipt`, for the restore** — nothing physically arrived; this reverses
+  a movement. Plan §3.6 line 410 says "Adjustment".
+- **Stock is taken at approval, not reserved at submit** — matches Plan §3.6, which puts the
+  guard on `Pending → Approved`. Two requests can therefore both pass eligibility and the
+  second fail the stock guard.
+- `__ai_agents/Requirements/` still does not exist; Plan §3.6 lines 405/410, §200 and T2.6 are
+  the requirement sources.
+
+**Deliberately left out of scope:**
+- Reports still sum `TotalEstimatedCost` (requested), not issued spend — pre-existing, and a
+  team decision (also flagged in the C1–C6 handoff).
+- No stock reservation at submit; no low-stock warning on the approval screen.
+- Audit P-items (P1–P7) — untouched.
+
+**Validation:** `dotnet build` 0 errors. `dotnet test Project.slnx` — **174 passed**
+(54 unit + 120 integration, +7 new). `npx vitest run --pool=threads` — **138 passed**.
+`npm run build` clean. Migration applied to `StationeryManagementSystem.Dev` on real SQL
+Server at startup. **Live round trip** on item #2: 112 → approve 10 units of request #108 →
+**102** (`Issue −10, reqId 108, by 22`) → approve its cancellation → **112**
+(`Adjustment +10, reqId 108`); ledger sum matches the cached balance.

@@ -8,7 +8,7 @@ import client from './client.js'
  * "My Requests" tab; row-level scoping happens server-side (see ReportQueries's doc comment)
  * and is keyed off the caller's JWT, never a client-supplied parameter. All endpoints take
  * `?fromDate=YYYY-MM-DD&toDate=YYYY-MM-DD` and count committed spend only (Approved /
- * PartiallyApproved / Fulfilled requests), using RequestItems.LineTotal — the cost snapshot,
+ * PartiallyApproved requests), using RequestItems.LineTotal — the cost snapshot,
  * never the live catalogue price.
  *
  * Each payload carries a client-added `kind` so the page can tell whether the data in hand
