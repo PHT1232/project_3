@@ -49,6 +49,9 @@ public class IdentityUserStore(
 
     public Task<bool> RoleExistsAsync(string role) => roleManager.RoleExistsAsync(role);
 
+    public async Task<int?> GetRoleRankLevelAsync(string role) =>
+        (await roleManager.FindByNameAsync(role))?.RankLevel;
+
     public async Task<bool> EmployeeExistsAsync(int employeeNumber) =>
         await userManager.FindByIdAsync(employeeNumber.ToString()) is not null;
 

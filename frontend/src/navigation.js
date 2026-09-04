@@ -10,6 +10,7 @@ import {
   Users,
   PackagePlus,
   HelpCircle,
+  LifeBuoy,
 } from 'lucide-react'
 
 /**
@@ -19,8 +20,9 @@ import {
  *
  * `minRankLevel` hides an item below that rank (Sidebar.jsx filters using AuthContext) — this
  * is UX only, never the real control (Plan §2.5); the server-side policy on the route is.
- * Inventory, Suppliers, Item Management and User Management are Manager+ (Plan §4.2,
- * page-map.md §9–12). Reports is open to everyone — its data is row-scoped per role
+ * Inventory and Suppliers are Manager+. Item Management and User Management are Business
+ * Manager+ by the explicit access-rule override recorded in the implementation handoff. Reports
+ * is open to everyone — its data is row-scoped per role
  * server-side (a requestor sees only their own spend), so there's no rank floor on the tab.
  */
 export const navItems = [
@@ -32,7 +34,7 @@ export const navItems = [
   { to: '/reports', label: 'Reports', icon: BarChart3 },
   { to: '/inventory', label: 'Inventory', icon: Package, minRankLevel: 2 },
   { to: '/suppliers', label: 'Suppliers', icon: Truck, minRankLevel: 2 },
-  { to: '/catalogue/manage', label: 'Item Management', icon: PackagePlus, minRankLevel: 2 },
-  { to: '/user-management', label: 'User Management', icon: Users, minRankLevel: 2 },
+  { to: '/catalogue/manage', label: 'Item Management', icon: PackagePlus, minRankLevel: 3 },
+  { to: '/user-management', label: 'User Management', icon: Users, minRankLevel: 3 },
   { to: '/help', label: 'Help', icon: HelpCircle },
 ]

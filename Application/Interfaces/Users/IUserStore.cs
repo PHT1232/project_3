@@ -12,6 +12,8 @@ public interface IUserStore
 
     Task<bool> RoleExistsAsync(string role);
 
+    Task<int?> GetRoleRankLevelAsync(string role);
+
     Task<bool> EmployeeExistsAsync(int employeeNumber);
 
     Task<bool> EmailExistsAsync(string email, int? excludeEmployeeNumber);

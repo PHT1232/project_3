@@ -10,8 +10,8 @@ import RequestTimeframe, { DEFAULT_TIMEFRAME, resolveTimeframeWindow } from './R
 
 /**
  * "Recent Requests" panel from the wireframe. `requests` is the most-recent page of requests
- * visible to the caller (own, or own + subordinates for an approver, or all for a Manager) —
- * GET /requests already scopes and orders this newest-first.
+ * visible to the caller (own, pending their approval, or raised anywhere in their reporting
+ * sub-tree) — GET /requests already scopes and orders this newest-first.
  *
  * A time-frame control (this week / this month / custom From→To) narrows the list
  * client-side, since GET /requests takes no date parameter. The result scrolls inside a
