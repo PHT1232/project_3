@@ -1590,3 +1590,39 @@ was re-added. Post-merge validation is recorded below.
   line — `.AddPolicy("RequireManagingDirector", … RankLevelRequirement(4))`, matching the
   `RequireManager`(2) / `RequireBusinessManager`(3) entries beside it — because pushing a branch
   with four red tests helps nobody. After the fix: **160/160** (54 unit + 106 integration).
+
+## 2026-09-05 — Audit C9: category and supplier names on request lines
+
+**Task:** Fix `PROJECT_AUDIT.md` finding C9 — request detail lines always showed a blank
+category and supplier.
+
+**What changed, by file:**
+- `Infrastructure/Queries/RequestQueries.cs` — `GetByIdAsync` now includes
+  `Items → Item → Category` and `Items → Item → Supplier`. The mapping already read
+  `i.Item?.Category?.Name` / `i.Item?.Supplier?.Name`, but under `AsNoTracking` those
+  references were never loaded, so both were always `null`. The `Items → Item` chain is
+  repeated per leaf navigation because that is how EF's `ThenInclude` composes.
+- `Tests/WebApi.IntegrationTests/RequestsTests.cs` — two tests:
+  `GetById_RequestLines_CarryCategoryAndSupplierNames` (asserts the seeded
+  "Test Category"/"Test Supplier" reach the DTO) and
+  `GetById_ItemWithNoSupplier_LeavesSupplierNameNull`.
+
+**Assumptions made where the request was ambiguous:**
+- `RequestDetailModal.jsx` renders `categoryName ?? '—'` / `supplierName ?? '—'`. That
+  fallback is **kept**: a `StationeryItem` may legitimately have `SupplierId == null`, so
+  "—" is the correct display for that case rather than a bug symptom. No frontend change.
+- The "General" / "Preferred Supplier" placeholders the audit mentions live in
+  `NewRequestPage.jsx` / `AiAssistantBox.jsx`, which read the **catalogue** endpoint, not
+  `RequestDto`. They are a different code path and were left alone.
+- `__ai_agents/Requirements/` has no spec for this; the audit entry and Plan §3.4 (line
+  header/detail split) are the only requirement sources.
+
+**Deliberately left out of scope:**
+- Audit **P4** (N+1: `GetVisibleAsync`/`GetByRequestorAsync` call `GetByIdAsync` per row).
+  This fix reaches every list through that same path, which makes each row's query slightly
+  heavier — the Dashboard asks for 100 rows. Collapsing the N+1 is a separate change.
+- C7 and C8, which follow on their own branches.
+
+**Validation:** `dotnet build Project.slnx` 0 errors. `dotnet test` — `RequestsTests` 34/34
+(was 32). Both new tests confirmed to **fail** with the `ThenInclude`s reverted, so they
+genuinely guard the fix.

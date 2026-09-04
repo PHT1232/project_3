@@ -75,11 +75,14 @@ public class RequestQueries(DataContext db, IHierarchyQueries hierarchy) : IRequ
     {
         var scope = await hierarchy.GetVisibleRequestorScopeAsync(visibleToEmployeeNumber);
 
-        // Load full request with navigation properties
+        // Category and Supplier hang off StationeryItem, so the Items -> Item chain is repeated
+        // for each leaf navigation. Without these the DTO's categoryName/supplierName were read
+        // off unloaded references under AsNoTracking and were therefore always null, which the
+        // UI rendered as its "General" / "Preferred Supplier" placeholders (audit finding C9).
         var request = await db.Requests
             .AsNoTracking()
-            .Include(r => r.Items)
-            .ThenInclude(i => i.Item)
+            .Include(r => r.Items).ThenInclude(i => i.Item).ThenInclude(item => item!.Category)
+            .Include(r => r.Items).ThenInclude(i => i.Item).ThenInclude(item => item!.Supplier)
             .Include(r => r.StatusHistory)
             .FirstOrDefaultAsync(r => r.Id == requestId);
 
