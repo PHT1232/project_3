@@ -4,6 +4,8 @@ import { formatCurrency, formatNumber } from '../../../lib/format.js'
 import BarChart from './charts/BarChart.jsx'
 import SortHeader from './SortHeader.jsx'
 import { nextSort, applySort } from '../tableSort.js'
+import Pagination from '../../../components/ui/Pagination.jsx'
+import usePagination from '../../../hooks/usePagination.js'
 
 const TOP_N = 8
 
@@ -26,6 +28,7 @@ const ACCESSORS = {
 export default function ItemHeadcountView({ rows, totalApprovedCost, filtered }) {
   const [sort, setSort] = useState(null)
   const sorted = applySort(rows, sort, ACCESSORS)
+  const { page, setPage, totalPages, total, isOnPage } = usePagination(sorted)
   const onSort = (key) => setSort((current) => nextSort(current, key))
 
   const topByUnits = [...rows]
@@ -55,8 +58,13 @@ export default function ItemHeadcountView({ rows, totalApprovedCost, filtered })
             </tr>
           </thead>
           <tbody>
-            {sorted.map((row) => (
-              <tr key={row.itemId} className="border-b border-surface-border last:border-0">
+            {sorted.map((row, index) => (
+              <tr
+                key={row.itemId}
+                className={`border-b border-surface-border last:border-0 ${
+                  isOnPage(index) ? '' : 'hidden print:table-row'
+                }`}
+              >
                 <td className="px-4 py-3 font-medium text-ink">{row.itemName}</td>
                 <td className="px-4 py-3 text-ink-muted">{row.categoryName}</td>
                 <td className="px-4 py-3 text-right tabular-nums text-ink">
@@ -84,6 +92,7 @@ export default function ItemHeadcountView({ rows, totalApprovedCost, filtered })
             </tr>
           </tfoot>
         </table>
+        <Pagination page={page} totalPages={totalPages} total={total} onPageChange={setPage} />
         {filtered && (
           <p className="px-4 py-3 text-xs text-ink-muted">
             Full approved spend for the period: {formatCurrency(totalApprovedCost)}.

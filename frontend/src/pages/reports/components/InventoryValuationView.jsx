@@ -4,6 +4,8 @@ import StatCard from '../../../components/ui/StatCard.jsx'
 import { formatCurrency, formatNumber } from '../../../lib/format.js'
 import SortHeader from './SortHeader.jsx'
 import { nextSort, applySort } from '../tableSort.js'
+import Pagination from '../../../components/ui/Pagination.jsx'
+import usePagination from '../../../hooks/usePagination.js'
 
 /**
  * Report 4 — Inventory Valuation. Point-in-time monetary value of current stock
@@ -61,6 +63,7 @@ export default function InventoryValuationView({ items }) {
   }, [items])
 
   const sorted = applySort(items, sort, ACCESSORS)
+  const { page, setPage, totalPages, total, isOnPage } = usePagination(sorted)
   const totalValue = summary.totalValue
 
   return (
@@ -83,8 +86,13 @@ export default function InventoryValuationView({ items }) {
             </tr>
           </thead>
           <tbody>
-            {sorted.map((item) => (
-              <tr key={item.itemId} className="border-b border-surface-border last:border-0">
+            {sorted.map((item, index) => (
+              <tr
+                key={item.itemId}
+                className={`border-b border-surface-border last:border-0 ${
+                  isOnPage(index) ? '' : 'hidden print:table-row'
+                }`}
+              >
                 <td className="px-4 py-3 font-medium text-ink">{item.itemName}</td>
                 <td className="px-4 py-3 text-right tabular-nums text-ink">
                   {formatNumber(item.quantityAvailable)}
@@ -109,6 +117,7 @@ export default function InventoryValuationView({ items }) {
             </tr>
           </tfoot>
         </table>
+        <Pagination page={page} totalPages={totalPages} total={total} onPageChange={setPage} />
       </div>
     </div>
   )

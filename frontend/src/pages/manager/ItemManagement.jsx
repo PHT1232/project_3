@@ -10,6 +10,8 @@ import { ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
 import { SkeletonTable } from '../../components/ui/Skeleton.jsx'
 import useAsync from '../../hooks/useAsync.js'
 import useSortableTable from '../../hooks/useSortableTable.js'
+import usePagination from '../../hooks/usePagination.js'
+import Pagination from '../../components/ui/Pagination.jsx'
 import SortableHeader from '../../components/ui/SortableHeader.jsx'
 import { formatCurrency } from '../../lib/format.js'
 import { getCategories, getItems, createItem, updateItem, deactivateItem } from '../../api/catalogue.js'
@@ -238,6 +240,7 @@ export default function ItemManagement() {
     key: 'itemName',
     dir: 'asc',
   })
+  const { page, setPage, totalPages, total, pageRows } = usePagination(sortedItems)
   const categories = data?.categories ?? []
   const suppliers = data?.suppliers ?? []
 
@@ -348,7 +351,7 @@ export default function ItemManagement() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-border">
-                {sortedItems.map((item) => (
+                {pageRows.map((item) => (
                   <tr key={item.itemId}>
                     <td className="px-4 py-3 font-medium text-ink">{item.itemName}</td>
                     <td className="px-4 py-3 text-ink-muted">{item.categoryName}</td>
@@ -380,6 +383,12 @@ export default function ItemManagement() {
                 ))}
               </tbody>
             </table>
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              onPageChange={setPage}
+            />
           </div>
         )}
       </Card>
