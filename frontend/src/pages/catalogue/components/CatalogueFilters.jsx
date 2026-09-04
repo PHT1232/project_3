@@ -1,4 +1,5 @@
 import Card from '../../../components/ui/Card.jsx'
+import { Skeleton } from '../../../components/ui/Skeleton.jsx'
 import { MAX_COST_CAP } from '../filters.js'
 
 /** At the cap the ceiling is open-ended, matching the "$100+" track label. */
@@ -62,7 +63,13 @@ function UnitCostSlider({ cost, onCostChange }) {
  * Catalogue filter panel — category, availability and a unit-cost ceiling, exactly the three
  * groups on the approved wireframe.
  */
-export default function CatalogueFilters({ categories, suppliers, value, onChange }) {
+export default function CatalogueFilters({
+  categories,
+  suppliers,
+  value,
+  onChange,
+  loading = false,
+}) {
   const allSelected = value.categoryIds.length === 0
 
   function toggleCategory(categoryId) {
@@ -85,6 +92,14 @@ export default function CatalogueFilters({ categories, suppliers, value, onChang
             />
             All Categories
           </label>
+          {/* Placeholder rows while the category list loads, so the panel keeps its height. */}
+          {loading &&
+            Array.from({ length: 4 }, (_, index) => (
+              <div key={index} className="flex items-center gap-2.5 py-1">
+                <Skeleton className="h-4 w-4" />
+                <Skeleton className="h-3 w-28" />
+              </div>
+            ))}
           {categories.map((category) => (
             <label
               key={category.categoryId}

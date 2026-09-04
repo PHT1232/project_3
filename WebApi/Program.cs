@@ -1,5 +1,8 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Text;
+using System.Threading.RateLimiting;
+using Application.Interfaces.Ai;
 using Application.Interfaces.Auth;
 using Application.Interfaces.Catalogue;
 using Application.Interfaces.Inventory;
@@ -8,7 +11,9 @@ using Application.Interfaces.Reports;
 using Application.Interfaces.Requests;
 using Application.Interfaces.SupplierRequests;
 using Application.Interfaces.Suppliers;
+using Application.Interfaces.Support;
 using Application.Interfaces.Users;
+using Application.Services.Ai;
 using Application.Services.Auth;
 using Application.Services.Catalogue;
 using Application.Services.Inventory;
@@ -18,6 +23,7 @@ using Application.Validators.Users;
 using Core.Interfaces;
 using FluentValidation;
 using Infrastructure;
+using Infrastructure.Ai;
 using Infrastructure.Data;
 using Infrastructure.Identity;
 using Infrastructure.Queries;
@@ -25,12 +31,14 @@ using Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using Serilog;
 using Serilog.Debugging;
 using WebApi.Authorization;
+using WebApi.Controllers;
 using WebApi.Middleware;
 using WebApi.Services;
 
@@ -157,6 +165,7 @@ try
     builder.Services.AddAuthorizationBuilder()
         .AddPolicy("RequireManager", policy => policy.Requirements.Add(new RankLevelRequirement(2)))
         .AddPolicy("RequireBusinessManager", policy => policy.Requirements.Add(new RankLevelRequirement(3)))
+        .AddPolicy("RequireManagingDirector", policy => policy.Requirements.Add(new RankLevelRequirement(4)))
         .AddPolicy("RequireApprover", policy => policy.Requirements.Add(new ApproverRequirement()));
 
     builder.Services.AddSingleton<IAuthorizationHandler, RankLevelHandler>();
@@ -184,11 +193,59 @@ try
     builder.Services.AddScoped<IInventoryService, InventoryService>();
     builder.Services.AddScoped<ISupplierRequestQueries, SupplierRequestQueries>();
     builder.Services.AddScoped<ISupplierRequestService, SupplierRequestService>();
+    builder.Services.AddScoped<IHierarchyQueries, HierarchyQueries>();
     builder.Services.AddScoped<IRequestQueries, RequestQueries>();
     builder.Services.AddScoped<IRequestService, RequestService>();
     builder.Services.AddScoped<IReportQueries, ReportQueries>();
+    builder.Services.AddScoped<IEligibilityQueries, EligibilityQueries>();
     builder.Services.AddScoped<INotificationQueries, NotificationQueries>();
     builder.Services.AddScoped<INotificationService, NotificationService>();
+    builder.Services.AddScoped<ISupportMessageQueries, SupportMessageQueries>();
+    builder.Services.AddScoped<ISupportMessageService, SupportMessageService>();
+
+    // AI Request Assistant (Plan §5.2, A1). The provider key is read from configuration only —
+    // in every non-development environment that means the Gemini__ApiKey environment variable
+    // (locally, `dotnet user-secrets`); the checked-in appsettings files carry an empty string.
+    // A missing key is a warning, not a failure: the feature degrades to keyword matching
+    // (Plan §5.2 rule 4).
+    var aiAssistantOptions = builder.Configuration.GetSection("Ai").Get<AiAssistantOptions>() ?? new AiAssistantOptions();
+    aiAssistantOptions.Enabled = builder.Configuration.GetValue("Features:AiAssistant", true);
+    var geminiOptions = builder.Configuration.GetSection(GeminiOptions.SectionName).Get<GeminiOptions>() ?? new GeminiOptions();
+    if (aiAssistantOptions.Enabled && string.IsNullOrWhiteSpace(geminiOptions.ApiKey))
+    {
+        Log.Warning("Gemini:ApiKey is not configured — the AI Request Assistant will use keyword-matching fallback only. Set the Gemini__ApiKey environment variable (or `dotnet user-secrets set Gemini:ApiKey …`) to enable the model.");
+    }
+
+    builder.Services.AddSingleton(aiAssistantOptions);
+    builder.Services.AddSingleton(geminiOptions);
+    // The timeout lives on the named HttpClient so the SDK-free client stays a plain POST.
+    builder.Services.AddHttpClient(GeminiLlmClient.HttpClientName, client =>
+    {
+        client.BaseAddress = new Uri(geminiOptions.BaseUrl);
+        client.Timeout = TimeSpan.FromSeconds(Math.Max(1, geminiOptions.TimeoutSeconds));
+    });
+    builder.Services.AddSingleton<ILlmClient, GeminiLlmClient>();
+    builder.Services.AddScoped<IRequestAssistantService, RequestAssistantService>();
+    builder.Services.AddScoped<IAiUsageQueries, AiUsageQueries>();
+
+    // Plan §5.2 rule 6: 20 AI calls per user per hour. Built-in ASP.NET rate limiter, keyed by
+    // the JWT subject (employee number) — no extra dependency, no state outside the process.
+    var aiCallsPerHour = builder.Configuration.GetValue("Ai:RateLimitPerHour", 20);
+    builder.Services.AddRateLimiter(options =>
+    {
+        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+        options.AddPolicy(AiController.RateLimitPolicy, httpContext =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: httpContext.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
+                    ?? httpContext.Connection.RemoteIpAddress?.ToString()
+                    ?? "anonymous",
+                factory: _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = aiCallsPerHour,
+                    Window = TimeSpan.FromHours(1),
+                    QueueLimit = 0,
+                }));
+    });
 
     builder.Services.AddValidatorsFromAssemblyContaining<CreateUserRequestValidator>();
     builder.Services.AddControllers();
@@ -261,6 +318,9 @@ try
 
     app.UseAuthentication();
     app.UseAuthorization();
+
+    // After authentication so the AI policy can partition on the user's employee number.
+    app.UseRateLimiter();
 
     app.MapControllers();
     app.MapFallbackToFile("index.html");

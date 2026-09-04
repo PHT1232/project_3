@@ -1266,55 +1266,159 @@ one). Not committed to `main` / not pushed.
 
 **Out of scope:** select-all controls, page-size changes, and request lifecycle changes.
 
-## 2026-09-03 — New Request picker pagination and low-stock filter
+## 2026-09-03 — Dashboard: time-frame filter on Recent Requests, scroll areas, budget-tile note
 
-**Task:** Add pagination and a low-stock select filter to the New Request catalogue picker.
+**Tool:** Claude Code (claude-sonnet-5).
+
+**Task:** Three dashboard tweaks: (1) cap the Recent Requests and Low Stock Alerts sections
+with a vertical scroller instead of unbounded growth; (2) add a time-frame control to Recent
+Requests — This Week / This Month / Custom From→To — for every user; (3) explain the
+"Remaining Budget" tile's "not available yet" state.
+
+**Spec status:** `__ai_agents/Requirements/` still does not exist. The Dashboard itself is
+NOT SPECIFIED in the Plan (page-map §3) — this is incremental polish on the already-merged
+dashboard (PR #17), on the user's explicit request.
+
+**What changed, by file (all frontend, dashboard-scoped, no backend/DB/.cs):**
+- `frontend/src/pages/dashboard/components/RequestTimeframe.jsx` (new) — segmented
+  Week/Month/Custom control; exports `resolveTimeframeWindow(value)` → inclusive `[fromMs,
+  toMs]` epoch window and `DEFAULT_TIMEFRAME`. Style mirrors
+  `reports/components/DateRangeControl.jsx` + `ReportTabs.jsx` (active state).
+- `frontend/src/pages/dashboard/components/RecentRequestsCard.jsx` — renders the control in
+  the header; `useMemo`-filters the incoming list by `createdAtUtc` within the window; wraps
+  the table in `max-h-96 overflow-y-auto` with a `sticky top-0` header; distinct empty state
+  for "no requests in this period".
+- `frontend/src/pages/dashboard/components/LowStockPanel.jsx` — items list gains
+  `max-h-96 overflow-y-auto`.
+- `frontend/src/pages/dashboard/DashboardPage.jsx` — Recent Requests fetch `pageSize` 5 → 100
+  (`RECENT_FETCH`) so the client-side filter has rows to work with.
+
+**Assumptions (flagged):**
+- `GET /requests` has **no date parameter** (verified: `RequestsController.GetVisible` /
+  `api/requests.js` take only page/pageSize/status), so the time-frame filter runs
+  **client-side over the 100 most-recent visible requests**. If a user has >100 requests
+  newer than the selected window's start, older matches beyond 100 won't appear. Acceptable
+  at eProject scale; the real fix is `fromDate`/`toDate` on that (shared, M4-owned) endpoint —
+  deliberately out of scope here.
+- "This week" = from Monday 00:00 of the current week; "This month" = from the 1st of the
+  calendar month; both run to end of today. Default is **This Month**.
+- Scroller cap: `max-h-96` (~24rem).
+
+**Left out of scope:**
+- **"Remaining Budget" tile** — still a placeholder. It is NOT a higher-ups-only feature and
+  is NOT yet coded (neither backend nor frontend). It maps to the Plan's unbuilt
+  `GET /api/v1/users/me/eligibility` (page-map §14: role limit − month-to-date approved
+  spend, from `RoleThresholds.MaxAmountPerMonth`). No such route/controller exists
+  (`grep`-confirmed). The tile renders "Not available yet — needs the eligibility service"
+  rather than a fabricated number, per systemprompt.md.
+- No tests added — the dashboard shipped without any and none touch these files.
+- Manual browser click-through not done by the developer (build + 91 unit tests + HMR clean).
+
+## 2026-09-03 — Role spending eligibility ("Remaining Budget"), Phase 1
+
+**Tool:** Claude Code (claude-sonnet-5).
+
+**Task:** Implement the per-role monthly budget limit the user specified (Engineer 500 /
+Manager 2 000 / Business Manager 5 000 / MD 20 000) and wire the dashboard's "Remaining
+Budget" tile to it. This is Phase 1 of the scope agreed earlier — the eligibility read model
++ dashboard tile. Submit-time enforcement (Phase 2) deliberately left out (edits the
+M4-owned request lifecycle — needs a coordination call).
+
+**Spec status:** `__ai_agents/Requirements/` still does not exist. The endpoint IS in the
+Plan (§4.2 `GET /users/me/eligibility`, T1.6 "eligibility engine", `[SPEC]`); the thresholds
+are Plan §3.3 "Amount-Employee-role threshold mapping table" `[SPEC]`; magnitudes from
+page-map §14.
 
 **What changed, by file:**
-- `frontend/src/pages/requests/NewRequestPage.jsx` — added local 10-item pagination with Previous/Next controls and result range, plus an all-stock/low-stock select. Low stock is `quantityAvailable <= reorderLevel`; item data already comes from the role-filtered catalogue endpoint. Search and stock-filter changes reset to the first page, while selected checkbox IDs persist across pages.
-- `frontend/src/pages/requests/NewRequestPage.test.jsx` — added `reorderLevel` mock data plus regression coverage for low-stock-only filtering and an 11-item pagination boundary.
-- `docs/development/request-pages-implementation-handoff.md` — documented the filter definition, pagination behavior, and unchanged API boundary.
+- Backend new: `Application/DTOs/Users/EligibilityDto.cs`,
+  `Application/Interfaces/Users/IEligibilityQueries.cs`,
+  `Infrastructure/Queries/EligibilityQueries.cs`, migration
+  `20260903044750_AddRoleBudgetThresholds`, `Tests/WebApi.IntegrationTests/EligibilityTests.cs`
+  (4 tests), `docs/development/eligibility-budget.md` (handoff).
+- Backend modified (shared, additive): `Infrastructure/Identity/ApplicationRole.cs` (+2
+  decimal columns), `ApplicationRoleConfiguration.cs` (precision 18,2),
+  `Infrastructure/Data/DbSeeder.cs` (`Roles` tuple gains the two limits; `SeedRolesAsync` is
+  now create-**or-update** so pre-existing DBs get the allowances backfilled),
+  `DataContextModelSnapshot.cs`, `WebApi/Program.cs` (DI),
+  `WebApi/Controllers/UsersController.cs` (`GET me/eligibility`).
+- Frontend: `api/users.js` (`getMyEligibility()`), `DashboardPage.jsx` (added to the
+  dashboard `Promise.all`, caught individually so it can't blank the page),
+  `DashboardKpis.jsx` (Remaining Budget tile → real currency + "% of monthly allowance",
+  red under 10%, placeholder on failure).
 
-**Assumption:** The request's “low stock product” means the same reorder threshold used by the existing Inventory UI: `quantityAvailable <= reorderLevel`.
+**Assumptions made (all flagged in the handoff, all reversible):**
+- **Thresholds as columns on `AspNetRoles`**, not the schema-of-record's separate
+  `RoleThresholds` table — consistent with the Identity fold that already put `RankLevel`
+  there (CLAUDE.md K8). Needs an ERD/SQL reconciliation note.
+- **`MaxAmountPerRequest == MaxAmountPerMonth`** — schema has the column, no documented value.
+- **Month-to-date spend** = `Requests` by this employee, `CreatedAtUtc` in the current UTC
+  month, status not in {Rejected, Withdrawn, Cancelled}. Amount = `TotalEstimatedCost`
+  (no per-line approved figure exists for PartiallyApproved).
+- Currency is magnitudes only (`[ASK] #10`).
 
-**No API, backend, database, migration, authorization, or request-state changes.** Pagination is local because `frontend/src/api/catalogue.js:getItems()` currently requests the complete eligible item list with `pageSize: 500`.
+**Left out of scope:**
+- **Phase 2** — 422 on over-limit submission (`RequestService.SubmitAsync`, `Block|Warn`
+  config flag, TC-05). Crosses into M4's request-lifecycle service; needs coordination.
+- The "My Eligibility" page (page-map §14) and New Request's "running total vs remaining"
+  (Plan T3.7) — both would reuse `GET /users/me/eligibility` as-is.
+- No browser click-through of the tile by the developer (build + 91 backend + 91 frontend
+  tests only).
 
-**Validation:** `npx vitest run src/pages/requests/NewRequestPage.test.jsx --pool=threads` — 8/8 passed. `npm run build` in `frontend/` — passed.
+**Branch note:** `feat/role-budget-eligibility` is **stacked on `feat/dashboard-recent-requests-filter`**
+(both touch `DashboardPage.jsx`). Merge the filter branch first, or rebase after.
 
-**Out of scope:** server-side catalogue pagination/query parameters, select-all controls, and changes to stock thresholds or request lifecycle.
+**Validation:** `dotnet build Project.slnx` 0 errors; `dotnet test Project.slnx` 91 passed
+(incl. 4 new EligibilityTests); `npm run build` + `npm test` 91 passed.
 
-## 2026-09-03 — Preserve accessible stock-filter name
+## 2026-09-04 — Help & support page (Plan T6.1)
 
-**Task:** Keep the compact New Request stock filter after its visible label was removed.
+**Task:** Build the Help page — static Q&A covering every feature, plus a way to email the
+dev team.
 
 **What changed, by file:**
-- `frontend/src/pages/requests/NewRequestPage.jsx` — added `aria-label="Stock status"` to the existing `#stock-filter` select, preserving its accessible name without restoring a visual label.
-- `docs/development/request-pages-implementation-handoff.md` — recorded the compact-layout accessibility treatment.
+- `frontend/src/pages/Help.jsx` — replaced the placeholder; composes the three cards.
+- `frontend/src/pages/help/faqData.js` (new) — 28 static Q&A entries across 8 areas
+  (Getting started, Requests, Tracking, Approvals, Budget & eligibility, Notifications,
+  Reports, Account). Exceeds T6.1's "≥15 covering every feature".
+- `frontend/src/pages/help/components/FaqList.jsx` (new) — searchable accordion (native
+  `<details>`), filters question + answer text and auto-expands matches, grouped by area.
+- `frontend/src/pages/help/components/ContactCard.jsx` (new) — `mailto:` hand-off to the
+  shared inbox (`antsconst84@gmail.com`): "Report a bug" / "Ask a question" open the user's
+  mail client with subject + body scaffold + a diagnostics block prefilled; "Copy
+  diagnostics" copies the same block.
+- `frontend/src/pages/help/components/SystemInfoCard.jsx` (new) — read-only build/session
+  panel (employee #, role, app version, build date).
+- `frontend/src/config/support.js` (new) — support email, area list, mailto/diagnostics builders.
+- `frontend/vite.config.js` — `define` injects `__APP_VERSION__` (git short SHA, safe
+  fallback) and `__BUILD_TIME__`.
+- `frontend/src/pages/help/Help.test.jsx` (new) — 8 tests: ≥15 entries, every area covered,
+  non-empty Q/A, page renders, search filters, no-match message, mailto target + subject,
+  system-info shows the user.
 
-**No API, backend, database, migration, authorization, or request-state changes.**
+**Assumptions / decisions (per the user's answers):**
+- **FAQ is a frontend module, not `GET /api/v1/help/faq`.** The Plan lists that endpoint as
+  `[SPEC]`; the user asked to keep it static "as of right now". Content is shaped as a flat
+  list so it can move behind the endpoint later with no page change. **Flagged deviation.**
+- **Email is `mailto:` only** — no server-side send (SMTP is `[CUT]`), no persistence. No
+  feedback section (dropped at the user's request).
+- **One shared support inbox**, not per-developer buttons — team members aren't named in the
+  repo (CLAUDE.md K6). Address lives in `config/support.js`.
 
-**Validation:** `npx vitest run src/pages/requests/NewRequestPage.test.jsx --pool=threads` — 8/8 passed.
+**Left out of scope:** the `help/faq` endpoint; any feedback storage / Manager feedback view;
+glossary and changelog sections (suggested, not requested).
 
-**Out of scope:** filter behavior, pagination behavior, and visual layout changes.
+**Validation:** `npx vitest run --pool=threads` **106 passed** (8 new); `npm run build`
+clean. Rendered in a headless browser signed in as an Engineer — screenshots shown to the
+user.
 
-## 2026-09-03 — Show five New Request picker rows per page
+## 2026-09-04 — In-app support inbox (Help page "message the team", Option B)
 
-**Task:** Limit the New Request catalogue picker to five visible items per page.
+**Task:** Replace the Help page's `mailto:` buttons (which do nothing on a machine with no
+mail client) with an in-app dialog that delivers straight to the team.
 
-**What changed, by file:**
-- `frontend/src/pages/requests/NewRequestPage.jsx` — changed `PICKER_PAGE_SIZE` from 10 to 5.
-- `frontend/src/pages/requests/NewRequestPage.test.jsx` — updated pagination regression coverage for the five-row boundary.
-- `docs/development/request-pages-implementation-handoff.md` — updated the documented page size.
-
-**No API, backend, database, migration, authorization, stock-filter, or request-state changes.**
-
-**Validation:** `npx vitest run src/pages/requests/NewRequestPage.test.jsx --pool=threads` — 8/8 passed. `npm run build` in `frontend/` — passed.
-
-**Out of scope:** server-side pagination, select-all, and layout changes.
-
-## 2026-09-03 — Display stock in New Request picker
-
-**Task:** Remove the stock-select top margin and display item stock in the New Request catalogue table.
+**Approach:** Option B of the contact-the-team decision — store messages in a new table and
+give Manager+ an in-app triage screen. **No SMTP** (email/SMTP is on the Plan's `[CUT]`
+list; a server-side sender would be a scope breach). Works with the network unplugged.
 
 **What changed, by file:**
 - `frontend/src/pages/requests/NewRequestPage.jsx` — removed the `mt-1` class from `#stock-filter`; added a Stock column showing `quantityAvailable` followed by `available` for each picker row.
@@ -1374,3 +1478,23 @@ one). Not committed to `main` / not pushed.
 **Validation actually run:** `dotnet test Project.slnx --no-restore` — 93/93 passed; existing `NU1903` warning for `SQLitePCLRaw.lib.e_sqlite3` 2.1.11. `npx vitest run src/routes/ProtectedRoute.test.jsx --pool=threads` — 6/6 passed. `npm run build` — passed; non-failing React Router future-flag warnings.
 
 **Out of scope:** No restriction on Managing Director, no changes to Inventory/Suppliers/Catalogue, no UI-specific disabling because server-side enforcement is authoritative.
+
+## 2026-09-04 — Register Managing Director authorization policy
+
+**Task:** Repair Jenkins Support integration-test failures caused by an endpoint policy name not registered in the ASP.NET Core authorization composition root.
+
+**What changed:**
+- `WebApi/Program.cs`: registered `RequireManagingDirector` with the existing `RankLevelRequirement(4)` and `RankLevelHandler` mechanism.
+- `docs/development/support-inbox.md`: documented the root cause, intended endpoint behavior, no-DB-impact scope, and pending validation.
+
+**Root cause and behavior:** `SupportController` applies `[Authorize(Policy = "RequireManagingDirector")]` to `PATCH /api/v1/support/messages/{id}/status`, but the named policy was absent. ASP.NET Core threw `InvalidOperationException` before executing the action, producing 500. Registration lets authorization return the intended 403 for lower ranks and permits rank 4 requests to reach existing business validation.
+
+**Assumption:** Rank level 4 remains the established Managing Director threshold. This uses the existing rank-based policy pattern rather than a new role-name check.
+
+**APIs changed:** No route or request/response contract change. The existing PATCH route no longer fails with 500 due to missing policy registration.
+
+**DB changes:** None. No migration.
+
+**Validation actually run:** `dotnet test Tests/WebApi.IntegrationTests/WebApi.IntegrationTests.csproj --no-restore --filter FullyQualifiedName~SupportTests` — 9/9 passed. `dotnet test Project.slnx --no-restore` — 140/140 passed. Both reported the existing `NU1903` warning for `SQLitePCLRaw.lib.e_sqlite3` 2.1.11.
+
+**Out of scope:** No changes to Support service logic, role data, frontend behavior, or the existing self-resolution rule.

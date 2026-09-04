@@ -5,7 +5,8 @@ import { X, SlidersHorizontal } from 'lucide-react'
 import PageHeader from '../../components/layout/PageHeader.jsx'
 import Button from '../../components/ui/Button.jsx'
 import SearchInput from '../../components/ui/SearchInput.jsx'
-import { LoadingState, ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
+import { ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
+import { SkeletonCardGrid } from '../../components/ui/Skeleton.jsx'
 import useAsync from '../../hooks/useAsync.js'
 import { getItems, getCategories } from '../../api/catalogue.js'
 
@@ -119,7 +120,13 @@ export default function CataloguePage() {
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
         {panelOpen && (
           <div className="w-full shrink-0 lg:w-64">
-            <CatalogueFilters categories={categories} suppliers={suppliers} value={filters} onChange={setFilters} />
+            <CatalogueFilters
+              categories={categories}
+              suppliers={suppliers}
+              value={filters}
+              onChange={setFilters}
+              loading={loading}
+            />
           </div>
         )}
 
@@ -153,7 +160,7 @@ export default function CataloguePage() {
             </div>
           )}
 
-          {loading && <LoadingState label="Loading catalogue…" />}
+          {loading && <SkeletonCardGrid label="Loading catalogue…" count={6} />}
 
           {!loading && error && <ErrorState error={error} onRetry={reload} />}
 

@@ -6,12 +6,14 @@ import PageHeader from '../../components/layout/PageHeader.jsx'
 import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
 import SearchInput from '../../components/ui/SearchInput.jsx'
-import { LoadingState, ErrorState } from '../../components/ui/StateBlock.jsx'
+import { ErrorState } from '../../components/ui/StateBlock.jsx'
+import { Skeleton, SkeletonTable } from '../../components/ui/Skeleton.jsx'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import useAsync from '../../hooks/useAsync.js'
 import { getItems } from '../../api/catalogue.js'
 import { createRequest, submitRequest } from '../../api/requests.js'
 import { formatCurrency } from '../../lib/format.js'
+import AiAssistantBox from './components/AiAssistantBox.jsx'
 
 /**
  * Maps a catalogue item onto a requisition line. Shared by the item picker below and by items
@@ -149,6 +151,26 @@ export default function NewRequestPage() {
     setErrorMessage(null)
   }
 
+  // AI draft → requisition lines (Plan §5.2). The draft's line shape matches ItemDto closely
+  // enough to reuse toRequisitionLine; lines already in the list take the draft's quantity
+  // instead of being duplicated. The date is only filled in when the user hasn't set one.
+  function handleApplyDraft(draft) {
+    setSelectedItems((previousItems) => {
+      const byId = new Map(previousItems.map((line) => [line.itemId, line]))
+      for (const item of draft.items) {
+        const existing = byId.get(item.itemId)
+        byId.set(item.itemId, existing
+          ? { ...existing, quantity: item.quantity }
+          : { ...toRequisitionLine(item), quantity: item.quantity })
+      }
+      return [...byId.values()]
+    })
+    if (!requiredByDate && draft.requiredByDate) {
+      setRequiredByDate(draft.requiredByDate.slice(0, 10))
+    }
+    setErrorMessage(null)
+  }
+
   async function handleSubmit(asDraft = false) {
     if (selectedItems.length === 0) {
       setErrorMessage('Please add at least one item to your request.')
@@ -279,6 +301,9 @@ export default function NewRequestPage() {
             </div>
           </Card>
 
+          {/* AI Request Assistant (Plan §5.2 A1) */}
+          <AiAssistantBox disabled={!canRaiseRequest} onApplyDraft={handleApplyDraft} />
+
           {/* Item Selector Card */}
           <Card className="p-5">
             <h3 className="text-base font-semibold text-ink">Add Items from Catalogue</h3>
@@ -287,8 +312,26 @@ export default function NewRequestPage() {
             </p>
 
             {itemsLoading ? (
-              <div className="py-4">
-                <LoadingState label="Loading catalogue items…" />
+              <div className="mt-4 space-y-3">
+                {/* Matches the search + stock-filter row and the picker rows below it. */}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+                <div className="overflow-hidden rounded-md border border-surface-border">
+                  <SkeletonTable
+                    label="Loading catalogue items…"
+                    rows={5}
+                    cellClassName="px-3 py-3"
+                    columns={[
+                      { width: 1, bar: 'w-4' },
+                      4,
+                      3,
+                      { width: 2, align: 'right' },
+                      { width: 2, align: 'right' },
+                    ]}
+                  />
+                </div>
               </div>
             ) : loadError ? (
               <div className="py-4">

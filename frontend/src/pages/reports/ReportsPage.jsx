@@ -4,7 +4,8 @@ import PageHeader from '../../components/layout/PageHeader.jsx'
 import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
 import StatCard from '../../components/ui/StatCard.jsx'
-import { LoadingState, ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
+import { ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
+import { SkeletonStatCards } from '../../components/ui/Skeleton.jsx'
 import useAsync from '../../hooks/useAsync.js'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { formatCurrency, formatNumber } from '../../lib/format.js'
@@ -37,6 +38,7 @@ import ItemHeadcountView from './components/ItemHeadcountView.jsx'
 import CumulativeCostView from './components/CumulativeCostView.jsx'
 import InventoryValuationView from './components/InventoryValuationView.jsx'
 import TeamExpenditureView from './components/TeamExpenditureView.jsx'
+import ReportSkeleton from './components/ReportSkeleton.jsx'
 
 const DEFAULT_PRESET_DAYS = 90
 
@@ -370,6 +372,16 @@ export default function ReportsPage() {
         snapshot={invActive}
       />
 
+      {/* The summary tiles only exist on the date-range tabs, so only reserve them there. */}
+      {loadingReport && !error && !invActive && (
+        <SkeletonStatCards
+          label="Loading report summary…"
+          count={3}
+          grid="grid-cols-1 sm:grid-cols-3"
+          className="mb-6"
+        />
+      )}
+
       {stats.length > 0 && (
         <div className="mb-6 grid grid-cols-1 gap-5 sm:grid-cols-3">
           {stats.map((stat) => (
@@ -393,7 +405,7 @@ export default function ReportsPage() {
       )}
 
       <Card className="overflow-hidden">
-        {loadingReport && !error && <LoadingState label="Loading report…" />}
+        {loadingReport && !error && <ReportSkeleton />}
 
         {!loadingReport && error && <ErrorState error={error} onRetry={reload} />}
 

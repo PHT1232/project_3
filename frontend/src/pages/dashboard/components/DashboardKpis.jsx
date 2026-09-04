@@ -1,17 +1,20 @@
-import { ClipboardCheck, AlertTriangle, Wallet } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ClipboardCheck, AlertTriangle, Wallet, ArrowRight } from 'lucide-react'
 
 import Card from '../../../components/ui/Card.jsx'
-import { formatNumber } from '../../../lib/format.js'
+import Button from '../../../components/ui/Button.jsx'
+import { formatCurrency, formatNumber } from '../../../lib/format.js'
 
 /**
  * The three KPI cards from the approved Dashboard wireframe. Each is label + big figure +
  * a supporting line, with an icon tile on the right.
  *
- * `danger` tints the figure red (used for Low Stock when there are alerts). `muted` renders
- * a placeholder instead of a figure — used when the data is gated (Low Stock is Manager+)
- * or has no backend yet (Remaining Budget; there is no eligibility endpoint — page-map §3/§14).
+ * `danger` tints the figure red (Low Stock with alerts; Remaining Budget when nearly spent).
+ * `muted` renders a placeholder instead of a figure — used when the data is gated (Low Stock
+ * is Manager+) or unavailable (the eligibility call failed).
+ * `action` renders an optional call-to-action row under the hint (e.g. a quick link).
  */
-function KpiCard({ icon: Icon, label, value, hint, danger = false, muted = false }) {
+function KpiCard({ icon: Icon, label, value, hint, danger = false, muted = false, action = null }) {
   return (
     <Card className="p-5">
       <div className="flex items-start justify-between gap-4">
@@ -33,11 +36,17 @@ function KpiCard({ icon: Icon, label, value, hint, danger = false, muted = false
         {value}
       </p>
       <p className="mt-2 text-sm text-ink-muted">{hint}</p>
+      {action && <div className="mt-3">{action}</div>}
     </Card>
   )
 }
 
-export default function DashboardKpis({ pendingApprovals, lowStockCount, isManager }) {
+export default function DashboardKpis({ pendingApprovals, lowStockCount, isManager, eligibility }) {
+  const monthly = eligibility?.maxAmountPerMonth ?? 0
+  const budgetPct = eligibility && monthly > 0
+    ? Math.round((eligibility.remainingThisMonth / monthly) * 100)
+    : null
+
   return (
     <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
       <KpiCard
@@ -45,6 +54,12 @@ export default function DashboardKpis({ pendingApprovals, lowStockCount, isManag
         label="Pending Approvals"
         value={formatNumber(pendingApprovals)}
         hint="Requires your review"
+        action={
+          <Button as={Link} to="/approvals" size="sm" variant="secondary">
+            Review approvals
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Button>
+        }
       />
       <KpiCard
         icon={AlertTriangle}
@@ -57,9 +72,14 @@ export default function DashboardKpis({ pendingApprovals, lowStockCount, isManag
       <KpiCard
         icon={Wallet}
         label="Remaining Budget"
-        value="—"
-        hint="Not available yet — needs the eligibility service"
-        muted
+        value={eligibility ? formatCurrency(eligibility.remainingThisMonth) : '—'}
+        hint={
+          eligibility
+            ? `${budgetPct}% of your ${formatCurrency(monthly)} monthly allowance`
+            : 'Not available'
+        }
+        danger={budgetPct != null && budgetPct < 10}
+        muted={!eligibility}
       />
     </div>
   )

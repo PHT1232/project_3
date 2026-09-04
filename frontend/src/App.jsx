@@ -18,6 +18,7 @@ import DashboardPage from './pages/dashboard/DashboardPage.jsx'
 import NewRequestPage from './pages/requests/NewRequestPage.jsx'
 import MyRequestsPage from './pages/requests/MyRequestsPage.jsx'
 import Help from './pages/Help.jsx'
+import SupportInboxPage from './pages/support/SupportInboxPage.jsx'
 
 /**
  * Application routes.
@@ -57,6 +58,7 @@ export default function App() {
           <Route element={<ProtectedRoute minimumRankLevel={3} />}>
             <Route path="/catalogue/manage" element={<ItemManagement />} />
             <Route path="/user-management" element={<UserManagementPage />} />
+            <Route path="/support-inbox" element={<SupportInboxPage />} />
           </Route>
 
           <Route path="/help" element={<Help />} />
