@@ -227,7 +227,7 @@ public static class DbSeeder
         string[] statuses =
         [
             "Approved", "Approved", "Approved", "Approved", "Approved", "Approved",
-            "Fulfilled", "Fulfilled", "PartiallyApproved", "Rejected",
+            "Approved", "Approved", "PartiallyApproved", "Rejected",
         ];
 
         var now = DateTime.UtcNow;

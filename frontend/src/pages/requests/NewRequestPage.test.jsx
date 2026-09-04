@@ -207,4 +207,31 @@ describe('NewRequestPage', () => {
       expect(requestsApi.submitRequest).toHaveBeenCalledWith(56, 'mock-guid')
     })
   })
+
+  it('tells the user the draft was kept when an over-budget submit is refused', async () => {
+    requestsApi.createRequest.mockResolvedValue({
+      requestId: 77,
+      rowVersion: 'mock-guid',
+      status: 'Draft',
+    })
+    // The server's 422 for Plan §3.6's eligibility guard.
+    requestsApi.submitRequest.mockRejectedValue({
+      response: {
+        status: 422,
+        data: {
+          title: 'Business rule violation',
+          detail: 'This request totals 505.00, which is 5.00 over your remaining budget of 500.00 for this month.',
+        },
+      },
+    })
+
+    renderNewRequestPage()
+
+    await userEvent.click(await screen.findByRole('checkbox', { name: /select ballpoint pen blue/i }))
+    await userEvent.click(screen.getByRole('button', { name: /add selected items \(1\)/i }))
+    await userEvent.click(screen.getByRole('button', { name: /submit request/i }))
+
+    const message = await screen.findByText(/over your remaining budget/i)
+    expect(message).toHaveTextContent('saved as draft #77')
+  })
 })

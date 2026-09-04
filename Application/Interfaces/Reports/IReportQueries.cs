@@ -10,7 +10,7 @@ namespace Application.Interfaces.Reports;
 /// the whole organisation. Out-of-scope rows are never returned (CLAUDE.md principle #9).
 ///
 /// All figures are over requests in an approved state (Approved / PartiallyApproved /
-/// Fulfilled) with DecidedAtUtc in [fromDate, toDate] inclusive, and use
+/// PartiallyApproved) with DecidedAtUtc in [fromDate, toDate] inclusive, and use
 /// RequestItems.LineTotal (the snapshot) — never the live catalogue price (CLAUDE.md #8).
 ///
 /// The row-level scope filter runs in SQL (only the caller's rows are ever fetched); the

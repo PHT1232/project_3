@@ -101,3 +101,37 @@ backfills.
 4. **Phase 2** — submit-time enforcement in `RequestService.SubmitAsync` (per-request +
    monthly cap → 422, behind `Eligibility:Mode = Block|Warn`, TC-05 tests). Crosses into the
    M4-owned request lifecycle; needs a coordination call before implementing.
+
+---
+
+## Phase 2 — submit-time enforcement (2026-09-05, audit C7)
+
+Phase 2 is now built. `RequestService.SubmitAsync` refuses an over-budget submission with
+**HTTP 422** before the `Draft → Pending` transition.
+
+**Rule:** `request.TotalEstimatedCost > eligibility.RemainingThisMonth` → refuse.
+
+- Compared against **`RemainingThisMonth`**, not the raw monthly allowance — the threshold is a
+  monthly budget, so what matters is what is left after the month's other commitments. (Team
+  decision, 2026-09-05.) `MaxAmountPerRequest` is **not** enforced; it is currently seeded equal
+  to the monthly figure, so it would be a no-op. Wire it in if a stricter single-request cap is
+  ever set.
+- **Hard block**, no `Eligibility:Mode` config knob. `[ASK] #6` is answered as the Plan's own
+  stated default (§M3: "hard-block is the defensible default"). One code path to test and
+  defend in review.
+- **No double-count.** `EligibilityQueries.CommittedStatuses` starts at `Pending`; the request
+  being submitted is still `Draft` at the moment of the check, so `RemainingThisMonth` excludes
+  the very total being tested.
+- The guard sits on **submit**, not create — Plan §3.6 puts it on the `Draft → Pending`
+  transition. An over-budget basket saves as a draft; it just cannot be sent.
+
+**New exception → status mapping.** `Application/Exceptions/BusinessRuleException.cs` maps to
+**422 Unprocessable Entity** in `ExceptionHandlingMiddleware` (Plan §4.2 error table: "422 ·
+Business rule violation · Request total exceeds role threshold"). This is the first 422 in the
+codebase; C8's stock guard reuses it.
+
+**Known edge — month attribution.** `EligibilityQueries` windows month-to-date on
+`Request.CreatedAtUtc`. A draft created in January and submitted in February is therefore
+judged against, and counted into, **January's** budget. Acceptable for this project's flow
+(drafts are short-lived) but worth a team decision if drafts start living across month
+boundaries; the alternative is to stamp `CreatedAtUtc` at submit instead of create.
