@@ -82,4 +82,27 @@ describe('Login page', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/valid employee number or email/i)
   })
+
+  it('reveals and re-hides the password', async () => {
+    renderLogin()
+
+    const password = screen.getByLabelText(/^password$/i)
+    expect(password).toHaveAttribute('type', 'password')
+
+    await userEvent.click(screen.getByRole('button', { name: /show password/i }))
+    expect(password).toHaveAttribute('type', 'text')
+
+    await userEvent.click(screen.getByRole('button', { name: /hide password/i }))
+    expect(password).toHaveAttribute('type', 'password')
+  })
+
+  it('keeps the typed value when toggling visibility', async () => {
+    renderLogin()
+
+    const password = screen.getByLabelText(/^password$/i)
+    await userEvent.type(password, 'Sup3rSecret!')
+    await userEvent.click(screen.getByRole('button', { name: /show password/i }))
+
+    expect(password).toHaveValue('Sup3rSecret!')
+  })
 })
