@@ -188,6 +188,12 @@ export default function NewRequestPage() {
     setErrorMessage(null)
     setSuccessMessage(null)
 
+    // Set once the draft exists, so a failure in the *submit* half of "Submit" can tell the
+    // user their basket was still saved. The eligibility guard (Plan §3.6) makes that a
+    // routine outcome rather than a freak error: an over-budget request creates fine and is
+    // refused only on submit.
+    let draftId = null
+
     try {
       const payload = {
         items: selectedItems.map((i) => ({
@@ -198,6 +204,7 @@ export default function NewRequestPage() {
       }
 
       const created = await createRequest(payload)
+      draftId = created.requestId
 
       if (!asDraft) {
         // Immediately submit
@@ -224,7 +231,11 @@ export default function NewRequestPage() {
         problem?.error ||
         err.message ||
         'Failed to save stationery request.'
-      setErrorMessage(message)
+      setErrorMessage(
+        draftId
+          ? `${message} Your request was saved as draft #${draftId} — adjust it and submit from My Requests.`
+          : message,
+      )
     } finally {
       setSubmitting(false)
       setSubmitMode(null)
