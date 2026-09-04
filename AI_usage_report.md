@@ -1370,26 +1370,43 @@ page-map §14.
 **Validation:** `dotnet build Project.slnx` 0 errors; `dotnet test Project.slnx` 91 passed
 (incl. 4 new EligibilityTests); `npm run build` + `npm test` 91 passed.
 
-## 2026-09-04 — Dashboard: quick link from Pending Approvals to the approvals page
+## 2026-09-04 — Help & support page (Plan T6.1)
 
-**Task:** Let users jump straight to the approvals queue from the dashboard.
+**Task:** Build the Help page — static Q&A covering every feature, plus a way to email the
+dev team.
 
 **What changed, by file:**
-- `frontend/src/pages/dashboard/components/DashboardKpis.jsx` — `KpiCard` gains an optional
-  `action` slot rendered under the hint; the "Pending Approvals" card now carries a
-  "Review approvals →" secondary button linking to `/approvals`.
-- `frontend/src/pages/dashboard/components/DashboardKpis.test.jsx` (new) — asserts the link
-  target and that it shows even at zero pending.
+- `frontend/src/pages/Help.jsx` — replaced the placeholder; composes the three cards.
+- `frontend/src/pages/help/faqData.js` (new) — 28 static Q&A entries across 8 areas
+  (Getting started, Requests, Tracking, Approvals, Budget & eligibility, Notifications,
+  Reports, Account). Exceeds T6.1's "≥15 covering every feature".
+- `frontend/src/pages/help/components/FaqList.jsx` (new) — searchable accordion (native
+  `<details>`), filters question + answer text and auto-expands matches, grouped by area.
+- `frontend/src/pages/help/components/ContactCard.jsx` (new) — `mailto:` hand-off to the
+  shared inbox (`antsconst84@gmail.com`): "Report a bug" / "Ask a question" open the user's
+  mail client with subject + body scaffold + a diagnostics block prefilled; "Copy
+  diagnostics" copies the same block.
+- `frontend/src/pages/help/components/SystemInfoCard.jsx` (new) — read-only build/session
+  panel (employee #, role, app version, build date).
+- `frontend/src/config/support.js` (new) — support email, area list, mailto/diagnostics builders.
+- `frontend/vite.config.js` — `define` injects `__APP_VERSION__` (git short SHA, safe
+  fallback) and `__BUILD_TIME__`.
+- `frontend/src/pages/help/Help.test.jsx` (new) — 8 tests: ≥15 entries, every area covered,
+  non-empty Q/A, page renders, search filters, no-match message, mailto target + subject,
+  system-info shows the user.
 
-**Assumptions / decisions:**
-- Button is always shown, not gated on rank or on `pendingApprovals > 0`. `/approvals` is
-  already an ungated sidebar item (`navigation.js`); a pure requestor who lands there just
-  sees the empty state. Gating it would need an "am I an approver" signal the dashboard
-  doesn't currently fetch.
-- Placed on the existing KPI card rather than adding a new dashboard section, to match the
-  approved wireframe layout.
+**Assumptions / decisions (per the user's answers):**
+- **FAQ is a frontend module, not `GET /api/v1/help/faq`.** The Plan lists that endpoint as
+  `[SPEC]`; the user asked to keep it static "as of right now". Content is shaped as a flat
+  list so it can move behind the endpoint later with no page change. **Flagged deviation.**
+- **Email is `mailto:` only** — no server-side send (SMTP is `[CUT]`), no persistence. No
+  feedback section (dropped at the user's request).
+- **One shared support inbox**, not per-developer buttons — team members aren't named in the
+  repo (CLAUDE.md K6). Address lives in `config/support.js`.
 
-**Left out of scope:** no backend change; no new "approver?" flag; the Low Stock and
-Remaining Budget cards were left without quick links (only approvals was requested).
+**Left out of scope:** the `help/faq` endpoint; any feedback storage / Manager feedback view;
+glossary and changelog sections (suggested, not requested).
 
-**Validation:** `npx vitest run --pool=threads` 100 passed (2 new); `npm run build` clean.
+**Validation:** `npx vitest run --pool=threads` **106 passed** (8 new); `npm run build`
+clean. Rendered in a headless browser signed in as an Engineer — screenshots shown to the
+user.
