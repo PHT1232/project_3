@@ -1807,3 +1807,21 @@ on this machine.
 skipped, proving all 10 migrations apply cleanly from an empty database against real SQL
 Server). `npx vitest run --pool=threads` — **152 passed** (25 files, +5 new). `npm run build`
 clean.
+
+### 2026-09-04 (follow-up) — the confirm button was clipped out of the dialog
+
+Found while screenshotting the change above: `Modal` is hardcoded `max-w-md` (28rem) with no
+width option, so the Supplier Orders table — six columns ending in an action button — ran off
+the right edge and **"Goods Arrived" was not reachable at all**. Pre-existing in PR #40; adding
+the item breakdown only made it visible.
+
+- `frontend/src/components/ui/Modal.jsx` — optional `size` prop (`md` default, `lg`, `xl`).
+  Default is unchanged, so every existing dialog renders exactly as before. Also caps the shell
+  at `max-h-[90vh]` and scrolls the body instead of the page, so a long list keeps its header
+  and footer on screen.
+- `frontend/src/pages/inventory/components/SupplierOrdersModal.jsx` — asks for `size="xl"`.
+
+**Left out of scope:** auditing the other dialogs for width; they fit `md` today.
+
+**Validation:** `npx vitest run --pool=threads` 152 passed, `npm run build` clean, and confirmed
+in a browser — all three `PendingArrival` orders now show a reachable "Goods Arrived" button.

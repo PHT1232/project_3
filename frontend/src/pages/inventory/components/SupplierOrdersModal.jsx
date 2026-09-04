@@ -67,6 +67,7 @@ export default function SupplierOrdersModal({ open, canConfirm, onClose, onConfi
   return (
     <Modal
       open
+      size="xl"
       onClose={onClose}
       title="Supplier Orders"
       footer={
