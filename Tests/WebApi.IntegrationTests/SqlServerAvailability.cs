@@ -13,16 +13,23 @@ namespace WebApi.IntegrationTests;
 /// hand-written data fixes, none of which SQLite accepts. So they can only be proven against the
 /// real provider.
 ///
-/// Both LocalDB and SQLEXPRESS are tried because the team has both in play: the checked-in dev
-/// connection string targets LocalDB while at least one machine only has SQLEXPRESS
-/// (audit finding L5/P7).
+/// Several instance names are tried because the team has several in play: the checked-in dev
+/// connection string targets LocalDB, at least one machine only has SQLEXPRESS (audit finding
+/// L5/P7), and another runs SQL Server on the *default* instance — which the first version of
+/// this probe missed, so these tests silently skipped there and audit P3 was only nominally
+/// closed. Set SQLSERVER_TEST_CONNECTION to point CI at anything else.
 /// </summary>
 internal static class SqlServerAvailability
 {
+    /// <summary>Explicit override, tried first — the only option for a host whose instance is
+    /// not at a name worth guessing.</summary>
+    internal const string OverrideVariable = "SQLSERVER_TEST_CONNECTION";
+
     private static readonly string[] Candidates =
     [
         @"Server=(localdb)\mssqllocaldb;Integrated Security=true;Connect Timeout=5;TrustServerCertificate=True",
         @"Server=.\SQLEXPRESS;Integrated Security=true;Connect Timeout=5;TrustServerCertificate=True",
+        @"Server=localhost;Integrated Security=true;Connect Timeout=5;TrustServerCertificate=True",
     ];
 
     /// <summary>A master connection string that opened, or null when no SQL Server is reachable.</summary>
@@ -30,7 +37,12 @@ internal static class SqlServerAvailability
 
     private static string? Probe()
     {
-        foreach (var candidate in Candidates)
+        var configured = Environment.GetEnvironmentVariable(OverrideVariable);
+        string[] candidates = string.IsNullOrWhiteSpace(configured)
+            ? Candidates
+            : [configured, .. Candidates];
+
+        foreach (var candidate in candidates)
         {
             try
             {
@@ -63,7 +75,8 @@ public sealed class RequiresSqlServerFactAttribute : FactAttribute
     {
         if (SqlServerAvailability.MasterConnectionString is null)
         {
-            Skip = "No local SQL Server (LocalDB or SQLEXPRESS) reachable — migration test skipped.";
+            Skip = "No local SQL Server reachable (tried LocalDB, SQLEXPRESS and localhost; "
+                 + $"set {SqlServerAvailability.OverrideVariable} to point at one) — migration test skipped.";
         }
     }
 }
