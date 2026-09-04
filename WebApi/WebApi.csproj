@@ -4,6 +4,9 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Lets a developer keep Gemini:ApiKey in `dotnet user-secrets` instead of the shell
+         environment (Plan §5.2 rule 2: the key never lives in a checked-in file). -->
+    <UserSecretsId>stationery-management-system-webapi</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

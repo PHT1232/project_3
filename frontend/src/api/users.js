@@ -31,3 +31,12 @@ export async function getSubordinates(employeeNumber) {
   const { data } = await client.get(`/users/${employeeNumber}/subordinates`)
   return data
 }
+
+/**
+ * The caller's own spending eligibility — role limits, month-to-date committed spend and
+ * what's left this month (Plan §4.2 `GET /users/me/eligibility`). Any authenticated user.
+ */
+export async function getMyEligibility() {
+  const { data } = await client.get('/users/me/eligibility')
+  return data
+}

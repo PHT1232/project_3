@@ -5,7 +5,8 @@ import { PlusCircle, Eye, Send, Undo2, XCircle, Trash2, AlertCircle, CheckCircle
 import PageHeader from '../../components/layout/PageHeader.jsx'
 import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
-import { LoadingState, ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
+import { ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
+import { SkeletonTable } from '../../components/ui/Skeleton.jsx'
 import useAsync from '../../hooks/useAsync.js'
 import { getMyRequests, submitRequest, withdrawRequest, requestCancellation, deletePendingRequest } from '../../api/requests.js'
 import { formatCurrency, formatDate } from '../../lib/format.js'
@@ -184,7 +185,22 @@ export default function MyRequestsPage() {
         </div>
 
         {/* Content States */}
-        {loading && <LoadingState label="Loading your stationery requests…" />}
+        {loading && (
+          <SkeletonTable
+            label="Loading your stationery requests…"
+            rows={8}
+            columns={[
+              4,
+              5,
+              4,
+              4,
+              2,
+              { width: 3, align: 'right' },
+              { width: 3, height: 'h-6' },
+              { width: 5, align: 'right', height: 'h-8' },
+            ]}
+          />
+        )}
         {!loading && error && <ErrorState error={error} onRetry={reload} />}
         {!loading && !error && requests.length === 0 && (
           <EmptyState

@@ -10,6 +10,7 @@ import {
   Users,
   PackagePlus,
   HelpCircle,
+  LifeBuoy,
 } from 'lucide-react'
 
 /**

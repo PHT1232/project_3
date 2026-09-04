@@ -6,7 +6,8 @@ import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
 import Badge from '../../components/ui/Badge.jsx'
 import Modal from '../../components/ui/Modal.jsx'
-import { LoadingState, ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
+import { ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
+import { SkeletonTable } from '../../components/ui/Skeleton.jsx'
 import useAsync from '../../hooks/useAsync.js'
 import useSortableTable from '../../hooks/useSortableTable.js'
 import SortableHeader from '../../components/ui/SortableHeader.jsx'
@@ -309,7 +310,13 @@ export default function ItemManagement() {
             ))}
           </select>
         </div>
-        {loading && <LoadingState label="Loading items…" />}
+        {loading && (
+          <SkeletonTable
+            label="Loading items…"
+            rows={7}
+            columns={[6, 4, 2, 2, { width: 2, height: 'h-6' }, { width: 3, align: 'right', height: 'h-8' }]}
+          />
+        )}
         {!loading && error && <ErrorState error={error} onRetry={reload} />}
         {!loading && !error && items.length === 0 && (
           <EmptyState title="No items yet" description="Create the first item to get started." />

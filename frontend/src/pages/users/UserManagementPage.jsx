@@ -4,7 +4,8 @@ import { UserPlus } from 'lucide-react'
 import PageHeader from '../../components/layout/PageHeader.jsx'
 import Card from '../../components/ui/Card.jsx'
 import Button from '../../components/ui/Button.jsx'
-import { LoadingState, ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
+import { ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
+import { SkeletonTable } from '../../components/ui/Skeleton.jsx'
 import useAsync from '../../hooks/useAsync.js'
 import { getUsers, createUser, updateUser, setUserStatus } from '../../api/users.js'
 
@@ -126,7 +127,13 @@ export default function UserManagementPage() {
       </Card>
 
       <Card>
-        {loading && <LoadingState label="Loading users…" />}
+        {loading && (
+          <SkeletonTable
+            label="Loading users…"
+            rows={8}
+            columns={[6, 6, 11, 8, 5, { width: 5, height: 'h-6' }, { width: 9, align: 'right', height: 'h-8' }]}
+          />
+        )}
         {!loading && error && <ErrorState error={error} onRetry={reload} />}
         {!loading && !error && users.length === 0 && (
           <EmptyState
