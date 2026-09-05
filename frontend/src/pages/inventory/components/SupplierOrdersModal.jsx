@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { AlertCircle, PackageCheck } from 'lucide-react'
+import { Fragment, useEffect, useState } from 'react'
+import { AlertCircle, ChevronDown, ChevronRight, PackageCheck } from 'lucide-react'
 
 import Modal from '../../../components/ui/Modal.jsx'
 import Button from '../../../components/ui/Button.jsx'
@@ -24,6 +24,7 @@ import { formatCurrency, formatDate } from '../../../lib/format.js'
  */
 export default function SupplierOrdersModal({ open, canConfirm, onClose, onConfirmed }) {
   const [confirmingId, setConfirmingId] = useState(null)
+  const [expandedId, setExpandedId] = useState(null)
   const [error, setError] = useState(null)
 
   const { data, error: loadError, loading, reload } = useAsync(
@@ -32,7 +33,10 @@ export default function SupplierOrdersModal({ open, canConfirm, onClose, onConfi
   )
 
   useEffect(() => {
-    if (open) setError(null)
+    if (open) {
+      setError(null)
+      setExpandedId(null)
+    }
   }, [open])
 
   if (!open) return null
@@ -63,6 +67,7 @@ export default function SupplierOrdersModal({ open, canConfirm, onClose, onConfi
   return (
     <Modal
       open
+      size="xl"
       onClose={onClose}
       title="Supplier Orders"
       footer={
@@ -110,7 +115,7 @@ export default function SupplierOrdersModal({ open, canConfirm, onClose, onConfi
                 <tr className="border-b border-surface-border bg-surface-muted text-xs uppercase tracking-wide text-ink-muted">
                   <th className="px-3 py-2 font-semibold">Order</th>
                   <th className="px-3 py-2 font-semibold">Supplier</th>
-                  <th className="px-3 py-2 text-center font-semibold">Lines</th>
+                  <th className="px-3 py-2 text-center font-semibold">Items</th>
                   <th className="px-3 py-2 text-right font-semibold">Total</th>
                   <th className="px-3 py-2 font-semibold">Status</th>
                   <th className="px-3 py-2 text-right font-semibold">Action</th>
@@ -119,8 +124,11 @@ export default function SupplierOrdersModal({ open, canConfirm, onClose, onConfi
               <tbody className="divide-y divide-surface-border">
                 {orders.map((order) => {
                   const pending = order.status === SUPPLIER_ORDER_STATUS.PENDING_ARRIVAL
+                  const lines = order.items ?? []
+                  const expanded = expandedId === order.supplierRequestId
                   return (
-                    <tr key={order.supplierRequestId}>
+                    <Fragment key={order.supplierRequestId}>
+                    <tr>
                       <td className="px-3 py-2.5 font-mono text-ink">
                         #{order.supplierRequestId}
                         <span className="block text-xs text-ink-muted">
@@ -128,8 +136,19 @@ export default function SupplierOrdersModal({ open, canConfirm, onClose, onConfi
                         </span>
                       </td>
                       <td className="px-3 py-2.5 text-ink">{order.supplierName}</td>
-                      <td className="px-3 py-2.5 text-center text-ink-muted">
-                        {order.items?.length ?? 0}
+                      <td className="px-3 py-2.5 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setExpandedId(expanded ? null : order.supplierRequestId)}
+                          aria-expanded={expanded}
+                          aria-label={`${expanded ? 'Hide' : 'Show'} the items on supplier order #${order.supplierRequestId}`}
+                          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-medium text-brand-700 hover:bg-surface-muted"
+                        >
+                          {expanded
+                            ? <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                            : <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />}
+                          {lines.length}
+                        </button>
                       </td>
                       <td className="px-3 py-2.5 text-right font-mono text-ink">
                         {formatCurrency(order.totalCost)}
@@ -163,6 +182,42 @@ export default function SupplierOrdersModal({ open, canConfirm, onClose, onConfi
                         )}
                       </td>
                     </tr>
+
+                    {expanded && (
+                      <tr>
+                        <td colSpan={6} className="bg-surface-muted px-3 py-3">
+                          {lines.length === 0 ? (
+                            <p className="text-xs text-ink-muted">This order has no lines.</p>
+                          ) : (
+                            <table className="w-full text-left text-xs">
+                              <thead>
+                                <tr className="text-ink-muted">
+                                  <th className="pb-1 font-semibold">Item</th>
+                                  <th className="pb-1 text-right font-semibold">Qty</th>
+                                  <th className="pb-1 text-right font-semibold">Unit cost</th>
+                                  <th className="pb-1 text-right font-semibold">Line total</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {lines.map((line) => (
+                                  <tr key={line.itemId} className="text-ink">
+                                    <td className="py-1 pr-3">{line.itemName}</td>
+                                    <td className="py-1 text-right font-mono">{line.quantity}</td>
+                                    <td className="py-1 text-right font-mono text-ink-muted">
+                                      {formatCurrency(line.unitCostSnapshot)}
+                                    </td>
+                                    <td className="py-1 text-right font-mono">
+                                      {formatCurrency(line.lineTotal)}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   )
                 })}
               </tbody>
