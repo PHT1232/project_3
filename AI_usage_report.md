@@ -1761,3 +1761,67 @@ genuinely guard the fix.
 **Validation:** `npx vitest run --pool=threads` — **140 passed** (23 files, +2 new).
 `npm run build` clean. Rendered in a headless browser: typing into the field and clicking the
 eye reveals the text and swaps the icon to `EyeOff`.
+
+## 2026-09-04 — Goods-arrival popup shows what you are confirming; migration tests stop skipping
+
+**Task:** Two gaps found while reviewing PR #40 (goods-arrival confirmation) before it merged —
+the confirm dialog never showed the ordered items, and the new migration tests silently skipped
+on this machine.
+
+**What changed, by file:**
+- `Tests/WebApi.IntegrationTests/SqlServerAvailability.cs` — the probe tried LocalDB and
+  `.\SQLEXPRESS` only. This machine runs SQL Server on the **default** instance, so both
+  `MigrationTests` skipped and audit P3 was closed in name only. Added `Server=localhost` to the
+  candidate list and an `SQLSERVER_TEST_CONNECTION` environment override tried ahead of the
+  guesses, which is the only workable option for a CI host. Skip message updated to name all
+  three candidates and the variable.
+- `frontend/src/pages/inventory/components/SupplierOrdersModal.jsx` — the "Lines" column showed
+  a bare count, so a Business Manager clicked "Goods Arrived" without seeing what they were
+  certifying. The count is now a disclosure button (`aria-expanded`, chevron) that opens a
+  per-order breakdown: item name, quantity, unit cost, line total. One order open at a time;
+  collapsed by default; resets when the dialog closes. No API change — `SupplierRequestDto`
+  already carried `Items` and the query already `Include`d them.
+- `frontend/src/pages/inventory/components/SupplierOrdersModal.test.jsx` — **new**, 5 tests:
+  the order lists with supplier and status; the detail is hidden until asked for and then shows
+  the item and quantity; it collapses again; confirm posts the right id; someone who cannot
+  confirm sees no button but **can** still expand the detail.
+
+**Assumptions made where the request was ambiguous:**
+- **Collapsed by default, one at a time.** Showing every line inline would bury the confirm
+  action once there are several orders. The user asked to "see the items ordered in a pop up";
+  one click to reveal satisfies that without making the list unusable.
+- **Read access to the detail is not gated.** `canConfirm` still hides the button, but a Manager
+  who raised the order can expand it. Seeing an order is not the same as certifying it arrived.
+- The `Lines` column header became `Items` — it now counts things you can look at, not rows.
+- `__ai_agents/Requirements/` still does not exist; the goods-arrival handoff
+  (`docs/development/goods-arrival-confirmation-handoff.md`) and Plan §3.6 were the sources.
+
+**Deliberately left out of scope:**
+- Partial arrivals — a supplier order is confirmed whole. No document describes a short delivery.
+- The `SupplierRequest` concurrency race the handoff flags (two confirmations in separate
+  transactions); it needs a RowVersion token, which is a migration.
+- Wiring `SQLSERVER_TEST_CONNECTION` into a CI config — no CI file to change here yet.
+
+**Validation:** `dotnet build` 0 errors. `dotnet test Project.slnx` — **220 passed, 0 skipped**
+(86 unit + 134 integration; both `MigrationTests` now **run and pass**, where they previously
+skipped, proving all 10 migrations apply cleanly from an empty database against real SQL
+Server). `npx vitest run --pool=threads` — **152 passed** (25 files, +5 new). `npm run build`
+clean.
+
+### 2026-09-04 (follow-up) — the confirm button was clipped out of the dialog
+
+Found while screenshotting the change above: `Modal` is hardcoded `max-w-md` (28rem) with no
+width option, so the Supplier Orders table — six columns ending in an action button — ran off
+the right edge and **"Goods Arrived" was not reachable at all**. Pre-existing in PR #40; adding
+the item breakdown only made it visible.
+
+- `frontend/src/components/ui/Modal.jsx` — optional `size` prop (`md` default, `lg`, `xl`).
+  Default is unchanged, so every existing dialog renders exactly as before. Also caps the shell
+  at `max-h-[90vh]` and scrolls the body instead of the page, so a long list keeps its header
+  and footer on screen.
+- `frontend/src/pages/inventory/components/SupplierOrdersModal.jsx` — asks for `size="xl"`.
+
+**Left out of scope:** auditing the other dialogs for width; they fit `md` today.
+
+**Validation:** `npx vitest run --pool=threads` 152 passed, `npm run build` clean, and confirmed
+in a browser — all three `PendingArrival` orders now show a reachable "Goods Arrived" button.
