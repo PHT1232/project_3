@@ -14,7 +14,6 @@ public class UserManagementService(
     IValidator<CreateUserRequest> createValidator,
     IValidator<UpdateUserRequest> updateValidator) : IUserManagementService
 {
-    private const int BusinessManagerRankLevel = 3;
     private const int MaxHierarchyWalk = 10;
 
     public Task<PagedResult<UserDto>> GetUsersAsync(int page, int pageSize, string? role, string? location) =>
@@ -137,22 +136,52 @@ public class UserManagementService(
         return await userStore.GetSubordinatesAsync(employeeNumber);
     }
 
-    private void EnsureActorCanManageTarget(UserDto target)
-    {
-        if (currentUserService.RankLevel == BusinessManagerRankLevel
-            && target.RankLevel >= BusinessManagerRankLevel)
-        {
-            throw new ForbiddenException("Business Managers cannot manage Business Manager or Managing Director accounts.");
-        }
-    }
+    /// <summary>
+    /// Nobody may create, edit or deactivate an account at or above their own rank; the Managing
+    /// Director, being the top rank, is exempt and may manage anyone (including another MD).
+    ///
+    /// Team ruling 2026-09-05: "a Manager should not be able to create a Managing Director."
+    /// Stated as a rank comparison rather than a list of role names so it holds for every tier at
+    /// once — it reproduces the Business-Manager rule this replaces exactly (a BM is still refused
+    /// BM and MD accounts and still allowed Manager and Engineer ones) and extends the same
+    /// principle downward.
+    ///
+    /// <b>Why this exists when the controller already guards it.</b> Today every write endpoint on
+    /// UsersController is <c>RequireBusinessManager</c>, so a Manager is refused before reaching
+    /// this class at all. That makes this the second of the two layers CLAUDE.md principle #9
+    /// requires ("a policy on the controller *and* a row-level check inside the service"): if the
+    /// controller policy is ever relaxed to RequireManager, the rule still holds here instead of
+    /// silently opening up. A controller/service rank mismatch is not hypothetical — one was found
+    /// on the Support Inbox route during the same audit.
+    /// </summary>
+    private const int ManagingDirectorRankLevel = 4;
+
+    private void EnsureActorCanManageTarget(UserDto target) =>
+        EnsureActorOutranks(target.RankLevel, $"manage the account of a {target.Role}");
 
     private async Task EnsureActorCanAssignRoleAsync(string role)
     {
-        var requestedRankLevel = await userStore.GetRoleRankLevelAsync(role);
-        if (currentUserService.RankLevel == BusinessManagerRankLevel
-            && requestedRankLevel >= BusinessManagerRankLevel)
+        // Null means the role does not exist. Treated as rank 0 so this guard stays silent and
+        // the caller's own role-existence validation reports the real problem, which is what the
+        // previous `>= 3` comparison on an int? did too.
+        var requestedRankLevel = await userStore.GetRoleRankLevelAsync(role) ?? 0;
+        EnsureActorOutranks(requestedRankLevel, $"assign the {role} role");
+    }
+
+    private void EnsureActorOutranks(int targetRankLevel, string attemptedAction)
+    {
+        var actorRankLevel = currentUserService.RankLevel ?? 0;
+
+        if (actorRankLevel >= ManagingDirectorRankLevel)
         {
-            throw new ForbiddenException("Business Managers cannot assign Business Manager or Managing Director roles.");
+            return; // Top of the hierarchy — nobody outranks them, so nothing to refuse.
+        }
+
+        if (targetRankLevel >= actorRankLevel)
+        {
+            throw new ForbiddenException(
+                $"You cannot {attemptedAction}: it is at or above your own level. "
+                + "Ask someone more senior.");
         }
     }
 

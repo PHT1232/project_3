@@ -49,9 +49,18 @@ export default function RequestReviewModal({ open, request, onClose, onSuccess }
     }))
   }
 
-  const canSubmit = Object.values(decisions).every(
-    (d) => d.decision !== 'modified' || (Number(d.modifiedQuantity) > 0 && Number.isFinite(Number(d.modifiedQuantity))),
-  )
+  // Rejecting every line is what makes the request as a whole Rejected, and Plan §3.6 guards
+  // that transition with "Comment required" — enforced server-side in
+  // ApproveRequestCommandValidator. Mirrored here so the approver sees the requirement on the
+  // field instead of a 400 after pressing Submit.
+  const decisionValues = Object.values(decisions)
+  const isOutrightRejection =
+    decisionValues.length > 0 && decisionValues.every((d) => d.decision === 'rejected')
+
+  const canSubmit =
+    decisionValues.every(
+      (d) => d.decision !== 'modified' || (Number(d.modifiedQuantity) > 0 && Number.isFinite(Number(d.modifiedQuantity))),
+    ) && (!isOutrightRejection || comment.trim().length > 0)
 
   async function handleSubmit(event) {
     event.preventDefault()
@@ -169,17 +178,28 @@ export default function RequestReviewModal({ open, request, onClose, onSuccess }
 
         <div>
           <label htmlFor="review-comment" className="block text-sm font-medium text-ink">
-            Comment (optional)
+            {isOutrightRejection ? 'Comment (required)' : 'Comment (optional)'}
           </label>
           <textarea
             id="review-comment"
             rows={3}
             maxLength={1000}
+            required={isOutrightRejection}
+            aria-required={isOutrightRejection}
             value={comment}
             onChange={(e) => setComment(e.target.value)}
-            placeholder="Reason for this decision…"
+            placeholder={
+              isOutrightRejection
+                ? 'Tell the requestor why this was rejected…'
+                : 'Reason for this decision…'
+            }
             className="mt-1 w-full rounded-md border border-surface-border bg-surface-card px-3 py-2 text-sm text-ink"
           />
+          {isOutrightRejection && (
+            <p className="mt-1 text-xs text-ink-muted">
+              Rejecting every line rejects the request, so the requestor needs a reason.
+            </p>
+          )}
         </div>
 
         {error && (

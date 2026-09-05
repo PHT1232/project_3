@@ -1,7 +1,8 @@
 # PROJECT AUDIT — Stationery Management System
 
-> **Current as of the RE-AUDIT on 2026-09-05**, branch `khang` @ `cf7c39f`,
-> **plus the H1/H3 fixes applied later the same day** (see "High Priority Issues" below).
+> **Current as of REVISION 3 on 2026-09-05**, branch `khang` @ `765ffb9` — the 2026-09-05
+> re-audit (`cf7c39f`) plus the H1/H3, M1–M3 and H2 work, and then revision 3's **M5** and
+> **L3** fixes (see "Medium Priority Issues" below).
 > Repository files are the evidence; the Plan (`__ai_agents/Stationery_Management_System_Project_Plan.md`)
 > is the requirement. Written for an intern-level reader.
 > Interactive version of the original audit: https://claude.ai/code/artifact/5729e52c-8155-4aba-b3e9-ea2f50d4c3d7
@@ -28,8 +29,22 @@ Evidence run on this machine, 2026-09-05:
 | Command | Result |
 |---|---|
 | `dotnet build Project.slnx` | 0 errors, 1 warning (`NU1903`, vulnerable SQLite test package) |
-| `dotnet test Project.slnx` | **220 passed** (86 unit + 134 integration), 0 failed — was 183 before the H1/H3 and M1–M3 fixes |
+| `dotnet test Project.slnx` | **230 passed** (96 unit + 134 integration), 0 failed — was 183 before the H1/H3, M1–M3 and H2 work |
 | `npx vitest run --pool=threads` | **147 passed** across 24 files, 0 failed |
+
+### Revision 3 — 2026-09-05 (`765ffb9`)
+Scoped pass rather than a full re-scan. Both suites were re-run first and confirmed the earlier
+fixes intact (230 + 147, all green, nothing regressed). Frontend API calls were then diffed
+against every controller route (**no mismatches**), and route guards, nav rank floors and
+controller policies were compared line by line (**all agree** — M2's correction still holds). The
+six notification triggers were traced to their call sites (all present, and the two deliberate
+omissions — "cancellation requested" and a refused cancellation — are documented in code).
+Two confirmed gaps were closed: **M5** and **L3/P5**.
+
+| Command | Result |
+|---|---|
+| `dotnet test Project.slnx` | **243 passed** (107 unit + 136 integration), 0 failed |
+| `npx vitest run --pool=threads` | **154 passed** across 25 files, 0 failed |
 
 ---
 
@@ -47,15 +62,19 @@ Evidence run on this machine, 2026-09-05:
 | **C8** No stock movement / `Fulfilled` unreachable | High | **Fixed and Verified** | `ApproveAsync` pre-checks every line's availability, then stages `StageRequestMovementAsync` with **`ApprovedQuantity`** (not `Quantity`), in the same transaction as status + history + notifications. Cancellation restores stock, guarded on `ApprovedQuantity is > 0`. `Fulfilled` removed from the entity, the CHECK constraint, `ReportQueries`, `EligibilityQueries` and the UI filter — zero references remain repo-wide. |
 | **C9** Blank category/supplier on lines | Medium | **Fixed and Verified** | `RequestQueries.cs:84-85` chains `.ThenInclude(item => item!.Category)` and `.ThenInclude(item => item!.Supplier)`. |
 | **P1** Reports open to all vs Plan Manager+ | Potential | **Still Present** | `ReportsController` is `[Authorize]` only; `/reports` sits outside the manager group in `App.jsx`. Still contradicts Plan §4.2, T5.2 and TC-18. Needs a team ruling, not a silent fix. |
-| **P2** Role-assignment escalation | Potential | **⚠ Partially Fixed** | `EnsureActorCanAssignRoleAsync` / `EnsureActorCanManageTarget` now block a **Business Manager** from creating or managing BM/MD accounts. But both guards test `currentUserService.RankLevel == BusinessManagerRankLevel` (3), so a **Manager (rank 2) is not covered and can still create or promote a Managing Director**. See current issue **H2**. |
+| **P2** Role-assignment escalation | Potential | **Fixed and Verified** | Two layers. `UsersController`'s write endpoints are `RequireBusinessManager`, so a Manager is refused outright (verified: 403 for every role). `UserManagementService.EnsureActorOutranks` then refuses any actor an account at or above their own rank, MD exempt. The re-audit's H2 claim that a Manager could create an MD was a **false positive** — see H2 below. |
 | **P3** Migrations never executed by CI | Potential | **Still Present** | `CustomWebApplicationFactory:49` still uses `EnsureCreatedAsync()`. The 8 migrations and SQL Server-only defaults are never exercised by the suite. (They *have* now been applied manually to the SQLEXPRESS dev DB — but not by CI.) |
 | **P4** N+1 in request listing | Potential | **Still Present — WORSENED** | Promoted to a confirmed issue; see **H1**. |
-| **P5** No 401 response interceptor | Potential | **Still Present** | `api/client.js` has a request interceptor only (`interceptors.response` count = 0). |
+| **P5** No 401 response interceptor | Potential | **Fixed and Verified (revision 3)** | `api/client.js` now has a response interceptor that clears the token and hands off to `AuthContext` on a 401, excluding `/auth/login`. See the L3 entry under Medium Priority. |
 | **P6** `Name` ≤ 15 / `Email` ≤ 25 chars | Potential | **Still Present** | `CreateUserRequestValidator:11-12` unchanged. 25 chars rejects most real corporate addresses. Conflicts with `StationerySchema.sql` (K2). |
 | **P7** Dev connection string targets LocalDB | Potential | **Still Present** | `appsettings.Development.json:9` still `(localdb)\mssqllocaldb`; this machine has SQLEXPRESS only. Mitigated by the `api` entry in `.claude/launch.json`, which overrides it. |
 
 **Score: 8 Fixed and Verified · 2 Partially Fixed (C7, P2) · 6 Still Present (all previously
 "Potential") · 0 Cannot Verify.** No previously-fixed issue has regressed.
+
+**Revision 3 update (2026-09-05):** P5 is now **Fixed and Verified** too, so the running score is
+**9 Fixed · 5 Still Present**. All 230 pre-existing tests were re-run *before* any revision-3 edit
+and passed unchanged — C1–C9, H1–H3 and M1–M3 all still hold.
 
 ### Also resolved since the last audit (not previously tracked as numbered issues)
 
@@ -101,15 +120,39 @@ live API hit with `GET /requests?pageSize=100` (22 rows, 30 ids). SQL emitted pe
 Zero per-row queries; the adjacency table is loaded at most once (and not at all for a Managing
 Director, whose null scope short-circuits). **215 backend + 140 frontend tests pass.**
 
-### H2 — A Manager can still create or promote a Managing Director *(confirmed; P2 half-fixed)*
-**⚠ NOT FIXED — deliberately left pending a team ruling.** This descends from P2, a *Potential*
-issue, and changing who may create a Managing Director alters the permission model rather than
-correcting a defect. Raise it with the team before touching it.
-`UserManagementService.EnsureActorCanAssignRoleAsync` and `EnsureActorCanManageTarget` only
-engage when the actor's rank **equals 3** (Business Manager). A rank-2 Manager passes both
-unchecked and can create a Managing Director account, or promote themselves. The BM restriction
-that was added shows the team considers this class of escalation undesirable; the Manager case
-looks like an oversight rather than a decision. **Confirm the intended rule before changing it.**
+### ⚠️ H2 — "A Manager can create or promote a Managing Director" — **FALSE POSITIVE; guard since hardened**
+
+**The finding as originally written was wrong.** It said a rank-2 Manager "passes both guards
+unchecked and can create a Managing Director account". That conclusion came from reading
+`UserManagementService`'s guards without checking the attribute on the endpoints that reach them.
+Every write endpoint on `UsersController` — `POST`, `PUT`, `PATCH .../status` — is
+`[Authorize(Policy = "RequireBusinessManager")]` (rank ≥ 3), so a Manager never reaches the service
+at all.
+
+**Verified empirically 2026-09-05** against the live API before any change was made:
+
+| Actor | `POST /users` | Result |
+|---|---|---|
+| Manager (2) | role = Managing Director | **403** |
+| Manager (2) | role = Engineer | **403** — a Manager cannot create anyone |
+| Business Manager (3) | role = Managing Director / Business Manager | **403** (service guard) |
+| Business Manager (3) | role = Manager / Engineer | **201** |
+| Managing Director (4) | role = Managing Director | **201** |
+
+**Team ruling 2026-09-05: "a Manager should not be able to create a Managing Director."** Already
+true in practice, but the service guard only named Business Managers, so it held *only* because the
+controller policy blocked Managers first. CLAUDE.md principle #9 requires both layers, and a
+controller/service rank mismatch is not hypothetical — one was found on the Support Inbox route in
+this same audit (M2).
+
+**Hardened**, therefore: `EnsureActorOutranks` now states the rule as a rank comparison — nobody may
+create, edit or deactivate an account **at or above their own rank**, with the Managing Director
+exempt as the top rank (otherwise no one could ever create a successor). This reproduces the
+Business-Manager behaviour exactly, extends it downward, and survives a future relaxation of the
+controller policy. 10 new unit tests pin it, including the ruling stated directly.
+
+**No behaviour changed today** — re-verified live after the change: the BM matrix above is
+byte-for-byte identical, Manager is still 403, MD still 201. Only the error wording changed.
 
 ### ✅ H3 — `RequestStateMachine` did not exist — **FIXED AND VERIFIED 2026-09-05**
 *Was: Plan T3.2 and CLAUDE.md #7 require one guarded `Transition()` as the only writer of
@@ -200,13 +243,58 @@ Row-scoping means an Engineer only sees their own spend, so nothing leaks. But P
 ("Engineer → 403") and TC-18 all say Manager+. The code and the Plan disagree **in writing**;
 whichever wins, the other must be updated.
 
+### ✅ M5 — A request could be rejected with no reason — **FIXED AND VERIFIED 2026-09-05 (revision 3)**
+*Was: PC5. Plan §3.6 guards the `Pending → Rejected` edge with "Comment required".
+`ApproveRequestCommandValidator` only capped the comment's length, so an approver could reject a
+whole request and `Request.DecisionComment` stored `null` — the requestor saw a rejection with no
+explanation and the audit trail recorded none either. Reclassified from "potential" to a defect:
+this is not two documents disagreeing, it is a stated Plan guard that was never implemented.*
+
+**Fix.** `Comment` is now `NotEmpty()` when every line decision is `rejected` — exactly the
+condition under which `RequestService.ApproveAsync` derives the header status `Rejected`, so the
+guard sits on the Plan's edge and nowhere else. Enforced in the validator rather than the service,
+so the call is refused with a **400 and a field-level error** before any database work happens.
+Approvals and partial approvals stay comment-optional: Plan §3.6 attaches no comment guard to
+those transitions, and requiring one would be stricter than the specification.
+`RequestReviewModal` mirrors the rule (label flips to "Comment (required)", textarea `required`,
+Submit disabled until a reason is typed) so the approver meets the rule on the field instead of
+as a 400.
+
+**Verified.** 11 new unit cases written from the Plan's transition table — including the negative
+half, that an approval and each partial-approval shape remain comment-optional — plus 2
+integration cases (commentless rejection → 400 **and the request left `Pending` with no decision
+written to the line**; partial approval with no comment → 200) and 3 frontend cases.
+Live against SQL Server: rejecting #26 with no comment → 400, request untouched; the same request
+partially approved with no comment → 200; #27 rejected with a comment → 200 with
+`decisionComment` persisted; #28 rejected through the browser UI end to end.
+**243 backend + 154 frontend tests pass.**
+
+### ✅ L3 (promoted) — Expired sessions left the user stranded — **FIXED AND VERIFIED 2026-09-05 (revision 3)**
+*Was: `api/client.js` had a request interceptor only. Tokens last 8 hours, so a tab left open
+overnight hit 401 on every call and rendered each page's generic error state, with the dead token
+still in `localStorage` and nothing sending the user back to login.*
+
+**Fix.** A response interceptor clears the stored token on a 401 and calls a handler registered
+via a new `setUnauthorizedHandler` export; `AuthContext` registers `clearSession` as that handler.
+A 401 from `/auth/login` is excluded — that is a wrong password, not an expired session, and
+treating it as one would clear a session the user never had and swallow the Login page's own
+error. `client.js` never imports `AuthContext`, so the dependency stays one-way, and the redirect
+is left to `ProtectedRoute` reacting to `isAuthenticated` rather than a `window.location`
+assignment.
+
+**Verified.** 4 new tests (401 clears and notifies · a login 401 does neither · a 403 does
+neither · success passes through), stubbing axios's adapter rather than adding a mocking library
+to a shared `package.json`. Live: corrupting the stored JWT and navigating in-app redirected to
+`/login` with the token cleared and no raw error, while a wrong password still shows
+"Those sign-in details are incorrect."
+
 ---
 
 ## Current Low Priority Issues
 
 - **L1** — `/new-request` is routed but absent from `navigation.js`; reachable only from the Catalogue's "Proceed" button or the My Requests header.
 - **L2** — Dead code: `Application/Services/Service.cs` + `Application/Interfaces/IService.cs` (0 DI registrations) and `DbSeeder.SeedDemoDataAsync` (0 callers; its comment still claims a `Seed:DemoData` gate in `Program.cs` that does not exist).
-- **L3** — No 401 response interceptor (P5): an expired 8-hour JWT surfaces as raw errors rather than a redirect to login.
+- ~~**L3** — No 401 response interceptor (P5).~~ **Fixed in revision 3, 2026-09-05** — promoted to a Medium issue and closed; see the L3 entry under Medium Priority above.
 - **L4** — `Name` ≤ 15 / `Email` ≤ 25 character limits (P6) will reject realistic names and addresses in a demo.
 - **L5** — Dev connection string targets LocalDB (P7); use the `api` entry in `.claude/launch.json`, which overrides to SQLEXPRESS.
 - **L6** — Repeated failed submissions from New Request create one orphaned Draft each. Mitigated: the error message names the draft id and tells the user to continue from My Requests, and Drafts do not consume budget.
@@ -221,7 +309,7 @@ whichever wins, the other must be updated.
 - **PC2 — Partial deliveries are not modelled.** A supplier order is all-or-nothing. Nothing in the Plan or the task specifies per-line receipt; confirm whether it is wanted.
 - **PC3 — Plan/schema now trail the code in three places.** Plan §4.2 still lists the removed `POST /inventory/{itemId}/receive`; neither the Plan (§3.3 table 11) nor `StationerySchema.sql` describes the supplier-order lifecycle; `supplier-request-cart-implementation-handoff.md` still says stock moves "later via `receiveGoods()`". Documentation debt, not code defects.
 - **PC4 — Two concurrency strategies coexist.** `Request` uses EF's `IsConcurrencyToken()`; `StationeryItem`/`Supplier` use app-managed Guid compare-then-set. Both work; the inconsistency is a trap for the next person.
-- **PC5 — `Comment` is optional on rejection.** Plan §3.6 lists "Comment required" as the guard on `Pending → Rejected`. `ApproveRequestCommandValidator` only caps its length. Confirm whether the Plan's guard should be enforced.
+- ~~**PC5 — `Comment` is optional on rejection.**~~ **Closed by revision 3 (2026-09-05)** — promoted to **M5** and fixed. Not a document conflict after all: the Plan states the guard and the code had simply never implemented it. See M5 below.
 - **PC6 — AI catalogue cap.** `RequestAssistantService.CatalogueLoadLimit = 500`. If the catalogue ever exceeds 500 items the assistant silently stops seeing the rest.
 
 ---
@@ -241,6 +329,16 @@ real SQL Server by CI-skippable tests.
 
 Tests: backend **183 → 220**, frontend **140 → 147**. Everything below still holds.
 
+**Update 2026-09-05 (revision 3).** Both suites were re-run **before** any edit — 230 backend and
+147 frontend, all green, confirming nothing from the earlier passes had regressed. Two confirmed
+gaps were then closed, both implementing rules the project documents already state: **M5** (a
+request could be rejected with no reason, contrary to Plan §3.6's "Comment required" guard) and
+**L3/P5** (an expired token stranded the user with raw 401s). Neither touched a requirement, a
+diagram, a business rule, an endpoint or the database. Tests: backend **230 → 243**, frontend
+**147 → 154**; every affected flow was also exercised live against SQL Server and in the browser.
+**M4 remains the one item blocked on a team ruling.** Full detail:
+[docs/development/revision-3-rejection-comment-and-session-expiry-handoff.md](docs/development/revision-3-rejection-comment-and-session-expiry-handoff.md).
+
 **What is now working correctly.** The full request lifecycle behaves as Plan §3.6 specifies:
 create → `Draft` (invisible to the approver, the only deletable state) → submit (budget-gated,
 422 when over) → approve/reject with **persisted per-line decisions** → stock issued for the
@@ -253,16 +351,18 @@ AI Request Assistant (grounded, rate-limited, offline fallback, key never commit
 implemented and covered. **183 backend + 140 frontend tests pass**, including regression tests
 named for each closed finding.
 
-**What remains incomplete.** Two items, both awaiting a decision rather than code: the
-Manager-level half of the role-escalation guard (**H2**) and the reports-policy contradiction
-(**M4**). Everything else outstanding is Low priority or documentation.
+**What remains incomplete.** One item awaiting a decision rather than code: the reports-policy
+contradiction (**M4**). Everything else outstanding is Low priority or documentation.
 
-**What still needs attention first.** **H2 and M4 both need a team ruling** — may a Manager create
-or promote a Managing Director, and are reports Manager+ or open to all? Neither should be changed
-on one person's judgement. After that, the Low items are cleanup: dead code (L2), the 401
-interceptor (L3), the `/new-request` nav entry (L1), and the documentation reconciliations in
-PC3 — the Plan and `StationerySchema.sql` now trail the code in several places, and CLAUDE.md §1
-is actively misleading (L7).
+**H2 is closed** — the finding was a false positive (a Manager was always blocked at the
+controller), and the team's ruling has since been encoded in the service layer as well.
+
+**What still needs attention first.** **M4 needs a team ruling** — are reports Manager+ (Plan §4.2,
+T5.2, TC-18) or open to all (current code)? Whichever wins, the other document must be updated;
+it should not be changed on one person's judgement. After that the Low items are cleanup: dead
+code (L2), the 401 interceptor (L3), the `/new-request` nav entry (L1), and the documentation
+reconciliations in PC3 — the Plan and `StationerySchema.sql` now trail the code in several places,
+and CLAUDE.md §1 is actively misleading (L7).
 
 **Is it stable enough for continued development and testing? Yes.** Nothing is Critical, no
 previous fix regressed, both suites are green, and every core workflow completes end to end

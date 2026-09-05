@@ -1762,69 +1762,92 @@ genuinely guard the fix.
 `npm run build` clean. Rendered in a headless browser: typing into the field and clicking the
 eye reveals the text and swaps the icon to `EyeOff`.
 
-## 2026-09-04 — Partial approvals cost what was granted; error boundary; 401 handling
+---
 
-**Task:** Fix the red and orange findings from the full audit — partial approvals over-charging
-budget and over-reporting spend, no React error boundary, and no 401 handling.
+## 2026-09-05 — Revision 3: rejection-comment guard (Plan §3.6) and 401 session handling
+
+**Task:** Third revision pass. Verify the fixes from the 2026-09-04 audit and the 2026-09-05
+re-audit still hold, then close the remaining confirmed implementation gaps. No requirement,
+diagram or business rule was changed — both fixes implement rules that already exist in the Plan.
+
+**Verification of previous work (run first, before any edit):**
+`dotnet test Project.slnx` — **230 passed** (96 unit + 134 integration), 0 failed.
+`npx vitest run --pool=threads` — **147 passed** across 24 files, 0 failed.
+No previously-closed finding (C1–C9, H1–H3, M1–M3) had regressed.
 
 **What changed, by file:**
 
-*Money (the red one).* Stock already moved by `ApprovedQuantity` (audit C8), but the budget
-charged `Request.TotalEstimatedCost` and every report summed `RequestItems.LineTotal` — both the
-**requested** figure. Ask for 100, be granted 10, and you were charged for 100. Harmless while
-budgets were display-only; a real lockout once C7 started hard-blocking submissions at 422.
-- `Infrastructure/Queries/EligibilityQueries.cs` — month-to-date spend now sums
-  `(ApprovedQuantity ?? Quantity) * UnitCostSnapshot` over `RequestItems` instead of the request
-  header. The coalesce reads correctly in all three cases: a Pending request has no decision, so
-  the full ask is still held; a decided one charges what was granted; a request decided before
-  `ApprovedQuantity` existed falls back to the requested figure, which for those rows *is* what
-  was granted.
-- `Infrastructure/Queries/ReportQueries.cs` — same expression in `ScopedFlatLinesAsync`, the one
-  projection every report aggregates over, so all five reports are fixed at once. `Quantity` now
-  reports units granted on the same basis.
-- `Tests/WebApi.IntegrationTests/PartialApprovalSpendTests.cs` — **new**, 4 tests: budget charges
-  the approved quantity not the requested one; budget freed by a partial approval is immediately
-  usable again (this was a 422 before); rejected lines cost nothing; cost reports count the
-  approved quantity.
-- `Tests/WebApi.IntegrationTests/EligibilityTests.cs` — `SeedRequestAsync` now seeds a real
-  `RequestItem`. It previously created header-only requests, which the API cannot produce
-  (`CreateRequestCommandValidator` requires ≥1 line) and which summed to zero once spend was
-  read from lines. Fixing the fixture, not the query.
+*M5 — a request could be rejected with no reason (Plan §3.6 guard never implemented).*
+- `Application/Validators/Requests/ApproveRequestCommandValidator.cs` — `Comment` is now
+  `NotEmpty()` when every line decision is `rejected`, which is exactly the condition under which
+  `RequestService.ApproveAsync` derives the header status `Rejected`. Approvals and partial
+  approvals are untouched: Plan §3.6 puts the guard on the `Pending -> Rejected` edge only, and
+  tightening more than the specification would be inventing a requirement. The existing
+  1000-character cap still applies.
+- `frontend/src/pages/requests/components/RequestReviewModal.jsx` — when every line is set to
+  Reject, the field label becomes "Comment (required)", the textarea is `required`, a one-line
+  hint explains why, and "Submit decision" is disabled until a comment is typed. The server is
+  still the control; this only stops the approver meeting the rule as a 400.
 
-*Error boundary.*
-- `frontend/src/components/ErrorBoundary.jsx` — **new**. A render exception unmounted the whole
-  tree to a blank white page with no way back but a manual refresh. Now shows a recoverable
-  screen with Reload / Go to Dashboard, logs the component stack, and prints the stack inline in
-  dev only.
-- `frontend/src/main.jsx` — wraps `BrowserRouter` + `AuthProvider`, so a throw in the router or
-  the auth provider is caught too.
-- `frontend/src/components/ErrorBoundary.test.jsx` — **new**, 3 tests.
+*L3 — an expired token produced raw 401s with no route back to login.*
+- `frontend/src/api/client.js` — added a response interceptor. On a 401 it clears the stored
+  token and calls a handler registered via the new `setUnauthorizedHandler` export. A 401 from
+  `/auth/login` itself is excluded: that is a wrong password, not an expired session, and
+  treating it as one would clear a session the user never had and swallow the Login page's own
+  error message.
+- `frontend/src/contexts/AuthContext.jsx` — registers `clearSession` as that handler in an
+  effect and unregisters on unmount. `client.js` never imports AuthContext, so the dependency
+  stays one-way; the redirect is left to `ProtectedRoute` reacting to `isAuthenticated`, rather
+  than a hard `window.location` assignment.
 
-*401 handling.*
-- `frontend/src/api/client.js` — response interceptor: a 401 clears the dead token and redirects
-  to `/login?expired=1`. Tokens last 8 hours, so mid-session expiry is routine; previously every
-  widget on the page rendered its own error and the user was left guessing.
-- `frontend/src/pages/Login.jsx` — shows "Your session expired" on that flag, so the bounce reads
-  as an explanation rather than an unexplained logout.
-- `frontend/src/api/client.test.js` — **new**, 4 tests.
+**Tests added (all written from the Plan's transition table, not from the implementation):**
+- `Tests/Application.UnitTests/Requests/ApproveRequestCommandValidatorTests.cs` — 11 cases:
+  null/empty/whitespace comment on a full rejection refused; single-line rejection also refused;
+  case-insensitive so `REJECTED` cannot slip past; and four approval/partial-approval
+  combinations asserted to remain comment-optional.
+- `Tests/WebApi.IntegrationTests/RequestsTests.cs` — two end-to-end cases: a commentless
+  rejection returns 400 **and leaves the request Pending with no decision written to the line**;
+  a partial approval with no comment still returns 200.
+- `frontend/src/api/client.test.js` — 4 cases covering the interceptor: 401 clears the token and
+  fires the handler; a 401 from `/auth/login` does neither; a 403 does neither; success passes
+  through. The transport is stubbed by swapping axios's adapter rather than adding
+  `axios-mock-adapter` to a shared `package.json`.
+- `frontend/src/pages/requests/ApprovalsPage.test.jsx` — 3 cases pinning the modal's required /
+  optional label, the disabled submit, and the successful rejection payload.
 
-**Assumptions made where the request was ambiguous:**
-- **"Spend" means granted, not requested.** The Plan does not say which; stock already used
-  granted, so this makes all three consumers agree rather than picking a new convention.
-- **A Pending request still holds its full requested value** against the allowance. It is money
-  spoken for and the approver has not cut anything yet.
-- **The 401 redirect excludes `/auth/login`** — a wrong password there is a normal 401 the form
-  must show, not a reason to bounce the page.
-- **The boundary offers a reload, not a `setState` reset.** Whatever state produced the bad
-  render is still there, so re-rendering the same tree would throw again.
+**Tests actually executed:** `dotnet test Project.slnx` — **243 passed** (107 unit + 136
+integration), 0 failed. `npx vitest run --pool=threads` — **154 passed** across 25 files,
+0 failed.
 
-**Deliberately left out of scope:**
-- Back-filling `ApprovedQuantity` on the 94 legacy decided requests — the fallback already reads
-  them correctly and a data migration would be guessing.
-- The remaining yellow/green audit items (tracked `bin`/`obj`, org-chart enumeration by any
-  Manager, stale `CLAUDE.md` §1, react-router CVE, supplier-arrival race).
+**Verified live** against the running API (SQLEXPRESS, `StationeryManagementSystem.Dev`) and the
+Vite dev server, not only through tests:
+- Rejecting request #26 with `comment: null` → **400** naming the field; re-reading the request
+  showed it still `Pending` with `decision: null` — nothing was written.
+- The same request partially approved with no comment → **200**, `PartiallyApproved`.
+- Request #27 rejected with a comment → **200**, `Rejected`, `decisionComment` persisted.
+- Request #28 rejected through the browser UI as the real approver: switching the line to Reject
+  flipped the label to "Comment (required)" and disabled Submit; typing a reason enabled it and
+  the request came back `Rejected` with the comment stored.
+- Session expiry: corrupting the stored JWT and navigating in-app redirected to `/login` with the
+  token cleared and no raw error; a wrong password on the login form still shows
+  "Those sign-in details are incorrect."
 
-**Validation:** `dotnet build` 0 errors. `dotnet test Project.slnx` — **222 passed**
-(86 unit + 136 integration, +4 new); the 2 skips are the migration tests, whose probe fix is on
-`fix/goods-arrival-detail-and-migration-tests`. `npx vitest run --pool=threads` — **154 passed**
-(26 files, +7 new). `npm run build` clean.
+**Assumptions made where the documents were silent:**
+- The Plan's guard is scoped to the whole-request `Pending -> Rejected` transition, so a partial
+  approval containing a rejected line does **not** require a comment. Stated here because the
+  opposite reading is defensible and would be a one-line change.
+- Whitespace does not count as a comment (`NotEmpty()` on a trimmed client value).
+
+**Deliberately left out of scope (reported, not fixed):**
+- **M4** — reports are open to every authenticated user while Plan §4.2/T5.2/TC-18 say Manager+.
+  The code and the Plan disagree in writing; whichever wins, the other document must change.
+  That is a team ruling, not a silent code edit.
+- **PC1** — `SupplierRequest` has no `RowVersion`, so two racing arrival confirmations could in
+  principle both post a receipt. Closing it needs a schema column and a migration, and only one
+  open PR may carry a migration at a time (CLAUDE.md §5) — it must be announced first.
+- **L1** (no `/new-request` nav entry — the sidebar order is wireframe-derived and the page has
+  two working entry points), **L2** (dead code), **L4**, **L5**, **L8**: unchanged.
+
+**Test data:** employees 410/411 were created on the dev database to exercise the approver path
+and have been deactivated (`IsActive = false`); requests 26–28 remain as audit evidence. Nothing
+was deleted — `Users` is soft-delete only and submitted requests are never removed.

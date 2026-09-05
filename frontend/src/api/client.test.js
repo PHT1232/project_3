@@ -1,59 +1,104 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-
-import client from './client.js'
-import { ACCESS_TOKEN_STORAGE_KEY } from '../lib/authStorage.js'
+import client, { setUnauthorizedHandler } from './client.js'
+import {
+  ACCESS_TOKEN_STORAGE_KEY,
+  getStoredAccessToken,
+  setStoredAccessToken,
+} from '../lib/authStorage.js'
 
 /**
- * The 401 interceptor. A token lasts 8 hours, so expiry mid-session is routine rather than
- * exceptional — without this every widget on the page rendered its own error and the user was
- * left guessing.
+ * The 401 response interceptor (audit L3). Tokens last 8 hours, so a tab left open overnight used
+ * to hit a raw "Request failed with status code 401" on every call, with the stale token still in
+ * localStorage and no route back to login.
+ *
+ * The transport is stubbed by swapping axios's adapter rather than adding a mocking library to a
+ * shared package.json. `validateStatus` is applied by axios *inside* each built-in adapter, not
+ * by the core, so this stub rejects non-2xx itself — producing the same AxiosError (`.response`
+ * populated) the interceptor sees in production. The interceptor chain under test is the real one.
  */
-describe('client 401 handling', () => {
-  let assign
+const realAdapter = client.defaults.adapter
 
+function respondWith(status) {
+  client.defaults.adapter = (config) => {
+    const response = {
+      data: status === 200 ? [{ categoryId: 1 }] : { detail: 'stubbed' },
+      status,
+      statusText: String(status),
+      headers: {},
+      config,
+      request: {},
+    }
+
+    if (status >= 200 && status < 300) return Promise.resolve(response)
+
+    const error = new Error(`Request failed with status code ${status}`)
+    error.config = config
+    error.response = response
+    error.isAxiosError = true
+    return Promise.reject(error)
+  }
+}
+
+describe('client 401 handling', () => {
   beforeEach(() => {
-    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, 'stale-token')
-    assign = vi.fn()
-    // jsdom's location is not writable; replace it wholesale for the assertion.
-    delete window.location
-    window.location = { assign, pathname: '/my-requests', href: '' }
+    localStorage.clear()
+    setUnauthorizedHandler(null)
   })
 
   afterEach(() => {
-    localStorage.clear()
-    vi.restoreAllMocks()
+    client.defaults.adapter = realAdapter
+    setUnauthorizedHandler(null)
   })
 
-  /** Drives the rejection half of the response interceptor directly. */
-  const reject = (error) => {
-    const handler = client.interceptors.response.handlers.at(-1).rejected
-    return handler(error).catch((e) => e)
-  }
+  it('clears the stored token and notifies the handler on a 401', async () => {
+    setStoredAccessToken('expired-token')
+    const onUnauthorized = vi.fn()
+    setUnauthorizedHandler(onUnauthorized)
+    respondWith(401)
 
-  it('clears the dead token and sends the user to sign in', async () => {
-    await reject({ response: { status: 401 }, config: { url: '/requests' } })
+    await expect(client.get('/requests')).rejects.toMatchObject({
+      response: { status: 401 },
+    })
 
-    expect(localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)).toBeNull()
-    expect(assign).toHaveBeenCalledWith('/login?expired=1')
+    expect(getStoredAccessToken()).toBeNull()
+    expect(onUnauthorized).toHaveBeenCalledTimes(1)
   })
 
-  it('leaves a failed login alone so the form can show the message', async () => {
-    await reject({ response: { status: 401 }, config: { url: '/auth/login' } })
+  it('leaves a failed login alone — that is a wrong password, not an expired session', async () => {
+    // Guards against signing a user out of a session they never had, and against swallowing the
+    // Login page's own "invalid credentials" message.
+    setStoredAccessToken('someone-elses-token')
+    const onUnauthorized = vi.fn()
+    setUnauthorizedHandler(onUnauthorized)
+    respondWith(401)
 
-    expect(localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)).toBe('stale-token')
-    expect(assign).not.toHaveBeenCalled()
+    await expect(client.post('/auth/login', {})).rejects.toMatchObject({
+      response: { status: 401 },
+    })
+
+    expect(localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)).toBe('someone-elses-token')
+    expect(onUnauthorized).not.toHaveBeenCalled()
   })
 
-  it('ignores other failures', async () => {
-    await reject({ response: { status: 422 }, config: { url: '/requests/1/submit' } })
+  it('does not fire on other error statuses', async () => {
+    setStoredAccessToken('good-token')
+    const onUnauthorized = vi.fn()
+    setUnauthorizedHandler(onUnauthorized)
+    respondWith(403)
 
-    expect(localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)).toBe('stale-token')
-    expect(assign).not.toHaveBeenCalled()
+    await expect(client.get('/reports/cost-by-item')).rejects.toMatchObject({
+      response: { status: 403 },
+    })
+
+    expect(getStoredAccessToken()).toBe('good-token')
+    expect(onUnauthorized).not.toHaveBeenCalled()
   })
 
-  it('still rejects, so callers keep their own error handling', async () => {
-    const original = { response: { status: 401 }, config: { url: '/requests' } }
+  it('passes successful responses through untouched', async () => {
+    respondWith(200)
 
-    await expect(reject(original)).resolves.toBe(original)
+    const response = await client.get('/categories')
+
+    expect(response.data).toEqual([{ categoryId: 1 }])
   })
 })
