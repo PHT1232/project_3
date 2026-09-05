@@ -1762,66 +1762,69 @@ genuinely guard the fix.
 `npm run build` clean. Rendered in a headless browser: typing into the field and clicking the
 eye reveals the text and swaps the icon to `EyeOff`.
 
-## 2026-09-04 — Goods-arrival popup shows what you are confirming; migration tests stop skipping
+## 2026-09-04 — Partial approvals cost what was granted; error boundary; 401 handling
 
-**Task:** Two gaps found while reviewing PR #40 (goods-arrival confirmation) before it merged —
-the confirm dialog never showed the ordered items, and the new migration tests silently skipped
-on this machine.
+**Task:** Fix the red and orange findings from the full audit — partial approvals over-charging
+budget and over-reporting spend, no React error boundary, and no 401 handling.
 
 **What changed, by file:**
-- `Tests/WebApi.IntegrationTests/SqlServerAvailability.cs` — the probe tried LocalDB and
-  `.\SQLEXPRESS` only. This machine runs SQL Server on the **default** instance, so both
-  `MigrationTests` skipped and audit P3 was closed in name only. Added `Server=localhost` to the
-  candidate list and an `SQLSERVER_TEST_CONNECTION` environment override tried ahead of the
-  guesses, which is the only workable option for a CI host. Skip message updated to name all
-  three candidates and the variable.
-- `frontend/src/pages/inventory/components/SupplierOrdersModal.jsx` — the "Lines" column showed
-  a bare count, so a Business Manager clicked "Goods Arrived" without seeing what they were
-  certifying. The count is now a disclosure button (`aria-expanded`, chevron) that opens a
-  per-order breakdown: item name, quantity, unit cost, line total. One order open at a time;
-  collapsed by default; resets when the dialog closes. No API change — `SupplierRequestDto`
-  already carried `Items` and the query already `Include`d them.
-- `frontend/src/pages/inventory/components/SupplierOrdersModal.test.jsx` — **new**, 5 tests:
-  the order lists with supplier and status; the detail is hidden until asked for and then shows
-  the item and quantity; it collapses again; confirm posts the right id; someone who cannot
-  confirm sees no button but **can** still expand the detail.
+
+*Money (the red one).* Stock already moved by `ApprovedQuantity` (audit C8), but the budget
+charged `Request.TotalEstimatedCost` and every report summed `RequestItems.LineTotal` — both the
+**requested** figure. Ask for 100, be granted 10, and you were charged for 100. Harmless while
+budgets were display-only; a real lockout once C7 started hard-blocking submissions at 422.
+- `Infrastructure/Queries/EligibilityQueries.cs` — month-to-date spend now sums
+  `(ApprovedQuantity ?? Quantity) * UnitCostSnapshot` over `RequestItems` instead of the request
+  header. The coalesce reads correctly in all three cases: a Pending request has no decision, so
+  the full ask is still held; a decided one charges what was granted; a request decided before
+  `ApprovedQuantity` existed falls back to the requested figure, which for those rows *is* what
+  was granted.
+- `Infrastructure/Queries/ReportQueries.cs` — same expression in `ScopedFlatLinesAsync`, the one
+  projection every report aggregates over, so all five reports are fixed at once. `Quantity` now
+  reports units granted on the same basis.
+- `Tests/WebApi.IntegrationTests/PartialApprovalSpendTests.cs` — **new**, 4 tests: budget charges
+  the approved quantity not the requested one; budget freed by a partial approval is immediately
+  usable again (this was a 422 before); rejected lines cost nothing; cost reports count the
+  approved quantity.
+- `Tests/WebApi.IntegrationTests/EligibilityTests.cs` — `SeedRequestAsync` now seeds a real
+  `RequestItem`. It previously created header-only requests, which the API cannot produce
+  (`CreateRequestCommandValidator` requires ≥1 line) and which summed to zero once spend was
+  read from lines. Fixing the fixture, not the query.
+
+*Error boundary.*
+- `frontend/src/components/ErrorBoundary.jsx` — **new**. A render exception unmounted the whole
+  tree to a blank white page with no way back but a manual refresh. Now shows a recoverable
+  screen with Reload / Go to Dashboard, logs the component stack, and prints the stack inline in
+  dev only.
+- `frontend/src/main.jsx` — wraps `BrowserRouter` + `AuthProvider`, so a throw in the router or
+  the auth provider is caught too.
+- `frontend/src/components/ErrorBoundary.test.jsx` — **new**, 3 tests.
+
+*401 handling.*
+- `frontend/src/api/client.js` — response interceptor: a 401 clears the dead token and redirects
+  to `/login?expired=1`. Tokens last 8 hours, so mid-session expiry is routine; previously every
+  widget on the page rendered its own error and the user was left guessing.
+- `frontend/src/pages/Login.jsx` — shows "Your session expired" on that flag, so the bounce reads
+  as an explanation rather than an unexplained logout.
+- `frontend/src/api/client.test.js` — **new**, 4 tests.
 
 **Assumptions made where the request was ambiguous:**
-- **Collapsed by default, one at a time.** Showing every line inline would bury the confirm
-  action once there are several orders. The user asked to "see the items ordered in a pop up";
-  one click to reveal satisfies that without making the list unusable.
-- **Read access to the detail is not gated.** `canConfirm` still hides the button, but a Manager
-  who raised the order can expand it. Seeing an order is not the same as certifying it arrived.
-- The `Lines` column header became `Items` — it now counts things you can look at, not rows.
-- `__ai_agents/Requirements/` still does not exist; the goods-arrival handoff
-  (`docs/development/goods-arrival-confirmation-handoff.md`) and Plan §3.6 were the sources.
+- **"Spend" means granted, not requested.** The Plan does not say which; stock already used
+  granted, so this makes all three consumers agree rather than picking a new convention.
+- **A Pending request still holds its full requested value** against the allowance. It is money
+  spoken for and the approver has not cut anything yet.
+- **The 401 redirect excludes `/auth/login`** — a wrong password there is a normal 401 the form
+  must show, not a reason to bounce the page.
+- **The boundary offers a reload, not a `setState` reset.** Whatever state produced the bad
+  render is still there, so re-rendering the same tree would throw again.
 
 **Deliberately left out of scope:**
-- Partial arrivals — a supplier order is confirmed whole. No document describes a short delivery.
-- The `SupplierRequest` concurrency race the handoff flags (two confirmations in separate
-  transactions); it needs a RowVersion token, which is a migration.
-- Wiring `SQLSERVER_TEST_CONNECTION` into a CI config — no CI file to change here yet.
+- Back-filling `ApprovedQuantity` on the 94 legacy decided requests — the fallback already reads
+  them correctly and a data migration would be guessing.
+- The remaining yellow/green audit items (tracked `bin`/`obj`, org-chart enumeration by any
+  Manager, stale `CLAUDE.md` §1, react-router CVE, supplier-arrival race).
 
-**Validation:** `dotnet build` 0 errors. `dotnet test Project.slnx` — **220 passed, 0 skipped**
-(86 unit + 134 integration; both `MigrationTests` now **run and pass**, where they previously
-skipped, proving all 10 migrations apply cleanly from an empty database against real SQL
-Server). `npx vitest run --pool=threads` — **152 passed** (25 files, +5 new). `npm run build`
-clean.
-
-### 2026-09-04 (follow-up) — the confirm button was clipped out of the dialog
-
-Found while screenshotting the change above: `Modal` is hardcoded `max-w-md` (28rem) with no
-width option, so the Supplier Orders table — six columns ending in an action button — ran off
-the right edge and **"Goods Arrived" was not reachable at all**. Pre-existing in PR #40; adding
-the item breakdown only made it visible.
-
-- `frontend/src/components/ui/Modal.jsx` — optional `size` prop (`md` default, `lg`, `xl`).
-  Default is unchanged, so every existing dialog renders exactly as before. Also caps the shell
-  at `max-h-[90vh]` and scrolls the body instead of the page, so a long list keeps its header
-  and footer on screen.
-- `frontend/src/pages/inventory/components/SupplierOrdersModal.jsx` — asks for `size="xl"`.
-
-**Left out of scope:** auditing the other dialogs for width; they fit `md` today.
-
-**Validation:** `npx vitest run --pool=threads` 152 passed, `npm run build` clean, and confirmed
-in a browser — all three `PendingArrival` orders now show a reachable "Goods Arrived" button.
+**Validation:** `dotnet build` 0 errors. `dotnet test Project.slnx` — **222 passed**
+(86 unit + 136 integration, +4 new); the 2 skips are the migration tests, whose probe fix is on
+`fix/goods-arrival-detail-and-migration-tests`. `npx vitest run --pool=threads` — **154 passed**
+(26 files, +7 new). `npm run build` clean.

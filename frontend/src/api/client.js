@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { getStoredAccessToken } from '../lib/authStorage.js'
+import { clearStoredAccessToken, getStoredAccessToken } from '../lib/authStorage.js'
 
 /**
  * Shared axios instance. SHARED FILE.
@@ -23,5 +23,33 @@ client.interceptors.request.use((config) => {
   }
   return config
 })
+
+/**
+ * A 401 means the token is gone, expired (they last 8 hours) or belongs to a deactivated
+ * account — the server already re-checks IsActive on every request. Whatever the cause the
+ * session is unusable, so drop the stale token and send them to sign in rather than letting
+ * every widget on the page render its own "something went wrong".
+ *
+ * A hard redirect, not a router navigate: this module has no access to the router, and a full
+ * reload also clears any in-memory state built from the dead session.
+ *
+ * The login call itself is excluded — a wrong password there is a normal 401 the form must
+ * show, not a reason to bounce the page.
+ */
+client.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error.response?.status
+    const url = error.config?.url ?? ''
+    const isLoginAttempt = url.includes('/auth/login')
+
+    if (status === 401 && !isLoginAttempt && !window.location.pathname.startsWith('/login')) {
+      clearStoredAccessToken()
+      window.location.assign('/login?expired=1')
+    }
+
+    return Promise.reject(error)
+  },
+)
 
 export default client

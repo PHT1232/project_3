@@ -101,6 +101,15 @@ public class ReportQueries(DataContext db) : IReportQueries
     private static (DateTime FromUtc, DateTime ToExclusiveUtc) ToUtcWindow(DateOnly fromDate, DateOnly toDate) =>
         (fromDate.ToDateTime(TimeOnly.MinValue), toDate.AddDays(1).ToDateTime(TimeOnly.MinValue));
 
+    /// <param name="LineTotal">
+    /// What the approver actually granted, not what was asked for:
+    /// <c>(ApprovedQuantity ?? Quantity) * UnitCostSnapshot</c>. On a partially approved request
+    /// the stored <c>RequestItems.LineTotal</c> is the *requested* figure, so summing it
+    /// overstated spend by the amount the approver struck off. ApprovedQuantity is null on
+    /// requests decided before it existed (2026-09-04), and on those the requested quantity is
+    /// what was granted, so the fallback is exact rather than a guess.
+    /// </param>
+    /// <param name="Quantity">Units granted, on the same basis.</param>
     private sealed record LineFlat(
         int ItemId, string ItemName, string? CategoryName, decimal LineTotal, int Quantity,
         int RequestorEmployeeNumber, int RequestId, int Year, int Month);
@@ -124,8 +133,8 @@ public class ReportQueries(DataContext db) : IReportQueries
                 ri.ItemId,
                 ri.Item!.ItemName,
                 ri.Item.Category != null ? ri.Item.Category.Name : null,
-                ri.LineTotal,
-                ri.Quantity,
+                (ri.ApprovedQuantity ?? ri.Quantity) * ri.UnitCostSnapshot,
+                ri.ApprovedQuantity ?? ri.Quantity,
                 ri.Request!.RequestorEmployeeNumber,
                 ri.RequestId,
                 ri.Request.DecidedAtUtc!.Value.Year,
