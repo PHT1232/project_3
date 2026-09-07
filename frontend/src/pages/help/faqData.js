@@ -90,13 +90,13 @@ export const faqEntries = [
     area: 'Tracking your requests',
     question: 'What do the statuses mean?',
     answer:
-      'Pending: waiting on your approver. Approved / Partially Approved: granted in full or in part. Rejected or Returned: sent back with a comment. Withdrawn: you pulled it back. Cancellation Pending / Cancelled: a two-step cancellation of an approved request. Approving a request is also what issues the stock.',
+      'Pending: waiting on your approver. Approved / Partially Approved: granted in full or in part. Rejected or Returned: sent back with a comment. Withdrawal Pending / Withdrawn: a two-step withdrawal of a request nobody has decided yet. Cancellation Pending / Cancelled: a two-step cancellation of an approved request. Approving a request is also what issues the stock.',
   },
   {
     area: 'Tracking your requests',
     question: 'How do I withdraw a request?',
     answer:
-      'Open the request from My Requests and choose Withdraw. This is only possible while it is still Pending. It frees any budget the request was holding.',
+      'Open the request from My Requests and choose Request Withdrawal, giving a reason if you want to. This is only possible while it is still Pending. It does not withdraw the request on its own: your approver has to confirm it, and until they do the request keeps holding its budget. If they refuse, it goes back to Pending and they approve or reject it as normal.',
   },
   {
     area: 'Tracking your requests',
@@ -142,7 +142,7 @@ export const faqEntries = [
     area: 'Budget & eligibility',
     question: 'What spending counts against my budget?',
     answer:
-      'Requests you raised this month whose status is not Rejected, Withdrawn or Cancelled, valued at their estimated cost. Withdrawing or having a request rejected returns that amount to your remaining budget.',
+      'Requests you raised this month whose status is not Rejected, Withdrawn or Cancelled, valued at their estimated cost. A request awaiting a withdrawal or cancellation decision still counts — the budget comes back only once your approver confirms it, or the request is rejected.',
   },
   {
     area: 'Budget & eligibility',

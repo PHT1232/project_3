@@ -10,6 +10,7 @@ const STATUS_STYLE = {
   Approved: { tone: 'plain', label: 'Approved' },
   PartiallyApproved: { tone: 'plain', label: 'Partially Approved' },
   Rejected: { tone: 'danger', label: 'Rejected' },
+  WithdrawalPending: { tone: 'muted', label: 'Withdrawal Pending' },
   Withdrawn: { tone: 'outline', label: 'Withdrawn' },
   CancellationPending: { tone: 'muted', label: 'Cancellation Pending' },
   Cancelled: { tone: 'outline', label: 'Cancelled' },

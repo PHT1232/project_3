@@ -14,10 +14,15 @@ using Application.DTOs.Requests;
 /// Draft → Pending (requestor submits; only now does the approver see it)
 /// Draft → deleted (the only deletable state)
 /// Pending → Approved (all lines) / PartiallyApproved (some lines) / Rejected (no lines)
-/// Pending → Withdrawn (requestor withdraws before approval)
+/// Pending → WithdrawalPending (requestor asks to withdraw before approval)
+/// WithdrawalPending → Withdrawn (approver confirms) / back to Pending (approver refuses)
 /// Approved/PartiallyApproved → CancellationPending (requestor requests cancellation)
 /// CancellationPending → Cancelled (approver approves cancellation) / back to Approved (denies)
 /// Approval issues the stock, so there is no separate Fulfilled state (audit C8).
+///
+/// Both requestor-initiated revocations are two-step: neither withdrawal nor cancellation takes
+/// effect without the approver's confirmation (team decision 2026-09-07 — withdrawal used to be
+/// unilateral per Plan §3.6).
 /// </summary>
 public interface IRequestService
 {
@@ -52,12 +57,26 @@ public interface IRequestService
     Task<RequestDto> ApproveAsync(ApproveRequestCommand command, int approverEmployeeNumber);
 
     /// <summary>
-    /// Requestor withdraws their own request. Transitions Pending → Withdrawn.
-    /// Logs the event and notifies the approver.
+    /// Requestor asks to withdraw their own request. Transitions Pending → WithdrawalPending.
     ///
-    /// Can only withdraw a Pending request that has not been approved/rejected yet.
+    /// This does NOT withdraw the request: the approver must confirm it via
+    /// <see cref="ApproveWithdrawalAsync"/>. Until then the request stays in the approver's queue
+    /// and its cost stays committed against the requestor's monthly budget. Only a Pending
+    /// request — one nobody has decided yet — can be withdrawn at all.
+    ///
+    /// No notification fires here, and none fires on a refusal: Plan §4.2 names exactly six
+    /// triggers and "withdrawn" is the outcome, not the request for it — the same rule the
+    /// cancellation flow follows.
     /// </summary>
-    Task<RequestDto> WithdrawAsync(int requestId, Guid rowVersion, int requestorEmployeeNumber);
+    Task<RequestDto> RequestWithdrawalAsync(int requestId, Guid rowVersion, int requestorEmployeeNumber, string? reason);
+
+    /// <summary>
+    /// Approver confirms or refuses a withdrawal request.
+    /// If confirmed: transitions WithdrawalPending → Withdrawn and notifies both parties.
+    /// If refused: transitions WithdrawalPending → Pending, so the request returns to the queue
+    /// for a normal approve/reject decision.
+    /// </summary>
+    Task<RequestDto> ApproveWithdrawalAsync(int requestId, Guid rowVersion, int approverEmployeeNumber, bool approved, string? reason);
 
     /// <summary>
     /// Requestor requests cancellation after approval (M4+ feature for request-fulfillment).

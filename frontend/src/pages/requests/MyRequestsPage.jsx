@@ -8,11 +8,12 @@ import Button from '../../components/ui/Button.jsx'
 import { ErrorState, EmptyState } from '../../components/ui/StateBlock.jsx'
 import { SkeletonTable } from '../../components/ui/Skeleton.jsx'
 import useAsync from '../../hooks/useAsync.js'
-import { getMyRequests, submitRequest, withdrawRequest, requestCancellation, deleteDraftRequest } from '../../api/requests.js'
+import { getMyRequests, submitRequest, requestWithdrawal, requestCancellation, deleteDraftRequest } from '../../api/requests.js'
 import { formatCurrency, formatDate } from '../../lib/format.js'
 import RequestStatusBadge from './components/RequestStatusBadge.jsx'
 import RequestDetailModal from './components/RequestDetailModal.jsx'
 import CancellationModal from './components/CancellationModal.jsx'
+import WithdrawalModal from './components/WithdrawalModal.jsx'
 
 const PAGE_SIZE = 15
 
@@ -23,6 +24,7 @@ const STATUS_OPTIONS = [
   { value: 'Approved', label: 'Approved' },
   { value: 'PartiallyApproved', label: 'Partially Approved' },
   { value: 'Rejected', label: 'Rejected' },
+  { value: 'WithdrawalPending', label: 'Withdrawal Pending' },
   { value: 'Withdrawn', label: 'Withdrawn' },
   { value: 'CancellationPending', label: 'Cancellation Pending' },
   { value: 'Cancelled', label: 'Cancelled' },
@@ -33,6 +35,7 @@ export default function MyRequestsPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [selectedRequest, setSelectedRequest] = useState(null)
   const [cancellationTarget, setCancellationTarget] = useState(null)
+  const [withdrawalTarget, setWithdrawalTarget] = useState(null)
   const [isActioning, setIsActioning] = useState(false)
   const [actionError, setActionError] = useState(null)
   const [actionSuccess, setActionSuccess] = useState(null)
@@ -68,19 +71,21 @@ export default function MyRequestsPage() {
     }
   }
 
-  async function handleWithdraw(request) {
+  // Asking to withdraw no longer withdraws: the request goes to WithdrawalPending and waits for
+  // the approver, exactly like a cancellation request. The old window.confirm() was replaced by
+  // WithdrawalModal so the requestor can say why, which is what the approver decides on.
+  async function handleConfirmWithdrawal(request, reason) {
     if (!request) return
-    if (!window.confirm(`Are you sure you want to withdraw request #${request.requestId}?`)) return
-
     setIsActioning(true)
     clearMessages()
     try {
-      await withdrawRequest(request.requestId, request.rowVersion)
-      setActionSuccess(`Request #${request.requestId} withdrawn.`)
+      await requestWithdrawal(request.requestId, request.rowVersion, reason)
+      setActionSuccess(`Withdrawal requested for #${request.requestId}. Awaiting approver confirmation.`)
+      setWithdrawalTarget(null)
       setSelectedRequest(null)
       reload()
     } catch (err) {
-      const msg = err.response?.data?.detail ?? err.response?.data?.error ?? err.message ?? 'Failed to withdraw request.'
+      const msg = err.response?.data?.detail ?? err.response?.data?.error ?? err.message ?? 'Failed to request withdrawal.'
       setActionError(msg)
     } finally {
       setIsActioning(false)
@@ -300,8 +305,8 @@ export default function MyRequestsPage() {
                                 size="sm"
                                 variant="secondary"
                                 disabled={isActioning}
-                                onClick={() => handleWithdraw(req)}
-                                aria-label={`Withdraw request #${req.requestId}`}
+                                onClick={() => setWithdrawalTarget(req)}
+                                aria-label={`Request withdrawal of request #${req.requestId}`}
                               >
                                 <Undo2 className="h-4 w-4" aria-hidden="true" />
                                 Withdraw
@@ -375,13 +380,25 @@ export default function MyRequestsPage() {
         request={selectedRequest}
         onClose={() => setSelectedRequest(null)}
         onSubmit={handleSubmitDraft}
-        onWithdraw={handleWithdraw}
+        onWithdraw={(req) => {
+          setSelectedRequest(null)
+          setWithdrawalTarget(req)
+        }}
         onRequestCancellation={(req) => {
           setSelectedRequest(null)
           setCancellationTarget(req)
         }}
         onDelete={handleDeleteDraft}
         isActioning={isActioning}
+      />
+
+      {/* Withdrawal Request Modal — the approver still has to confirm it */}
+      <WithdrawalModal
+        open={Boolean(withdrawalTarget)}
+        request={withdrawalTarget}
+        onClose={() => setWithdrawalTarget(null)}
+        onConfirm={handleConfirmWithdrawal}
+        isSubmitting={isActioning}
       />
 
       {/* Cancellation Request Modal */}

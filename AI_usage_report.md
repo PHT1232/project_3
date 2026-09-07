@@ -1851,3 +1851,64 @@ Vite dev server, not only through tests:
 **Test data:** employees 410/411 were created on the dev database to exercise the approver path
 and have been deactivated (`IsActive = false`); requests 26–28 remain as audit evidence. Nothing
 was deleted — `Users` is soft-delete only and submitted requests are never removed.
+
+---
+
+## 2026-09-07 — Withdrawal now needs the approver's confirmation (two-step)
+
+**Task:** "When a user wants to revoke a request it needs to be re-confirmed by the higher ranks,
+but right now they can just revoke it whenever they want." Investigated, then fixed.
+
+**What was actually wrong.** "Revoke" maps to two operations here. *Cancellation* of an
+Approved/PartiallyApproved request was already two-step and correct — `Approved → Withdrawn` is an
+illegal transition and the approver's sign-off was already enforced end to end. The gap was
+*withdrawal*: a requestor could take a `Pending` request straight to `Withdrawn` on their own.
+That was Plan §3.6's specified behaviour, so this was confirmed with the user as a deliberate
+**business-rule override before any code was written**, not treated as a bug — CLAUDE.md §5
+forbids resolving that kind of conflict silently.
+
+**The change.** Withdrawal now mirrors cancellation:
+`Pending → WithdrawalPending → Withdrawn`, with the approver confirming; refusing returns the
+request to `Pending`. The direct `Pending → Withdrawn` edge is gone.
+
+**What changed, by file:** see the full table in
+`docs/development/two-step-withdrawal-handoff.md`. In summary — `RequestStateMachine` (new status
+and edges, old edge removed); `RequestService.WithdrawAsync` → `RequestWithdrawalAsync` plus a new
+`ApproveWithdrawalAsync`; new `ApproveWithdrawalCommand` + validator; `WithdrawRequestCommand`
+gained an optional `Reason`; the approvals queue and `EligibilityQueries.CommittedStatuses` both
+learned the new status; `CK_Requests_Status` widened by migration
+`20260907122333_AddWithdrawalPendingStatus`; new endpoint
+`POST /api/v1/approvals/{id}/withdrawal-approval`. Frontend: new `WithdrawalModal` and
+`WithdrawalDecisionModal`, `requestWithdrawal`/`approveWithdrawal` API calls, a third row kind on
+Approvals, a new status badge and filter, and three reworded Help answers.
+
+**APIs changed:** one added (`/approvals/{id}/withdrawal-approval`); one behaviourally changed —
+`POST /requests/{id}/withdraw` now returns `WithdrawalPending`, not `Withdrawn`, and accepts an
+optional reason. **DB changes:** one migration, CHECK constraint only — no new table or column.
+
+**Assumptions, stated because the documents were silent:**
+- The budget stays committed while a withdrawal is pending. Freeing it on the *request* would let
+  a requestor spend the same allowance twice by asking and never being refused.
+- No new notification trigger — Plan §4.2 names exactly six and "withdrawn" is the outcome, not
+  the request for it. It fires only on the final `Withdrawn`, exactly as cancellation behaves.
+- A refused withdrawal always returns to `Pending`, which needs no history lookup because
+  `WithdrawalPending` is reachable from nowhere else.
+
+**Tests actually executed:** `dotnet test Project.slnx` — **257 passed** (117 unit + 140
+integration), 0 failed, up from 243. `npx vitest run --pool=threads` — **157 passed** across 25
+files, up from 154. `npm run build` clean. One existing test,
+`BudgetEnforcementTests.WithdrawingARequest_ReleasesItsBudget`, asserted the old immediate release
+and was **rewritten rather than deleted** to assert the new rule end to end.
+
+**Verified live** against SQLEXPRESS and the SPA, not only through tests: the migration
+auto-applied (confirmed in `sys.check_constraints`); a requestor asking to withdraw got
+`WithdrawalPending`; **the requestor trying to confirm their own withdrawal got 404**; the
+approver refusing returned it to `Pending`; asking again and confirming produced `Withdrawn` with
+the full five-row audit trail and the requestor's "Request Withdrawn" notification. In the
+browser both roles were driven through the flow end to end.
+
+**Deliberately left out of scope:** amending Plan §3.6 and
+`docs/Diagrams/request_diagrams_v3.drawio`, which still describe the old single-step withdraw.
+CLAUDE.md forbids editing requirements and diagrams unilaterally; the team must record the
+override the way K7/K8 were recorded. Cancellation was not touched — it was already correct. M4
+(reports policy) remains open.

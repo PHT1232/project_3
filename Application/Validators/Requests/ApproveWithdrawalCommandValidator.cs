@@ -4,19 +4,19 @@ using Application.DTOs.Requests;
 using FluentValidation;
 
 /// <summary>
-/// Validates <see cref="WithdrawRequestCommand"/> — a requestor asking to withdraw their pending
-/// request (team decision 2026-09-07: the approver must then confirm it).
+/// Validates <see cref="ApproveWithdrawalCommand"/> — an approver's response to a withdrawal
+/// request (team decision 2026-09-07: withdrawal is two-step).
 ///
 /// - RequestId must be positive.
-/// - RowVersion must be provided (concurrency control).
+/// - RowVersion cannot be empty (concurrency check).
 /// - Reason, if provided, must not exceed 500 chars.
 ///
-/// Same rules as <see cref="RequestCancellationCommandValidator"/> — the two requestor-initiated
-/// revocations carry the same payload.
+/// Deliberately identical to <see cref="ApproveCancellationCommandValidator"/>: the two decisions
+/// carry the same payload, so they get the same rules.
 /// </summary>
-public class WithdrawRequestCommandValidator : AbstractValidator<WithdrawRequestCommand>
+public class ApproveWithdrawalCommandValidator : AbstractValidator<ApproveWithdrawalCommand>
 {
-    public WithdrawRequestCommandValidator()
+    public ApproveWithdrawalCommandValidator()
     {
         RuleFor(x => x.RequestId)
             .GreaterThan(0)
@@ -28,7 +28,7 @@ public class WithdrawRequestCommandValidator : AbstractValidator<WithdrawRequest
 
         RuleFor(x => x.Reason)
             .MaximumLength(500)
-            .When(x => !string.IsNullOrWhiteSpace(x.Reason))
+            .When(x => !string.IsNullOrEmpty(x.Reason))
             .WithMessage("Reason must not exceed 500 characters.");
     }
 }

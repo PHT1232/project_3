@@ -63,7 +63,7 @@ export default function RequestDetailModal({
                 onClick={() => onWithdraw(request)}
               >
                 <Undo2 className="h-4 w-4" aria-hidden="true" />
-                Withdraw Request
+                Request Withdrawal
               </Button>
             )}
             {isApprovedOrPartial && onRequestCancellation && (

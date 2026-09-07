@@ -57,6 +57,25 @@ const CANCELLATION_REQUEST = {
   ],
 }
 
+const WITHDRAWAL_REQUEST = {
+  ...SAMPLE_REQUEST,
+  requestId: 3,
+  status: 'WithdrawalPending',
+  rowVersion: 'v9',
+  statusHistory: [
+    {
+      historyId: 11,
+      requestId: 3,
+      fromStatus: 'Pending',
+      toStatus: 'WithdrawalPending',
+      actorEmployeeNumber: 202,
+      actorName: 'Eve Engineer',
+      comment: 'Ordered by mistake',
+      createdAtUtc: '2026-09-07T00:00:00Z',
+    },
+  ],
+}
+
 describe('ApprovalsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -141,6 +160,78 @@ describe('ApprovalsPage', () => {
         reason: 'Fine by me',
       }),
     )
+  })
+
+  // Withdrawal became two-step on 2026-09-07: a requestor can no longer revoke a request alone,
+  // so WithdrawalPending rows now appear in this queue and the approver decides them here.
+  describe('withdrawal requests', () => {
+    async function openWithdrawalDecision() {
+      requestsApi.getPendingApprovals.mockResolvedValue({
+        items: [WITHDRAWAL_REQUEST],
+        page: 1,
+        pageSize: 20,
+        totalCount: 1,
+      })
+
+      render(<ApprovalsPage />)
+      await screen.findByText('Eve Engineer')
+      await userEvent.click(screen.getByRole('button', { name: /decide withdrawal of request #3/i }))
+      await screen.findByText(/withdrawal request for #3/i)
+    }
+
+    it('shows a WithdrawalPending row with a Decide action, not Review', async () => {
+      requestsApi.getPendingApprovals.mockResolvedValue({
+        items: [WITHDRAWAL_REQUEST],
+        page: 1,
+        pageSize: 20,
+        totalCount: 1,
+      })
+
+      render(<ApprovalsPage />)
+      await screen.findByText('Eve Engineer')
+
+      expect(screen.getByRole('button', { name: /decide withdrawal of request #3/i })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /review request #3/i })).not.toBeInTheDocument()
+      expect(screen.getByText('Withdrawal Pending')).toBeInTheDocument()
+    })
+
+    it('shows the requestor\'s reason and confirms the withdrawal', async () => {
+      requestsApi.approveWithdrawal.mockResolvedValue({ ...WITHDRAWAL_REQUEST, status: 'Withdrawn' })
+
+      await openWithdrawalDecision()
+
+      expect(screen.getByText('Ordered by mistake')).toBeInTheDocument()
+
+      await userEvent.click(screen.getByRole('button', { name: /confirm withdrawal of request #3/i }))
+
+      await waitFor(() =>
+        expect(requestsApi.approveWithdrawal).toHaveBeenCalledWith(3, {
+          rowVersion: 'v9',
+          approved: true,
+          reason: null,
+        }),
+      )
+    })
+
+    it('refuses the withdrawal, sending the request back for a normal decision', async () => {
+      requestsApi.approveWithdrawal.mockResolvedValue({ ...WITHDRAWAL_REQUEST, status: 'Pending' })
+
+      await openWithdrawalDecision()
+
+      await userEvent.type(
+        screen.getByRole('textbox', { name: /your comment/i }),
+        'Please go ahead with it',
+      )
+      await userEvent.click(screen.getByRole('button', { name: /refuse withdrawal of request #3/i }))
+
+      await waitFor(() =>
+        expect(requestsApi.approveWithdrawal).toHaveBeenCalledWith(3, {
+          rowVersion: 'v9',
+          approved: false,
+          reason: 'Please go ahead with it',
+        }),
+      )
+    })
   })
 
   // Plan §3.6 guards Pending -> Rejected with "Comment required" (revision-3 finding M5). The
