@@ -64,10 +64,14 @@ public class RequestConfiguration : IEntityTypeConfiguration<Request>
         // ReportQueries/EligibilityQueries and offered as a My Requests filter that always
         // returned nothing (audit finding C8). It was one of the K3 values invented by
         // StationerySchema.sql. Reintroduce it only alongside a real fulfilment transition.
+        // 'WithdrawalPending' was added on 2026-09-07 when withdrawal became a two-step flow
+        // (Pending → WithdrawalPending → Withdrawn, the approver confirming): a requestor may no
+        // longer revoke a request on their own. Keep this list in step with
+        // RequestStateMachine.Allowed.
         builder.ToTable("Requests", t =>
             t.HasCheckConstraint(
                 "CK_Requests_Status",
-                "[Status] IN ('Draft', 'Pending', 'Approved', 'PartiallyApproved', 'Rejected', 'Withdrawn', 'CancellationPending', 'Cancelled')"
+                "[Status] IN ('Draft', 'Pending', 'Approved', 'PartiallyApproved', 'Rejected', 'WithdrawalPending', 'Withdrawn', 'CancellationPending', 'Cancelled')"
             )
         );
     }

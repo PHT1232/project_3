@@ -17,6 +17,12 @@ namespace Application.UnitTests.Requests;
 /// Two statuses in the Plan's diagram are deliberately absent: ReturnedForModification is out of
 /// scope by team decision (CLAUDE.md K1) and Fulfilled was removed when approval itself became
 /// the stock movement (audit C8).
+///
+/// One edge deliberately DIFFERS from Plan §3.6: the Plan's direct Pending → Withdrawn is gone.
+/// The team ruled on 2026-09-07 that a requestor must not be able to revoke a request on their
+/// own, so withdrawal is now Pending → WithdrawalPending → Withdrawn with the approver
+/// confirming. Where this file and the Plan disagree, that override is the reason — it is
+/// recorded here, in RequestStateMachine and in the handoff, not left to be rediscovered.
 /// </summary>
 public class RequestStateMachineTests
 {
@@ -37,7 +43,9 @@ public class RequestStateMachineTests
     [InlineData("Pending", "Approved")]                           // approver approves everything
     [InlineData("Pending", "PartiallyApproved")]                  // approver approves some
     [InlineData("Pending", "Rejected")]                           // approver rejects everything
-    [InlineData("Pending", "Withdrawn")]                          // requestor withdraws
+    [InlineData("Pending", "WithdrawalPending")]                  // requestor asks to withdraw
+    [InlineData("WithdrawalPending", "Withdrawn")]                // approver confirms withdrawal
+    [InlineData("WithdrawalPending", "Pending")]                  // approver refuses, back to queue
     [InlineData("Approved", "CancellationPending")]               // requestor asks to cancel
     [InlineData("PartiallyApproved", "CancellationPending")]      // ditto, partial
     [InlineData("CancellationPending", "Cancelled")]              // approver grants cancellation
@@ -73,6 +81,18 @@ public class RequestStateMachineTests
     [InlineData("Pending", "Draft")]
     [InlineData("Pending", "CancellationPending")]
     [InlineData("Pending", "Cancelled")]
+    // The rule this whole flow exists for: a requestor cannot withdraw unilaterally. Withdrawing
+    // has to go Pending → WithdrawalPending → Withdrawn, with the approver confirming
+    // (team decision 2026-09-07, overriding Plan §3.6's direct edge).
+    [InlineData("Pending", "Withdrawn")]
+    // A withdrawal awaiting a decision cannot jump anywhere else, least of all straight to an
+    // outcome the approver never gave.
+    [InlineData("WithdrawalPending", "Approved")]
+    [InlineData("WithdrawalPending", "PartiallyApproved")]
+    [InlineData("WithdrawalPending", "Rejected")]
+    [InlineData("WithdrawalPending", "Cancelled")]
+    [InlineData("WithdrawalPending", "CancellationPending")]
+    [InlineData("WithdrawalPending", "Draft")]
     // An approved request is cancelled through the two-step flow, never directly.
     [InlineData("Approved", "Cancelled")]
     [InlineData("Approved", "Withdrawn")]
@@ -128,6 +148,19 @@ public class RequestStateMachineTests
         var act = () => RequestStateMachine.Transition(RequestIn("Pending"), "Pending", Actor);
 
         act.Should().Throw<InvalidStateTransitionException>();
+    }
+
+    [Fact]
+    public void Withdrawing_Requires_TheApproversConfirmation()
+    {
+        // The rule in one test: from Pending, the only route towards Withdrawn is via
+        // WithdrawalPending. If someone ever re-adds the direct edge, this fails.
+        RequestStateMachine.NextStatuses("Pending").Should().NotContain("Withdrawn");
+        RequestStateMachine.CanTransition("Pending", "Withdrawn").Should().BeFalse();
+
+        RequestStateMachine.CanTransition("Pending", "WithdrawalPending").Should().BeTrue();
+        RequestStateMachine.CanTransition("WithdrawalPending", "Withdrawn").Should().BeTrue();
+        RequestStateMachine.CanTransition("WithdrawalPending", "Pending").Should().BeTrue();
     }
 
     [Fact]

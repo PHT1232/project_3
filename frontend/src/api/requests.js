@@ -47,10 +47,19 @@ export async function submitRequest(requestId, rowVersion) {
 }
 
 /**
- * Withdraw a Pending request (requestor only).
+ * Ask to withdraw a Pending request (requestor only).
+ *
+ * This does NOT withdraw it — the request moves to WithdrawalPending and the approver must
+ * confirm via `approveWithdrawal` below before it becomes Withdrawn.
  */
-export async function withdrawRequest(requestId, rowVersion) {
-  return (await client.post(`/requests/${requestId}/withdraw`, { requestId, rowVersion })).data
+export async function requestWithdrawal(requestId, rowVersion, reason) {
+  return (
+    await client.post(`/requests/${requestId}/withdraw`, {
+      requestId,
+      rowVersion,
+      reason: reason || null,
+    })
+  ).data
 }
 
 /**
@@ -84,8 +93,9 @@ export async function getRequestSummary() {
 // --- Approver endpoints ---
 
 /**
- * Get requests awaiting the current user's decision: Pending (approve / reject) and
- * CancellationPending (approve / refuse the cancellation).
+ * Get requests awaiting the current user's decision: Pending (approve / reject),
+ * CancellationPending (approve / refuse the cancellation) and WithdrawalPending
+ * (confirm / refuse the withdrawal).
  */
 export async function getPendingApprovals({ page = 1, pageSize = 20 } = {}) {
   return (await client.get('/approvals/pending', { params: { page, pageSize } })).data
@@ -101,6 +111,21 @@ export async function approveRequest(requestId, { rowVersion, lineDecisions, com
       rowVersion,
       lineDecisions,
       comment,
+    })
+  ).data
+}
+
+/**
+ * Approver decides on a withdrawal request: `approved: true` withdraws it for good,
+ * `false` sends it back to Pending for a normal approve/reject decision.
+ */
+export async function approveWithdrawal(requestId, { rowVersion, approved, reason }) {
+  return (
+    await client.post(`/approvals/${requestId}/withdrawal-approval`, {
+      requestId,
+      rowVersion,
+      approved,
+      reason: reason || null,
     })
   ).data
 }

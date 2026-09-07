@@ -159,10 +159,10 @@ describe('MyRequestsPage', () => {
     // 101 is a Draft -> has Submit button and Delete button, never Withdraw
     expect(screen.getByRole('button', { name: /submit request #101/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /delete draft request #101/i })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /withdraw request #101/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /request withdrawal of request #101/i })).not.toBeInTheDocument()
 
-    // 102 is Pending (submitted) -> has Withdraw button, never Submit or Delete
-    expect(screen.getByRole('button', { name: /withdraw request #102/i })).toBeInTheDocument()
+    // 102 is Pending (submitted) -> can ask to withdraw, never Submit or Delete
+    expect(screen.getByRole('button', { name: /request withdrawal of request #102/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /submit request #102/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /delete draft request #102/i })).not.toBeInTheDocument()
 
@@ -225,24 +225,36 @@ describe('MyRequestsPage', () => {
     })
   })
 
-  it('withdraws a submitted pending request with confirmation', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('asks to withdraw a pending request through the modal, and says it is not final', async () => {
+    // Withdrawal is two-step since 2026-09-07: this call parks the request at WithdrawalPending
+    // and the approver confirms it. The old test clicked through a window.confirm() and expected
+    // the request to be Withdrawn immediately.
     requestsApi.getMyRequests.mockResolvedValue({
       items: SAMPLE_REQUESTS,
       page: 1,
       pageSize: 15,
       totalCount: 3,
     })
-    requestsApi.withdrawRequest.mockResolvedValue({ ...SAMPLE_REQUESTS[1], status: 'Withdrawn' })
+    requestsApi.requestWithdrawal.mockResolvedValue({ ...SAMPLE_REQUESTS[1], status: 'WithdrawalPending' })
 
     renderMyRequestsPage()
 
-    const withdrawBtn = await screen.findByRole('button', { name: /withdraw request #102/i })
+    const withdrawBtn = await screen.findByRole('button', { name: /request withdrawal of request #102/i })
     await userEvent.click(withdrawBtn)
 
+    expect(await screen.findByText(/request withdrawal for #102/i)).toBeInTheDocument()
+
+    const reasonInput = screen.getByRole('textbox', { name: /reason for withdrawal/i })
+    await userEvent.type(reasonInput, 'Ordered by mistake')
+
+    await userEvent.click(screen.getByRole('button', { name: /submit withdrawal request/i }))
+
     await waitFor(() => {
-      expect(requestsApi.withdrawRequest).toHaveBeenCalledWith(102, 'guid-2')
+      expect(requestsApi.requestWithdrawal).toHaveBeenCalledWith(102, 'guid-2', 'Ordered by mistake')
     })
+
+    // The requestor must not be told it is done — it is waiting on their approver.
+    expect(await screen.findByText(/awaiting approver confirmation/i)).toBeInTheDocument()
   })
 
   it('requests cancellation for approved request through modal', async () => {

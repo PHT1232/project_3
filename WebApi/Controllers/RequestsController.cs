@@ -100,7 +100,9 @@ public class RequestsController(
     }
 
     /// <summary>
-    /// Requestor withdraws their own request (Pending status only).
+    /// Requestor asks to withdraw their own request (Pending status only). This does not withdraw
+    /// it: the request moves to WithdrawalPending and the approver must confirm via
+    /// POST /approvals/{id}/withdrawal-approval before it becomes Withdrawn.
     /// </summary>
     [HttpPost("{id:int}/withdraw")]
     public async Task<ActionResult<RequestDto>> Withdraw(int id, [FromBody] WithdrawRequestCommand command)
@@ -113,7 +115,7 @@ public class RequestsController(
         var actor = currentUserService.EmployeeNumber
             ?? throw new InvalidOperationException("Authenticated request missing employee number claim.");
 
-        var result = await requestService.WithdrawAsync(id, command.RowVersion, actor);
+        var result = await requestService.RequestWithdrawalAsync(id, command.RowVersion, actor, command.Reason);
         return Ok(result);
     }
 

@@ -13,17 +13,20 @@ import { getPendingApprovals } from '../../api/requests.js'
 import RequestStatusBadge from './components/RequestStatusBadge.jsx'
 import RequestReviewModal from './components/RequestReviewModal.jsx'
 import CancellationDecisionModal from './components/CancellationDecisionModal.jsx'
+import WithdrawalDecisionModal from './components/WithdrawalDecisionModal.jsx'
 
 const PAGE_SIZE = 20
 
 /**
  * Approver's decision queue. Plan §3.6/§4.2, wireframe docs/Wireframe/Approvals.png.
  *
- * Two kinds of row, told apart by status:
+ * Three kinds of row, told apart by status:
  *   Pending             → "Review" opens the per-line approve / reject / modify modal.
+ *   WithdrawalPending   → "Decide" opens the confirm / refuse-withdrawal modal.
  *   CancellationPending → "Decide" opens the approve / refuse-cancellation modal.
- * GET /approvals/pending returns both (it used to return Pending only, which left cancellation
- * requests unreachable — audit finding C5).
+ * GET /approvals/pending returns all three (it used to return Pending only, which left
+ * cancellation requests unreachable — audit finding C5). WithdrawalPending joined the queue on
+ * 2026-09-07, when withdrawing stopped being something a requestor could do unilaterally.
  *
  * The wireframe's "Department" column/filter has no backing field on RequestDto or a Plan
  * concept behind it (same K5 status as Catalogue's unimplemented filters) — omitted here
@@ -33,6 +36,7 @@ export default function ApprovalsPage() {
   const [page, setPage] = useState(1)
   const [reviewing, setReviewing] = useState(null)
   const [decidingCancellation, setDecidingCancellation] = useState(null)
+  const [decidingWithdrawal, setDecidingWithdrawal] = useState(null)
 
   const { data, error, loading, reload } = useAsync(
     () => getPendingApprovals({ page, pageSize: PAGE_SIZE }),
@@ -62,7 +66,7 @@ export default function ApprovalsPage() {
         {!loading && !error && requests.length === 0 && (
           <EmptyState
             title="Nothing pending"
-            description="No requests or cancellation requests are currently waiting on your decision."
+            description="No requests, withdrawal requests or cancellation requests are currently waiting on your decision."
           />
         )}
         {!loading && !error && requests.length > 0 && (
@@ -94,7 +98,9 @@ export default function ApprovalsPage() {
                         <RequestStatusBadge status={request.status} />
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {request.status === 'CancellationPending' ? (
+                        {/* Three row kinds, one action each — the status badge in the previous
+                            column is what tells the two "Decide" rows apart. */}
+                        {request.status === 'CancellationPending' && (
                           <Button
                             size="sm"
                             variant="secondary"
@@ -104,7 +110,19 @@ export default function ApprovalsPage() {
                             <Undo2 className="h-4 w-4" aria-hidden="true" />
                             Decide
                           </Button>
-                        ) : (
+                        )}
+                        {request.status === 'WithdrawalPending' && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setDecidingWithdrawal(request)}
+                            aria-label={`Decide withdrawal of request #${request.requestId}`}
+                          >
+                            <Undo2 className="h-4 w-4" aria-hidden="true" />
+                            Decide
+                          </Button>
+                        )}
+                        {request.status === 'Pending' && (
                           <Button
                             size="sm"
                             onClick={() => setReviewing(request)}
@@ -147,6 +165,13 @@ export default function ApprovalsPage() {
         open={Boolean(reviewing)}
         request={reviewing}
         onClose={() => setReviewing(null)}
+        onSuccess={reload}
+      />
+
+      <WithdrawalDecisionModal
+        open={Boolean(decidingWithdrawal)}
+        request={decidingWithdrawal}
+        onClose={() => setDecidingWithdrawal(null)}
         onSuccess={reload}
       />
 

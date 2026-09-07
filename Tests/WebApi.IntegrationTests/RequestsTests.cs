@@ -493,28 +493,165 @@ public class RequestsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task WithdrawRequest_PendingRequest_TransitionsToWithdrawn()
+    public async Task WithdrawRequest_PendingRequest_ParksAtWithdrawalPending_NotWithdrawn()
     {
+        // The rule this flow exists for: asking to withdraw is not withdrawing. Before
+        // 2026-09-07 this endpoint went straight to Withdrawn, so a requestor could revoke a
+        // request with no approver sign-off at all.
         var (category, supplier) = await CatalogueTestData.SeedCategoryAndSupplierAsync(_factory.Services);
         var item = await CatalogueTestData.SeedItemAsync(_factory.Services, category.Id, supplier.Id, minRankLevelToRequest: 1);
 
         var client = await AuthedClientAsync(602, "Password1!");
 
-        // 1. Create + submit (withdraw is a Pending-only transition; a Draft is deleted instead)
+        // Withdrawal is a Pending-only transition; a Draft is deleted instead.
         var submitted = await CreateAndSubmitAsync(client, item.Id, quantity: 2);
         var requestId = submitted.GetProperty("requestId").GetInt32();
         var rowVersion = submitted.GetProperty("rowVersion").GetString();
 
-        // 2. Withdraw
         var withdrawRes = await client.PostAsJsonAsync($"/api/v1/requests/{requestId}/withdraw", new
         {
             requestId,
-            rowVersion = Guid.Parse(rowVersion!)
+            rowVersion = Guid.Parse(rowVersion!),
+            reason = "Ordered by mistake"
         });
 
         withdrawRes.StatusCode.Should().Be(HttpStatusCode.OK);
-        var withdrawn = await withdrawRes.Content.ReadFromJsonAsync<JsonElement>();
+        var pendingWithdrawal = await withdrawRes.Content.ReadFromJsonAsync<JsonElement>();
+        pendingWithdrawal.GetProperty("status").GetString().Should().Be("WithdrawalPending");
+    }
+
+    [Fact]
+    public async Task WithdrawRequest_RequestorCannotConfirmTheirOwnWithdrawal()
+    {
+        // The requestor is not the approver, so the decision endpoint must not accept them —
+        // otherwise the two-step flow would be two steps by the same person.
+        var (category, supplier) = await CatalogueTestData.SeedCategoryAndSupplierAsync(_factory.Services);
+        var item = await CatalogueTestData.SeedItemAsync(_factory.Services, category.Id, supplier.Id, minRankLevelToRequest: 1);
+
+        var requestor = await AuthedClientAsync(602, "Password1!");
+
+        var submitted = await CreateAndSubmitAsync(requestor, item.Id, quantity: 2);
+        var requestId = submitted.GetProperty("requestId").GetInt32();
+
+        var asked = await requestor.PostAsJsonAsync($"/api/v1/requests/{requestId}/withdraw", new
+        {
+            requestId,
+            rowVersion = Guid.Parse(submitted.GetProperty("rowVersion").GetString()!),
+            reason = (string?)null
+        });
+        asked.StatusCode.Should().Be(HttpStatusCode.OK);
+        var parked = await asked.Content.ReadFromJsonAsync<JsonElement>();
+
+        var selfConfirm = await requestor.PostAsJsonAsync($"/api/v1/approvals/{requestId}/withdrawal-approval", new
+        {
+            requestId,
+            rowVersion = Guid.Parse(parked.GetProperty("rowVersion").GetString()!),
+            approved = true,
+            reason = (string?)null
+        });
+
+        // 404 rather than 403 so the response does not confirm someone else's request exists.
+        selfConfirm.StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        var after = await requestor.GetFromJsonAsync<JsonElement>($"/api/v1/requests/{requestId}");
+        after.GetProperty("status").GetString().Should().Be("WithdrawalPending");
+    }
+
+    [Fact]
+    public async Task WithdrawRequest_ApproverConfirms_TransitionsToWithdrawn()
+    {
+        var (category, supplier) = await CatalogueTestData.SeedCategoryAndSupplierAsync(_factory.Services);
+        var item = await CatalogueTestData.SeedItemAsync(_factory.Services, category.Id, supplier.Id, minRankLevelToRequest: 1);
+
+        var requestor = await AuthedClientAsync(602, "Password1!");
+        var approver = await AuthedClientAsync(601, "Password1!");
+
+        var submitted = await CreateAndSubmitAsync(requestor, item.Id, quantity: 2);
+        var requestId = submitted.GetProperty("requestId").GetInt32();
+
+        var asked = await requestor.PostAsJsonAsync($"/api/v1/requests/{requestId}/withdraw", new
+        {
+            requestId,
+            rowVersion = Guid.Parse(submitted.GetProperty("rowVersion").GetString()!),
+            reason = "No longer needed"
+        });
+        var parked = await asked.Content.ReadFromJsonAsync<JsonElement>();
+
+        // It must be visible to the one person who can resolve it.
+        var queue = await approver.GetFromJsonAsync<JsonElement>("/api/v1/approvals/pending?pageSize=50");
+        queue.GetProperty("items").EnumerateArray()
+            .Should().Contain(r => r.GetProperty("requestId").GetInt32() == requestId);
+
+        var confirmRes = await approver.PostAsJsonAsync($"/api/v1/approvals/{requestId}/withdrawal-approval", new
+        {
+            requestId,
+            rowVersion = Guid.Parse(parked.GetProperty("rowVersion").GetString()!),
+            approved = true,
+            reason = "Agreed"
+        });
+
+        confirmRes.StatusCode.Should().Be(HttpStatusCode.OK);
+        var withdrawn = await confirmRes.Content.ReadFromJsonAsync<JsonElement>();
         withdrawn.GetProperty("status").GetString().Should().Be("Withdrawn");
+    }
+
+    [Fact]
+    public async Task WithdrawRequest_ApproverRefuses_ReturnsRequestToPending()
+    {
+        var (category, supplier) = await CatalogueTestData.SeedCategoryAndSupplierAsync(_factory.Services);
+        var item = await CatalogueTestData.SeedItemAsync(_factory.Services, category.Id, supplier.Id, minRankLevelToRequest: 1);
+
+        var requestor = await AuthedClientAsync(602, "Password1!");
+        var approver = await AuthedClientAsync(601, "Password1!");
+
+        var submitted = await CreateAndSubmitAsync(requestor, item.Id, quantity: 2);
+        var requestId = submitted.GetProperty("requestId").GetInt32();
+
+        var asked = await requestor.PostAsJsonAsync($"/api/v1/requests/{requestId}/withdraw", new
+        {
+            requestId,
+            rowVersion = Guid.Parse(submitted.GetProperty("rowVersion").GetString()!),
+            reason = (string?)null
+        });
+        var parked = await asked.Content.ReadFromJsonAsync<JsonElement>();
+
+        var refuseRes = await approver.PostAsJsonAsync($"/api/v1/approvals/{requestId}/withdrawal-approval", new
+        {
+            requestId,
+            rowVersion = Guid.Parse(parked.GetProperty("rowVersion").GetString()!),
+            approved = false,
+            reason = "Please go ahead with it"
+        });
+
+        refuseRes.StatusCode.Should().Be(HttpStatusCode.OK);
+        var refused = await refuseRes.Content.ReadFromJsonAsync<JsonElement>();
+
+        // Back in the queue for a normal decision — not stranded, and not withdrawn.
+        refused.GetProperty("status").GetString().Should().Be("Pending");
+    }
+
+    [Fact]
+    public async Task WithdrawalApproval_OnARequestThatIsNotAwaitingOne_Returns409()
+    {
+        var (category, supplier) = await CatalogueTestData.SeedCategoryAndSupplierAsync(_factory.Services);
+        var item = await CatalogueTestData.SeedItemAsync(_factory.Services, category.Id, supplier.Id, minRankLevelToRequest: 1);
+
+        var requestor = await AuthedClientAsync(602, "Password1!");
+        var approver = await AuthedClientAsync(601, "Password1!");
+
+        // Still plain Pending — nobody has asked to withdraw it.
+        var submitted = await CreateAndSubmitAsync(requestor, item.Id, quantity: 2);
+        var requestId = submitted.GetProperty("requestId").GetInt32();
+
+        var res = await approver.PostAsJsonAsync($"/api/v1/approvals/{requestId}/withdrawal-approval", new
+        {
+            requestId,
+            rowVersion = Guid.Parse(submitted.GetProperty("rowVersion").GetString()!),
+            approved = true,
+            reason = (string?)null
+        });
+
+        res.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 
     [Fact]

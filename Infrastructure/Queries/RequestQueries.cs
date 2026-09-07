@@ -77,13 +77,17 @@ public class RequestQueries(DataContext db, IHierarchyQueries hierarchy) : IRequ
         int pageSize,
         int approverEmployeeNumber)
     {
-        // Everything waiting on THIS approver's decision: Pending (approve / reject) and
-        // CancellationPending (approve / refuse the cancellation — Plan §3.6). Filtering to
-        // Pending alone left CancellationPending requests with no way to be found by the one
-        // person who can resolve them (audit finding C5). Drafts never appear here.
+        // Everything waiting on THIS approver's decision: Pending (approve / reject),
+        // CancellationPending (approve / refuse the cancellation — Plan §3.6) and
+        // WithdrawalPending (confirm / refuse the withdrawal — team decision 2026-09-07).
+        // Filtering to Pending alone left CancellationPending requests with no way to be found
+        // by the one person who can resolve them (audit finding C5); WithdrawalPending would
+        // strand the same way. Drafts never appear here.
         var query = db.Requests
             .AsNoTracking()
-            .Where(r => (r.Status == "Pending" || r.Status == "CancellationPending")
+            .Where(r => (r.Status == "Pending"
+                         || r.Status == "CancellationPending"
+                         || r.Status == "WithdrawalPending")
                         && r.ApproverEmployeeNumber == approverEmployeeNumber);
 
         var totalCount = await query.CountAsync();

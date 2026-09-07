@@ -109,9 +109,14 @@ public class BudgetEnforcementTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task WithdrawingARequest_ReleasesItsBudget()
+    public async Task WithdrawingARequest_ReleasesItsBudget_OnlyOnceTheApproverConfirms()
     {
+        // Since 2026-09-07 withdrawal is two-step, and the budget follows the same rule: merely
+        // *asking* to withdraw must not free the allowance, or a requestor could spend the same
+        // budget twice by asking and never being refused. WithdrawalPending is therefore a
+        // committed status; Withdrawn is not.
         var (client, itemId) = await SetupAsync();
+        var approver = await AuthedClientAsync(901); // employee 902's superior
 
         var first = await CreateDraftAsync(client, itemId, UnitsAtTheLimit);
         var submitted = await (await SubmitAsync(client, first)).Content.ReadFromJsonAsync<JsonElement>();
@@ -121,11 +126,28 @@ public class BudgetEnforcementTests : IAsyncLifetime
         var blocked = await CreateDraftAsync(client, itemId, 1);
         (await SubmitAsync(client, blocked)).StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
 
-        await client.PostAsJsonAsync($"/api/v1/requests/{firstId}/withdraw", new
+        var askRes = await client.PostAsJsonAsync($"/api/v1/requests/{firstId}/withdraw", new
         {
             requestId = firstId,
             rowVersion = Guid.Parse(submitted.GetProperty("rowVersion").GetString()!),
+            reason = "Changed my mind",
         });
+        var parked = await askRes.Content.ReadFromJsonAsync<JsonElement>();
+        parked.GetProperty("status").GetString().Should().Be("WithdrawalPending");
+
+        // Still committed — the approver has not agreed yet.
+        var stillBlocked = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/v1/requests/{blocked.GetProperty("requestId").GetInt32()}");
+        (await SubmitAsync(client, stillBlocked)).StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+
+        var confirmRes = await approver.PostAsJsonAsync($"/api/v1/approvals/{firstId}/withdrawal-approval", new
+        {
+            requestId = firstId,
+            rowVersion = Guid.Parse(parked.GetProperty("rowVersion").GetString()!),
+            approved = true,
+            reason = (string?)null,
+        });
+        confirmRes.StatusCode.Should().Be(HttpStatusCode.OK);
 
         // Withdrawn is not a committed status, so the allowance is free again.
         var retry = await client.GetFromJsonAsync<JsonElement>(

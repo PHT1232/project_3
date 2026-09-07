@@ -36,6 +36,7 @@ public class RequestService(
     IValidator<CreateRequestCommand> createValidator,
     IValidator<ApproveRequestCommand> approveValidator,
     IValidator<WithdrawRequestCommand> withdrawValidator,
+    IValidator<ApproveWithdrawalCommand> approveWithdrawalValidator,
     IValidator<RequestCancellationCommand> requestCancelValidator,
     IValidator<ApproveCancellationCommand> approveCancelValidator) : IRequestService
 {
@@ -378,10 +379,11 @@ public class RequestService(
             ?? throw new NotFoundException("Request not found after approval.");
     }
 
-    public async Task<RequestDto> WithdrawAsync(int requestId, Guid rowVersion, int requestorEmployeeNumber)
+    public async Task<RequestDto> RequestWithdrawalAsync(
+        int requestId, Guid rowVersion, int requestorEmployeeNumber, string? reason)
     {
-        var withdrawCommand = new WithdrawRequestCommand(requestId, rowVersion);
-        await withdrawValidator.ValidateAndThrowAsync(withdrawCommand);
+        await withdrawValidator.ValidateAndThrowAsync(
+            new WithdrawRequestCommand(requestId, rowVersion, reason));
 
         var request = await db.Requests
             .Include(r => r.Items)
@@ -394,8 +396,8 @@ public class RequestService(
             throw new NotFoundException("Request not accessible.");
         }
 
-        // Status check: only Pending can be withdrawn
-        if (request.Status != "Pending")
+        // Status check: only a request nobody has decided yet can be withdrawn.
+        if (request.Status != RequestStateMachine.Pending)
         {
             throw new ConflictException($"Cannot withdraw a request in {request.Status} status.");
         }
@@ -406,14 +408,80 @@ public class RequestService(
             throw new ConflictException("Request was modified. Please refresh and try again.");
         }
 
+        // Asking is not withdrawing. This parks the request at WithdrawalPending, where it stays
+        // in the approver's queue and keeps its cost committed against the monthly budget, until
+        // ApproveWithdrawalAsync below resolves it. Before 2026-09-07 this method transitioned
+        // straight to Withdrawn, so a requestor could revoke a request with no sign-off at all.
         RequestStateMachine.Transition(
-            request, RequestStateMachine.Withdrawn, requestorEmployeeNumber, "Request withdrawn by requestor");
+            request,
+            RequestStateMachine.WithdrawalPending,
+            requestorEmployeeNumber,
+            reason ?? "Withdrawal requested");
 
-        await notificationService.NotifyRequestEventAsync(NotificationEventType.RequestWithdrawn, request, requestorEmployeeNumber);
+        // No notification here by design — Plan §4.2 names exactly 6 triggers and "withdrawn" is
+        // one of them, not "withdrawal requested". It fires from ApproveWithdrawalAsync on the
+        // final Withdrawn outcome, matching how RequestCancellationAsync behaves.
         await db.SaveChangesAsync();
 
         return await queries.GetByIdAsync(requestId, requestorEmployeeNumber)
-            ?? throw new NotFoundException("Request not found after withdrawal.");
+            ?? throw new NotFoundException("Request not found after withdrawal request.");
+    }
+
+    public async Task<RequestDto> ApproveWithdrawalAsync(
+        int requestId, Guid rowVersion, int approverEmployeeNumber, bool approved, string? reason)
+    {
+        await approveWithdrawalValidator.ValidateAndThrowAsync(
+            new ApproveWithdrawalCommand(requestId, rowVersion, approved, reason));
+
+        var request = await db.Requests
+            .Include(r => r.Items)
+            .FirstOrDefaultAsync(r => r.Id == requestId)
+            ?? throw new NotFoundException($"Request {requestId} not found.");
+
+        // Approver check. 404 rather than 403 so the response does not confirm that a request
+        // belonging to someone else exists (CLAUDE.md principle #9).
+        if (request.ApproverEmployeeNumber != approverEmployeeNumber)
+        {
+            throw new NotFoundException("You are not the approver for this request.");
+        }
+
+        // Status check: only WithdrawalPending
+        if (request.Status != RequestStateMachine.WithdrawalPending)
+        {
+            throw new ConflictException(
+                $"Cannot respond to a withdrawal for a request in {request.Status} status.");
+        }
+
+        // Concurrency check
+        if (request.RowVersion != rowVersion)
+        {
+            throw new ConflictException("Request was modified. Please refresh and try again.");
+        }
+
+        // Refusing sends the request back to Pending. Unlike a refused cancellation — which has
+        // to read the prior status out of the audit trail because it could have been Approved or
+        // PartiallyApproved — WithdrawalPending is reachable only from Pending, so there is
+        // nothing to look up.
+        var newStatus = approved
+            ? RequestStateMachine.Withdrawn
+            : RequestStateMachine.Pending;
+
+        // No stock to unwind either way: stock moves on approval, and a request can only reach
+        // WithdrawalPending from Pending, which never issued any.
+        RequestStateMachine.Transition(request, newStatus, approverEmployeeNumber, reason);
+
+        // Only the final "Withdrawn" outcome is one of the Plan's 6 named triggers — a refusal
+        // (back to Pending) does not fire one.
+        if (approved)
+        {
+            await notificationService.NotifyRequestEventAsync(
+                NotificationEventType.RequestWithdrawn, request, approverEmployeeNumber);
+        }
+
+        await db.SaveChangesAsync();
+
+        return await queries.GetByIdAsync(requestId, approverEmployeeNumber)
+            ?? throw new NotFoundException("Request not found after withdrawal decision.");
     }
 
     public async Task<RequestDto> RequestCancellationAsync(

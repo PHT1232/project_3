@@ -46,6 +46,21 @@ Two confirmed gaps were closed: **M5** and **L3/P5**.
 | `dotnet test Project.slnx` | **243 passed** (107 unit + 136 integration), 0 failed |
 | `npx vitest run --pool=threads` | **154 passed** across 25 files, 0 failed |
 
+### Revision 4 — 2026-09-07 (`5bff750`)
+Not an audit: one **business-rule change** the team asked for. A requestor could withdraw a
+`Pending` request unilaterally — Plan §3.6's specified behaviour, but the team ruled that no
+requestor may revoke a request without a higher rank confirming it. Withdrawal is now two-step
+(`Pending → WithdrawalPending → Withdrawn`), mirroring the cancellation flow; refusing returns the
+request to `Pending`. **This knowingly overrides Plan §3.6**, so the Plan and
+`docs/Diagrams/request_diagrams_v3.drawio` now trail the code and must be amended the way K7/K8
+were — see `docs/development/two-step-withdrawal-handoff.md`. Cancellation was verified as already
+correct and was not touched.
+
+| Command | Result |
+|---|---|
+| `dotnet test Project.slnx` | **257 passed** (117 unit + 140 integration), 0 failed |
+| `npx vitest run --pool=threads` | **157 passed** across 25 files, 0 failed |
+
 ---
 
 ## Previously Reported Issues

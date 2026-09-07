@@ -22,6 +22,16 @@ namespace Application.Services.Requests;
 /// of scope by team decision (CLAUDE.md K1) and <c>Fulfilled</c> was dropped when approval itself
 /// became the stock movement (audit C8). Both are absent from <c>CK_Requests_Status</c> too, so
 /// this table and the database agree.
+///
+/// <b>Withdrawal is two-step (team decision 2026-09-07, overrides Plan §3.6).</b> The Plan makes
+/// <c>Pending → Withdrawn</c> unilateral — the requestor pulls the request back with no sign-off.
+/// The team ruled that a requestor must not be able to revoke a request on their own, so that
+/// edge is gone: withdrawal now runs <c>Pending → WithdrawalPending → Withdrawn</c>, with the
+/// approver confirming, exactly as cancellation already worked. Refusing it returns the request
+/// to <c>Pending</c>. This is a deliberate, recorded override, not a drift — see
+/// docs/development/two-step-withdrawal-handoff.md. The Plan's warning that withdraw and cancel
+/// are different operations still holds: withdraw acts on a request nobody has decided yet and
+/// moves no stock, cancel unwinds an approved one and restores stock.
 /// </summary>
 public static class RequestStateMachine
 {
@@ -30,20 +40,25 @@ public static class RequestStateMachine
     public const string Approved = "Approved";
     public const string PartiallyApproved = "PartiallyApproved";
     public const string Rejected = "Rejected";
+    public const string WithdrawalPending = "WithdrawalPending";
     public const string Withdrawn = "Withdrawn";
     public const string CancellationPending = "CancellationPending";
     public const string Cancelled = "Cancelled";
 
     /// <summary>
-    /// Every legal edge in Plan §3.6's state diagram. Anything not listed here throws.
+    /// Every legal edge in Plan §3.6's state diagram, plus the team's 2026-09-07 override making
+    /// withdrawal a two-step flow. Anything not listed here throws.
     /// Keep this in step with <c>CK_Requests_Status</c> in RequestConfiguration.
     /// </summary>
     private static readonly Dictionary<string, string[]> Allowed = new()
     {
         [Draft] = [Pending],
-        [Pending] = [Approved, PartiallyApproved, Rejected, Withdrawn],
+        [Pending] = [Approved, PartiallyApproved, Rejected, WithdrawalPending],
         [Approved] = [CancellationPending],
         [PartiallyApproved] = [CancellationPending],
+        // Confirming the withdrawal ends at Withdrawn; refusing it puts the request back in the
+        // approver's queue as Pending — the only status it can have come from.
+        [WithdrawalPending] = [Withdrawn, Pending],
         // Approving the cancellation ends at Cancelled; refusing it returns the request to
         // whichever of the two approved states it came from.
         [CancellationPending] = [Cancelled, Approved, PartiallyApproved],

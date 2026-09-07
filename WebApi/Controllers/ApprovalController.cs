@@ -64,6 +64,33 @@ public class ApprovalsController(
     }
 
     /// <summary>
+    /// Approver responds to a withdrawal request (confirm or refuse).
+    /// Transitions WithdrawalPending → Withdrawn (if confirmed) or back to Pending (if refused),
+    /// where it returns to this approver's queue for a normal approve/reject decision.
+    /// </summary>
+    [HttpPost("{requestId:int}/withdrawal-approval")]
+    public async Task<ActionResult<RequestDto>> ApproveWithdrawal(
+        int requestId,
+        [FromBody] ApproveWithdrawalCommand command)
+    {
+        if (requestId != command.RequestId)
+        {
+            return BadRequest(new { error = "RequestId in URL does not match RequestId in command body." });
+        }
+
+        var approverEmployeeNumber = currentUserService.EmployeeNumber
+            ?? throw new InvalidOperationException("Authenticated request missing employee number.");
+
+        var result = await requestService.ApproveWithdrawalAsync(
+            command.RequestId,
+            command.RowVersion,
+            approverEmployeeNumber,
+            command.Approved,
+            command.Reason);
+        return Ok(result);
+    }
+
+    /// <summary>
     /// Approver responds to a cancellation request (approve or deny).
     /// Transitions CancellationPending → Cancelled (if approved) or back to Approved/PartiallyApproved (if denied).
     /// </summary>
